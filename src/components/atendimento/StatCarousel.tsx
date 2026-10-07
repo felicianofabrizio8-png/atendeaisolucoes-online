@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { StatSnapshot } from "@/lib/atendimento/stats";
 
 const ROTATION_MS = 7000;
 
 /**
- * Carrossel dos cartões escuros de métrica.
+ * Cartão de métricas com fundos que se transformam entre os indicadores.
  *
- * Troca de cartão a cada 7s deslizando para o lado. Decisões que valem
+ * Troca de métrica a cada 7s no mesmo cartão. Decisões que valem
  * comentário:
- * - O trilho inteiro é um flex que anda com `translateX`; só uma propriedade
- *   animada (transform), então roda na GPU e não causa layout thrash numa tela
- *   que já renderiza lista virtualizada + chat.
+ * - Os gradientes CSS permanecem montados e só a opacidade/escala muda. Assim
+ *   a cor flui entre métricas sem deslocar o cartão nem recalcular layout.
  * - O relógio pausa no hover, no foco do teclado e quando a aba está oculta.
  *   Nada pior do que voltar para a aba e o cartão ter passado 40 vezes.
- * - `prefers-reduced-motion` desliga o deslize (vira corte seco) mas mantém a
+ * - `prefers-reduced-motion` desliga a transição (vira corte seco) mas mantém a
  *   rotação — quem pediu menos movimento não quer perder a informação.
  * - Clicar no cartão filtra a fila. O número não é enfeite.
  */
@@ -33,7 +32,6 @@ export function StatCarousel({
   const [paused, setPaused] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tick, setTick] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -69,11 +67,12 @@ export function StatCarousel({
 
   if (stats.length === 0) return null;
 
-  const current = stats[index];
+  const currentIndex = index % stats.length;
+  const current = stats[currentIndex];
+  const selected = activeKey === current.key;
 
   return (
     <div
-      ref={containerRef}
       className={cn("@container/stat-card min-w-0 shrink-0 select-none", className)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -82,78 +81,70 @@ export function StatCarousel({
       onKeyDown={(e) => {
         if (e.key === "ArrowRight") {
           e.preventDefault();
-          go(index + 1);
+          go(currentIndex + 1);
         }
         if (e.key === "ArrowLeft") {
           e.preventDefault();
-          go(index - 1);
+          go(currentIndex - 1);
         }
       }}
     >
-      <div className="relative overflow-hidden rounded-[28px]">
-        <div
-          className="flex"
+      <div className="relative overflow-hidden rounded-[28px] bg-[#07070b]">
+        {stats.map((stat, i) => (
+          <span
+            key={stat.key}
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-0 origin-center",
+              reduceMotion
+                ? "transition-none"
+                : "transition-[opacity,transform] duration-[1000ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+              i === currentIndex ? "scale-100 opacity-100" : "scale-110 opacity-0",
+            )}
+            style={{ background: stat.gradient }}
+          />
+        ))}
+        {/* Luz leve sobre os fundos coloridos, sem imagem ou troca de cartão. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
           style={{
-            transform: `translateX(-${index * 100}%)`,
-            transition: reduceMotion ? "none" : "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
+            background:
+              "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,0.07), transparent 58%)",
           }}
+        />
+        <button
+          type="button"
+          onClick={() => onSelect(selected ? null : current.key)}
+          title={`${current.caption} — clique para filtrar a fila`}
+          className={cn(
+            "group relative flex h-[clamp(112px,20dvh,168px)] w-full min-w-0 flex-col justify-center rounded-[28px] px-4 pb-3 pt-10 text-left outline-none xl:h-[clamp(132px,24dvh,200px)] xl:px-5 xl:pb-4",
+            "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70",
+            selected && "ring-2 ring-inset ring-white/80",
+          )}
         >
-          {stats.map((stat) => {
-            const selected = activeKey === stat.key;
-            return (
-              <button
-                key={stat.key}
-                type="button"
-                // aria-hidden nos slides fora de tela evita que o leitor de
-                // tela anuncie sete métricas em sequência.
-                aria-hidden={stat.key !== current.key}
-                tabIndex={stat.key === current.key ? 0 : -1}
-                onClick={() => onSelect(selected ? null : stat.key)}
-                title={`${stat.caption} — clique para filtrar a fila`}
-                className={cn(
-                  "group relative shrink-0 basis-full text-left",
-                  // pt maior que o resto: o topo é a faixa dos indicadores.
-                  "h-[clamp(112px,20dvh,168px)] min-w-0 rounded-[28px] px-4 pb-3 pt-10 flex flex-col justify-center xl:h-[clamp(132px,24dvh,200px)] xl:px-5 xl:pb-4",
-                  // Sem borda: numa base quase preta a linha de 1px não lia
-                  // como contorno, lia como serrilhado no canto arredondado.
-                  // Quem separa o cartão do fundo é o próprio brilho.
-                  "outline-none transition-[box-shadow,transform] duration-200",
-                  "focus-visible:ring-2 focus-visible:ring-white/70",
-                  selected && "ring-2 ring-white/80",
-                )}
-                style={{ background: stat.gradient }}
-              >
-                {/* Véu branco bem fraco no topo, só para o cartão não ficar
-                    chapado. Em 0,28 como antes ele acinzentava a base preta e
-                    matava o efeito de luz no escuro. */}
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 rounded-[28px]"
-                  style={{
-                    background:
-                      "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,0.07), transparent 58%)",
-                  }}
-                />
-                {/* Rótulo e número colados, número dominando o cartão. A
-                    explicação da métrica vive no title do cartão — na face
-                    ela competia com o número pelo mesmo olhar. */}
-                <span className="relative">
-                  <span className="block text-base font-bold leading-none text-white drop-shadow-sm @min-[280px]/stat-card:text-xl">
-                    {stat.label}:
-                  </span>
-                  <span className="mt-1 block text-[48px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow @min-[280px]/stat-card:text-[64px]">
-                    {stat.count}
-                  </span>
-                </span>
-                {selected && (
-                  <span className="absolute bottom-4 left-6 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
-                    filtrando
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+          <span
+            key={current.key}
+            className="relative"
+            style={
+              reduceMotion
+                ? undefined
+                : { animation: "atendimento-stat-content 550ms ease-out both" }
+            }
+          >
+            <span className="block text-base font-bold leading-none text-white drop-shadow-sm @min-[280px]/stat-card:text-xl">
+              {current.label}:
+            </span>
+            <span className="mt-1 block text-[48px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow @min-[280px]/stat-card:text-[64px]">
+              {current.count}
+            </span>
+          </span>
+          {selected && (
+            <span className="absolute bottom-4 left-6 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+              filtrando
+            </span>
+          )}
+        </button>
 
         {/* Indicadores dentro do cartão, no topo e centralizados. A barra do
             slide ativo enche em 7s — é ela que comunica o ritmo da troca e o
@@ -170,7 +161,7 @@ export function StatCarousel({
               key={stat.key}
               type="button"
               aria-label={`Ver métrica ${stat.label}`}
-              aria-current={i === index}
+              aria-current={i === currentIndex}
               onClick={() => go(i)}
               className="pointer-events-auto flex h-6 items-center py-2"
             >
@@ -181,12 +172,12 @@ export function StatCarousel({
                   "block h-[5px] w-5 overflow-hidden rounded-full shadow-sm transition-colors duration-300",
                   // Trilho claro, não escuro: o cartão agora é preto e um
                   // trilho preto sumiria dentro dele.
-                  i === index ? "bg-white/20" : "bg-white/35 hover:bg-white/60",
+                  i === currentIndex ? "bg-white/20" : "bg-white/35 hover:bg-white/60",
                 )}
               >
-                {i === index && (
+                {i === currentIndex && (
                   <span
-                    key={`${index}-${tick}`}
+                    key={`${currentIndex}-${tick}`}
                     className="block h-full rounded-full bg-white"
                     style={
                       reduceMotion

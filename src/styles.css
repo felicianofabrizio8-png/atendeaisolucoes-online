@@ -570,6 +570,17 @@ iframe[src*="lovable.dev/badge"] {
   }
 }
 
+@keyframes atendimento-stat-content {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Orbe da IA (SiriOrb)
 
