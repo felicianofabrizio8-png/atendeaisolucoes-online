@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, RefreshCw, RotateCcw, ExternalLink, AlertCircle, History, CheckCircle2 } from "lucide-react";
+import { Loader2, RefreshCw, RotateCcw, AlertCircle, History, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   listMarketingPublications,
@@ -180,22 +180,12 @@ function PublicationItem({
           <span className="text-[10px] uppercase text-muted-foreground">
             {p.channel} · {p.format}
           </span>
-          {p.retry_count > 0 && (
-            <span className="text-[10px] text-muted-foreground">tentativas: {p.retry_count}</span>
-          )}
         </div>
-        {p.platform_post_id && (
-          <div className="text-xs mt-1 flex items-center gap-1 text-muted-foreground">
-            <ExternalLink className="h-3 w-3" />
-            id: {p.platform_post_id}
-          </div>
-        )}
         {p.error_message && (
           <div className="text-xs mt-1 text-destructive flex items-start gap-1">
             <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
             <span className="break-words">
-              {p.error_code ? `[${p.error_code}] ` : ""}
-              {p.error_message}
+                            {p.error_message}
             </span>
           </div>
         )}

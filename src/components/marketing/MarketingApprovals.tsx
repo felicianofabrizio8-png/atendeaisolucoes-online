@@ -29,6 +29,8 @@ import {
   apiSetContentStatus,
   apiScheduleContent,
   apiFacebookPublishReadiness,
+  apiGetCampaignRenderStatus,
+  apiRetryCampaignRender,
   urlForMarketingPath,
 } from "@/data/marketingRepo";
 import type {
@@ -36,6 +38,7 @@ import type {
   MarketingMediaRow,
 } from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
+import { isActiveMarketingRenderStatus, resolveMarketingRenderState, type MarketingRenderState } from "@/lib/marketing/render-status";
 import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
 import { getSignedImageUrl } from "@/lib/storage";
 import {
@@ -68,12 +71,13 @@ type Filter = "all" | "draft" | "pending" | "approved" | "rejected";
 
 export function MarketingApprovals({ companyId }: Props) {
   const [rows, setRows] = useState<MarketingContentRow[]>([]);
+  const [renderStates, setRenderStates] = useState<Record<string, { feed: MarketingRenderState; story: MarketingRenderState }>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("draft");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [scheduleFor, setScheduleFor] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState("");
-  const [scheduleChannel, setScheduleChannel] = useState<"instagram" | "facebook" | "whatsapp">(
+  const [scheduleChannel, setScheduleChannel] = useState<"instagram" | "facebook">(
     "instagram",
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
@@ -85,7 +89,7 @@ export function MarketingApprovals({ companyId }: Props) {
   const [editorLoading, setEditorLoading] = useState(false);
   const [editorImageSequence, setEditorImageSequence] = useState<CampaignEditorImage[]>([]);
   const [mediaIndex, setMediaIndex] = useState<Record<string, MarketingMediaRow>>({});
-  const { trackCampaign, campaigns } = useCampaignRenderTracker();
+  const { trackCampaign, campaigns, refresh: refreshTracked } = useCampaignRenderTracker();
   // Guarda campanhas cujo render completou para auto-refresh.
   const seenDoneRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -200,10 +204,52 @@ export function MarketingApprovals({ companyId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
+  async function refreshRenderStates(nextRows: MarketingContentRow[]) {
+    const campaignIds = Array.from(new Set(nextRows.filter((row) => isVideoContent(row) && hasPendingRenderJob(row)).map((row) => row.campaign_id).filter((id): id is string => Boolean(id))));
+    const entries = await Promise.all(campaignIds.map(async (campaignId) => {
+      try {
+        const status = await apiGetCampaignRenderStatus(campaignId);
+        return [campaignId, {
+          feed: resolveMarketingRenderState({ role: status.feed, jobId: status.feed.job_id, videoId: status.feed.video_id }),
+          story: resolveMarketingRenderState({ role: status.story, jobId: status.story.job_id, videoId: status.story.video_id }),
+        }] as const;
+      } catch {
+        return null;
+      }
+    }));
+    const next: Record<string, { feed: MarketingRenderState; story: MarketingRenderState }> = {};
+    for (const entry of entries) {
+      if (entry) next[entry[0]] = entry[1];
+    }
+    setRenderStates(next);
+  }
+
+  // Renders iniciados em outra sessão não passam pelo tracker; sem isto o
+  // card ficaria em "Gerando vídeo…" até o usuário atualizar a tela.
+  const hasActiveRender = Object.values(renderStates).some(
+    (state) => isActiveMarketingRenderStatus(state.feed.status) || isActiveMarketingRenderStatus(state.story.status),
+  );
+  useEffect(() => {
+    if (!hasActiveRender) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void apiListContents()
+        .then(async (nextRows) => {
+          setRows(nextRows);
+          await refreshRenderStates(nextRows);
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasActiveRender]);
+
   async function refresh() {
     setLoading(true);
     try {
-      setRows(await apiListContents());
+      const nextRows = await apiListContents();
+      setRows(nextRows);
+      await refreshRenderStates(nextRows);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao carregar conteúdos.");
     } finally {
@@ -247,6 +293,47 @@ export function MarketingApprovals({ companyId }: Props) {
     }
   }
 
+  async function publishNow(row: MarketingContentRow) {
+    if (row.status !== "approved") {
+      toast.error("Aprove o conteúdo antes de publicar.");
+      return;
+    }
+    const channel = row.channel === "facebook" ? "facebook" : "instagram";
+    setBusy(true);
+    try {
+      await apiScheduleContent({
+        content_id: row.id,
+        channel,
+        scheduled_at: new Date(Date.now() + 1000).toISOString(),
+      });
+      toast.success("Publicação enfileirada. Aguardando confirmação do canal.");
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao enfileirar publicação.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryRender(row: MarketingContentRow) {
+    if (!row.campaign_id) return;
+    setBusy(true);
+    try {
+      await apiRetryCampaignRender({
+        campaign_id: row.campaign_id,
+        role: row.campaign_role === "story" ? "story" : "feed",
+      });
+      trackCampaign(row.campaign_id);
+      await refreshTracked(row.campaign_id);
+      toast.info("Renderização reenfileirada.");
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível tentar novamente.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openSchedule(row: MarketingContentRow) {
     if (row.status !== "approved") {
       toast.error("Apenas conteúdos aprovados podem ser agendados.");
@@ -255,7 +342,7 @@ export function MarketingApprovals({ companyId }: Props) {
     // Sempre resetar estado ao abrir para evitar `busy` preso de operação anterior.
     setBusy(false);
     setScheduleFor(row.id);
-    setScheduleChannel(row.channel);
+    setScheduleChannel(row.channel === "facebook" ? "facebook" : "instagram");
     setScheduleAt("");
     setScheduleAtError(null);
   }
@@ -408,6 +495,9 @@ export function MarketingApprovals({ companyId }: Props) {
               }}
               onMarkPending={() => void setStatus(c, "pending")}
               onSchedule={() => openSchedule(c)}
+              onPublishNow={() => void publishNow(c)}
+              renderState={c.campaign_id ? renderStates[c.campaign_id]?.[c.campaign_role === "story" ? "story" : "feed"] ?? null : null}
+              onRetryRender={() => void retryRender(c)}
               onOpenVideoEditor={() => void openVideoEditor(c)}
               onViewVideo={async () => {
                 const idx = await ensureMediaIndex();
@@ -441,7 +531,7 @@ export function MarketingApprovals({ companyId }: Props) {
               >
                 <option value="instagram">Instagram</option>
                 <option value="facebook">Facebook</option>
-                <option value="whatsapp">WhatsApp</option>
+
               </select>
             </div>
             <div>
@@ -469,7 +559,7 @@ export function MarketingApprovals({ companyId }: Props) {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Este agendamento é apenas planejamento. Publicação automática não faz parte da Fase 1.
+              Depois de agendado, o conteúdo entra na fila de publicação automática quando o canal estiver conectado.
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
@@ -544,9 +634,12 @@ function ContentCard({
   onReject,
   onMarkPending,
   onSchedule,
+  onPublishNow,
   onOpenVideoEditor,
   onViewVideo,
   tracked,
+  renderState,
+  onRetryRender,
   busy,
 }: {
   row: MarketingContentRow;
@@ -558,9 +651,12 @@ function ContentCard({
   onReject: () => void;
   onMarkPending: () => void;
   onSchedule: () => void;
+  onPublishNow: () => void;
   onOpenVideoEditor: () => void;
   onViewVideo: () => void;
   tracked: import("@/lib/marketing/useCampaignRenderTracker").TrackedCampaign | null;
+  renderState: MarketingRenderState | null;
+  onRetryRender: () => void;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(row.title ?? "");
@@ -579,13 +675,10 @@ function ContentCard({
 
   const isVideo = isVideoContent(row);
   const videoReady = hasRenderedVideo(row);
-  // Considera "renderizando" também o estado global do tracker (recém-aprovado).
-  const trackerRendering =
-    !!tracked && !tracked.done && (tracked.feed.status !== "idle" || tracked.story.status !== "idle");
-  const isRendering = isVideo && !videoReady && (hasPendingRenderJob(row) || trackerRendering);
-  const trackerProgress = tracked
-    ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0)
-    : null;
+  const isRendering = isVideo && !videoReady && !!renderState && isActiveMarketingRenderStatus(renderState.status);
+  const renderFailed = isVideo && !videoReady && !!renderState && ["failed", "cancelled", "missing"].includes(renderState.status);
+  const renderCompletedWithoutVideo = isVideo && !videoReady && renderState?.status === "completed";
+  const trackerProgress = renderState?.progress ?? (tracked ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0) : null);
 
   return (
     <div className="rounded-lg border bg-card p-3 space-y-2">
@@ -677,11 +770,26 @@ function ContentCard({
             <div className="rounded-md border border-dashed bg-muted/40 p-2 text-xs flex items-center gap-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span className="flex-1">
-                Gerando vídeo…
-                {typeof trackerProgress === "number" && trackerProgress > 0
-                  ? ` ${Math.round(trackerProgress)}%`
-                  : ""}
+                {renderState?.status === "queued" ? "Na fila para gerar vídeo…" : "Gerando vídeo…"}
+                {typeof trackerProgress === "number" && trackerProgress > 0 ? ` ${Math.round(trackerProgress)}%` : ""}
               </span>
+            </div>
+          )}
+
+          {renderFailed && (
+            <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
+              <span className="flex-1">
+                {renderState?.status === "failed" ? `Render falhou${renderState.errorCode ? `: ${renderState.errorCode}` : "."}` : renderState?.status === "cancelled" ? "Render cancelado." : "Job de render não encontrado."}
+              </span>
+              <Button size="sm" variant="outline" onClick={onRetryRender} disabled={busy}>Tentar novamente</Button>
+            </div>
+          )}
+
+          {renderCompletedWithoutVideo && (
+            <div role="status" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span>Render concluído, mas o vídeo não foi vinculado a este conteúdo.</span>
             </div>
           )}
 
@@ -739,9 +847,14 @@ function ContentCard({
               </Button>
             )}
             {row.status === "approved" && (
-              <Button size="sm" onClick={onSchedule} disabled={busy}>
-                <Calendar className="h-4 w-4 mr-1" /> Agendar
-              </Button>
+              <>
+                <Button size="sm" variant="outline" onClick={onPublishNow} disabled={busy}>
+                  <Send className="h-4 w-4 mr-1" /> Publicar agora
+                </Button>
+                <Button size="sm" onClick={onSchedule} disabled={busy}>
+                  <Calendar className="h-4 w-4 mr-1" /> Agendar
+                </Button>
+              </>
             )}
           </div>
           {row.rejection_reason && (
