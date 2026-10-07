@@ -41,6 +41,7 @@ import { openSettings } from "@/lib/settings-dialog";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { LumeLogo } from "@/components/brand/LumeLogo";
 
 type NavItem = {
   to:
@@ -161,12 +162,18 @@ export function AppShell() {
   const handleSignOut = async () => {
     await signOut();
     window.localStorage.removeItem("atendeai.demo");
-    navigate({ to: "/login" });
+    await navigate({ to: "/", replace: true });
   };
 
   const enableDemo = () => {
     window.localStorage.setItem("atendeai.demo", "1");
     setDemoMode(true);
+  };
+
+  const leaveDemoForAuth = () => {
+    window.localStorage.removeItem("atendeai.demo");
+    setDemoMode(false);
+    window.location.replace("/");
   };
 
   const handleOpenSettings = () => {
@@ -299,7 +306,7 @@ export function AppShell() {
               {SettingsButton}
             </div>
             <button
-              onClick={() => navigate({ to: "/login" })}
+              onClick={leaveDemoForAuth}
               className="w-full inline-flex items-center justify-center gap-1.5 h-9 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
             >
               <LogIn className="h-3.5 w-3.5" />
@@ -324,7 +331,7 @@ export function AppShell() {
             </div>
             {SettingsButton}
             <button
-              onClick={() => navigate({ to: "/login" })}
+              onClick={leaveDemoForAuth}
               title="Entrar / Criar conta"
               aria-label="Entrar / Criar conta"
               className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
@@ -342,15 +349,22 @@ export function AppShell() {
   // `collapsible=true` só na sidebar de desktop, a única que minimiza.
   const renderBrand = (withSignOut = true, collapsible = false) => (
     <div className="sidebar-header relative flex h-14 shrink-0 items-center gap-2 px-4 border-b border-sidebar-border">
-      <img
-        src="/icon-192.png"
-        alt="Atende Ai!"
-        className="h-8 w-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,211,238,0.35)]"
+      <LumeLogo
+        variant="lockup"
+        aria-label="Lume"
+        className={cn(
+          "h-8 w-[116px] text-sidebar-foreground",
+          collapsible && "sidebar-when-expanded",
+        )}
       />
-      <div className={cn("leading-tight flex-1 min-w-0", collapsible && "sidebar-when-expanded")}>
-        <div className="text-sm font-semibold truncate">Atende Ai!</div>
-        <div className="text-[10px] text-muted-foreground truncate">Vendas que não esperam</div>
-      </div>
+      {collapsible && (
+        <LumeLogo
+          variant="mark"
+          aria-label="Lume"
+          className="sidebar-when-collapsed h-8 w-8 text-sidebar-foreground"
+        />
+      )}
+      <div className={cn("flex-1 min-w-0", collapsible && "sidebar-when-expanded")} />
       {collapsible ? (
         <span className="sidebar-when-expanded">
           <button
@@ -454,13 +468,12 @@ export function AppShell() {
                 {FooterPanel}
               </SheetContent>
             </Sheet>
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <img
-                src="/icon-192.png"
-                alt="Atende Ai!"
-                className="h-7 w-7 shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
+            <div className="flex items-center min-w-0 flex-1">
+              <LumeLogo
+                variant="lockup"
+                aria-label="Lume"
+                className="h-7 w-[98px] text-sidebar-foreground"
               />
-              <span className="text-sm font-semibold truncate">Atende Ai!</span>
             </div>
             {SignOutButton}
           </div>

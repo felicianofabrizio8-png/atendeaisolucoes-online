@@ -42,13 +42,13 @@ export const Route = createFileRoute("/configuracoes_/coach-learnings")({
   component: CoachLearningsPage,
   head: () => ({
     meta: [
-      { title: "Aprendizados do Coach • Atende Aí" },
+      { title: "Aprendizados do Coach • Lume" },
       {
         name: "description",
         content:
           "Aprendizados que sua equipe ensinou à IA de vendas. Edite, pause ou arquive regras conversacionais.",
       },
-      { property: "og:title", content: "Aprendizados do Coach • Atende Aí" },
+      { property: "og:title", content: "Aprendizados do Coach • Lume" },
       {
         property: "og:description",
         content: "Gestão dos aprendizados conversacionais do Coach IA.",

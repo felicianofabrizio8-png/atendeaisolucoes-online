@@ -1,12 +1,12 @@
 {
-  "name": "Atende Ai!",
-  "short_name": "Atende Ai!",
-  "description": "Atende Ai! — Vendas que não esperam",
+  "name": "Lume",
+  "short_name": "Lume",
+  "description": "Lume — Vendas que não esperam",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0a1628",
-  "theme_color": "#22d3ee",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

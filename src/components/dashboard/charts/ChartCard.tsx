@@ -26,7 +26,7 @@ export function ChartCard({
   return (
     <section
       className={cn(
-        "viz-fade-up flex min-w-0 flex-col rounded-2xl border border-border bg-card/60 p-5",
+        "viz-fade-up flex min-w-0 flex-col rounded-2xl border border-border bg-card p-5 shadow-sm shadow-foreground/5",
         className,
       )}
       style={delay ? { animationDelay: delay } : undefined}

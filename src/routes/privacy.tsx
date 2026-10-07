@@ -3,17 +3,17 @@ import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/privacy")({
   head: () => ({
     meta: [
-      { title: "Política de Privacidade — Atende Ai" },
+      { title: "Política de Privacidade — Lume" },
       {
         name: "description",
         content:
-          "Política de Privacidade do Atende Ai: como coletamos, usamos e protegemos dados do Facebook, Instagram e WhatsApp.",
+          "Política de Privacidade da Lume: como coletamos, usamos e protegemos dados do Facebook, Instagram e WhatsApp.",
       },
-      { property: "og:title", content: "Política de Privacidade — Atende Ai" },
+      { property: "og:title", content: "Política de Privacidade — Lume" },
       {
         property: "og:description",
         content:
-          "Como o Atende Ai trata dados do Facebook, Instagram e WhatsApp.",
+          "Como a Lume trata dados do Facebook, Instagram e WhatsApp.",
       },
       { property: "og:url", content: "https://app.atendeaisolucoes.online/privacy" },
     ],
@@ -32,7 +32,7 @@ function PrivacyPage() {
 
         <div className="mt-8 space-y-6 text-base leading-relaxed text-muted-foreground">
           <p>
-            O <strong className="text-foreground">Atende Ai</strong> respeita sua privacidade.
+            A <strong className="text-foreground">Lume</strong> respeita sua privacidade.
           </p>
           <p>
             As informações coletadas através do Facebook, Instagram e WhatsApp são utilizadas

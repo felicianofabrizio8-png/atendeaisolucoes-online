@@ -187,7 +187,7 @@ export function KpiHero({
   const conversao = useCountUp(taxaConversao);
 
   return (
-    <section className="viz-fade-up grid gap-6 rounded-2xl border border-border bg-card/60 p-5 sm:grid-cols-3">
+    <section className="viz-fade-up grid gap-6 rounded-2xl border border-border bg-card p-5 shadow-sm shadow-foreground/5 sm:grid-cols-3">
       <Hero
         label={`Receita · ${periodoLabel}`}
         value={receita.atual}

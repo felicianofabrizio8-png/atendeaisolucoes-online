@@ -538,7 +538,7 @@ function WhatsAppTestPanel({
   onSent: () => void;
 }) {
   const [to, setTo] = useState("");
-  const [text, setText] = useState("Mensagem de teste do Atende AI ✅");
+  const [text, setText] = useState("Mensagem de teste da Lume ✅");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{
     ok: boolean;
@@ -698,7 +698,7 @@ function WhatsAppCloudDebugPanel({
   const [wabaId, setWabaId] = useState("");
   const [phoneId, setPhoneId] = useState("");
   const [toNumber, setToNumber] = useState("");
-  const [testMessage, setTestMessage] = useState("Teste Atende Ai ✅");
+  const [testMessage, setTestMessage] = useState("Teste Lume ✅");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<
     | null
