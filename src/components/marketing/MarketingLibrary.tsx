@@ -38,6 +38,11 @@ interface Props {
 
 type SourceFilter = "all" | "marketing" | "products";
 
+function formatSize(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 interface ProductImageItem {
   productId: string;
   productName: string;
@@ -387,7 +392,7 @@ export function MarketingLibrary({
                 <div className="aspect-square bg-black/40 flex items-center justify-center">
                   {u.isVideo ? (
                     u.url ? (
-                      <video src={u.url} className="h-full w-full object-cover" muted preload="none" />
+                      <video src={`${u.url}#t=0.1`} className="h-full w-full object-cover" muted playsInline preload="metadata" />
                     ) : (
                       <Video className="h-8 w-8 text-muted-foreground" />
                     )
@@ -418,9 +423,7 @@ export function MarketingLibrary({
                   <div className="truncate font-medium">{u.title}</div>
                   <div className="text-muted-foreground truncate">
                     {u.subtitle}
-                    {u.sizeBytes
-                      ? ` · ${(u.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                      : ""}
+                    {u.sizeBytes ? ` · ${formatSize(u.sizeBytes)}` : ""}
                   </div>
                 </div>
                 {!selectable && isMarketing && (

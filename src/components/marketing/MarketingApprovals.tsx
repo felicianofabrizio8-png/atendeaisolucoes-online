@@ -46,6 +46,20 @@ import {
   useTrackedCampaign,
 } from "@/lib/marketing/useCampaignRenderTracker";
 
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Rascunho",
+  pending: "Em revisão",
+  approved: "Aprovado",
+  rejected: "Rejeitado",
+};
+const FILTER_LABEL: Record<string, string> = {
+  draft: "Rascunhos",
+  pending: "Em revisão",
+  approved: "Aprovados",
+  rejected: "Rejeitados",
+  all: "Todos",
+};
+
 function isVideoContent(row: MarketingContentRow): boolean {
   // Conteúdos de vídeo pertencem a uma campanha (feed/story/reel) — o formato
   // whatsapp_cta é apenas texto e mantém o fluxo antigo.
@@ -424,7 +438,7 @@ export function MarketingApprovals({ companyId }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {(["draft", "pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
           <button
             key={f}
@@ -433,7 +447,7 @@ export function MarketingApprovals({ companyId }: Props) {
               filter === f ? "bg-primary text-primary-foreground border-primary" : "bg-background"
             }`}
           >
-            {f === "all" ? "Todos" : f}
+            {FILTER_LABEL[f]}
           </button>
         ))}
         <Button variant="ghost" size="sm" onClick={() => void refresh()} className="ml-auto">
@@ -444,10 +458,10 @@ export function MarketingApprovals({ companyId }: Props) {
       {fbReadiness && !fbReadiness.ok ? (
         <div
           role="alert"
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex items-start gap-3"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex flex-wrap items-start gap-3"
         >
           <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-          <div className="flex-1 space-y-1">
+          <div className="min-w-0 flex-1 basis-48 space-y-1">
             <div className="font-semibold">Publicação no Facebook bloqueada</div>
             <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
             <div className="text-[11px] text-muted-foreground">
@@ -688,7 +702,7 @@ function ContentCard({
         </span>
         <span className="uppercase text-[10px] text-muted-foreground">{row.channel}</span>
         <span className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}>
-          {row.status}
+          {STATUS_LABEL[row.status] ?? row.status}
         </span>
         {isVideo && (
           <span className="uppercase text-[10px] rounded bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 px-1.5 py-0.5">

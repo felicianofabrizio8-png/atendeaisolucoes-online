@@ -395,9 +395,9 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
           <div className="text-sm font-semibold mb-2">O que você quer criar?</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             {[
-              ["photo", "Foto", "Use uma imagem existente e gere a legenda."],
-              ["uploaded_video", "Vídeo pronto", "Use um vídeo existente sem renderizar."],
-              ["generated_video", "Criar vídeo", "Use o pipeline atual com áudio e render."],
+              ["photo", "Foto", "Use uma foto do acervo e gere a legenda."],
+              ["uploaded_video", "Vídeo pronto", "Use um vídeo do acervo e gere a legenda."],
+              ["generated_video", "Criar vídeo", "Monte um vídeo com suas fotos e uma música."],
             ].map(([value, label, description]) => (
               <button key={value} type="button" onClick={() => changeMediaMode(value as typeof mediaMode)} className={cn("rounded-md border p-3 text-left text-sm transition-colors", mediaMode === value ? "border-primary bg-primary/10" : "hover:bg-muted")}>
                 <span className="block font-medium">{label}</span>
