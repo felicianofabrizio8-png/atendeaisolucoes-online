@@ -81,6 +81,7 @@ export function MarketingLibrary({
 
   const selectedKeys = useMemo(() => new Set(selected.map(selectionKey)), [selected]);
   const PAGE_SIZE = 30;
+  const MAX_AUTO_PAGES = 20;
 
   async function loadPage(nextPage: number, append: boolean) {
     if (append) setLoadingMore(true); else setLoading(true);
@@ -123,6 +124,13 @@ export function MarketingLibrary({
       setLoadingMore(false);
     }
   }
+
+  const narrowing = filter.trim().length > 0 || activeTag !== null || source !== "all" || !!mediaKind || marketingOnly;
+  useEffect(() => {
+    if (!narrowing || !hasMore || loading || loadingMore || page >= MAX_AUTO_PAGES - 1) return;
+    void loadPage(page + 1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrowing, hasMore, loading, loadingMore, page]);
 
   async function refresh() {
     setPage(0);
