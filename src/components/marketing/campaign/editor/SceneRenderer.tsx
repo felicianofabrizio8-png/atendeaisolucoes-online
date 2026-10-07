@@ -21,6 +21,8 @@ import type {
 } from "@/lib/marketing/video-editor/scene.types";
 import { getScene } from "@/lib/marketing/video-editor/scenes/registry";
 import { LogoSlot } from "./LogoSlot";
+import { STORY_FRAME } from "@/lib/render-engine/focal-geometry";
+import { FocalImage } from "../FocalImage";
 
 interface Props {
   imageUrl: string | null;
@@ -226,11 +228,6 @@ export function SceneRenderer({
   showSafeArea,
 }: Props) {
   const scene: SceneDefinition = getScene(layout.template);
-  const objectPos =
-    focalPoint && typeof focalPoint.x === "number" && typeof focalPoint.y === "number"
-      ? `${Math.round(focalPoint.x * 100)}% ${Math.round(focalPoint.y * 100)}%`
-      : "50% 50%";
-
   // Escala tipográfica base (cqi = % da largura do container).
   const titleSize = 7.2 * layout.title.scale;
   const subSize = 3.6 * layout.subtitle.scale;
@@ -247,12 +244,12 @@ export function SceneRenderer({
     >
       {/* Imagem base */}
       {imageUrl ? (
-        <img
+        <FocalImage
           src={imageUrl}
           alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: objectPos, zIndex: 0 }}
-          draggable={false}
+          frame={STORY_FRAME}
+          focalPoint={focalPoint}
+          style={{ zIndex: 0 }}
         />
       ) : (
         <div className="absolute inset-0 grid place-items-center text-xs text-white/60 z-0">

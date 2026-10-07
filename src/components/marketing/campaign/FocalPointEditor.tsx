@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RotateCcw } from "lucide-react";
 import type { FocalPointInput } from "@/data/marketingRepo";
-import { focalPointObjectPosition, focalPointTransform, normalizeFocalPoint } from "@/lib/render-engine/focal-geometry";
+import {
+  FEED_FRAME,
+  STORY_FRAME,
+  computeFocalCrop,
+  normalizeFocalPoint,
+  panFocalPoint,
+  type FrameSize,
+  type ImageSize,
+} from "@/lib/render-engine/focal-geometry";
+import { FocalImage, useImageNaturalSize } from "./FocalImage";
 
 interface Props {
   open: boolean;
@@ -15,15 +24,26 @@ interface Props {
 }
 
 const FRAMES = [
-  { key: "feed", label: "Feed 4:5", ratio: 4 / 5 },
-  { key: "story", label: "Story 9:16", ratio: 9 / 16 },
+  { key: "feed", label: "Feed 4:5", ratio: 4 / 5, size: FEED_FRAME },
+  { key: "story", label: "Story 9:16", ratio: 9 / 16, size: STORY_FRAME },
 ] as const;
 const DEFAULT: FocalPointInput = { x: 0.5, y: 0.5, zoom: 1 };
+
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  frameWidth: number;
+  frameHeight: number;
+  startFocal: FocalPointInput;
+}
 
 export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSave }: Props) {
   const [focal, setFocal] = useState<FocalPointInput>(() => normalizeFocalPoint(initialFocal));
   const [activeFrame, setActiveFrame] = useState<(typeof FRAMES)[number]["key"]>("story");
   const imageRef = useRef(imageUrl);
+  const dragRef = useRef<DragState | null>(null);
+  const imageSize = useImageNaturalSize(imageUrl);
 
   useEffect(() => {
     if (imageRef.current !== imageUrl) {
@@ -38,18 +58,47 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
   }, [open, initialFocal]);
 
   const active = FRAMES.find((frame) => frame.key === activeFrame) ?? FRAMES[1];
-  const objectPosition = useMemo(() => focalPointObjectPosition(focal), [focal]);
-  const transform = useMemo(() => focalPointTransform(focal), [focal]);
+  const crop = computeFocalCrop(imageSize, active.size, focal);
 
+  // Arrastar move a imagem dentro do quadro; o foco acompanha o deslocamento.
+  const startDrag = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!imageSize) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (!(rect.width > 0) || !(rect.height > 0)) return;
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        frameWidth: rect.width,
+        frameHeight: rect.height,
+        startFocal: focal,
+      };
+    },
+    [focal, imageSize],
+  );
 
-  const handlePointer = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.buttons !== 1 && e.type !== "pointerdown") return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    setFocal((prev) => ({
-      ...prev,
-      x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
-      y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
-    }));
+  const moveDrag = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      setFocal(
+        panFocalPoint(
+          imageSize,
+          active.size,
+          drag.startFocal,
+          (event.clientX - drag.startX) / drag.frameWidth,
+          (event.clientY - drag.startY) / drag.frameHeight,
+        ),
+      );
+    },
+    [active.size, imageSize],
+  );
+
+  const endDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    dragRef.current = null;
   }, []);
 
   const reset = useCallback(() => setFocal(DEFAULT), []);
@@ -86,28 +135,34 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
               <div
                 className="relative mx-auto h-[48vh] max-h-[calc(100vw-2rem)] w-auto max-w-full overflow-hidden rounded-md border bg-muted select-none touch-none cursor-move"
                 style={{ aspectRatio: String(active.ratio) }}
-                onPointerDown={(event) => {
-                  event.currentTarget.setPointerCapture?.(event.pointerId);
-                  handlePointer(event);
-                }}
-                onPointerMove={handlePointer}
-                onPointerUp={(event) => event.currentTarget.releasePointerCapture?.(event.pointerId)}
-                onPointerCancel={(event) => event.currentTarget.releasePointerCapture?.(event.pointerId)}
+                data-testid="focal-frame"
+                onPointerDown={startDrag}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
               >
-                <img
+                <FocalImage
                   src={imageUrl}
                   alt={`Ajuste de enquadramento para ${active.label}`}
-                  className="absolute inset-0 h-full w-full object-cover pointer-events-none transition-transform"
-                  style={{ objectPosition, transform, transformOrigin: objectPosition }}
-                  draggable={false}
+                  frame={active.size}
+                  focalPoint={focal}
+                  imageSize={imageSize}
+                  className="pointer-events-none"
                 />
-                <div
-                  className="absolute pointer-events-none"
-                  style={{ left: `${focal.x * 100}%`, top: `${focal.y * 100}%`, transform: "translate(-50%, -50%)" }}
-                >
-                  <div className="h-8 w-8 rounded-full border-2 border-primary bg-primary/20 shadow-lg" />
-                  <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
-                </div>
+                {crop && (
+                  <div
+                    className="absolute pointer-events-none"
+                    data-testid="focal-marker"
+                    style={{
+                      left: `${crop.markerXPct.toFixed(2)}%`,
+                      top: `${crop.markerYPct.toFixed(2)}%`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  >
+                    <div className="h-8 w-8 rounded-full border-2 border-primary bg-primary/20 shadow-lg" />
+                    <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary" />
+                  </div>
+                )}
                 <div className="absolute inset-0 pointer-events-none border border-white/50" />
               </div>
 
@@ -136,9 +191,10 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
                       key={frame.key}
                       label={frame.label}
                       ratio={frame.ratio}
+                      frame={frame.size}
                       imageUrl={imageUrl}
-                      objectPosition={objectPosition}
-                      transform={transform}
+                      imageSize={imageSize}
+                      focal={focal}
                     />
                   ))}
                 </div>
@@ -163,17 +219,12 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
   );
 }
 
-function FramePreview({ label, ratio, imageUrl, objectPosition, transform }: { label: string; ratio: number; imageUrl: string; objectPosition: string; transform?: string }) {
+function FramePreview({ label, ratio, frame, imageUrl, imageSize, focal }: { label: string; ratio: number; frame: FrameSize; imageUrl: string; imageSize: ImageSize | null; focal: FocalPointInput }) {
   return (
     <div className="min-w-0 space-y-1">
       <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
       <div className="relative overflow-hidden rounded-md border bg-muted" style={{ aspectRatio: String(ratio) }}>
-        <img
-          src={imageUrl}
-          alt={`Prévia ${label}`}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition, transform, transformOrigin: objectPosition }}
-        />
+        <FocalImage src={imageUrl} alt={`Prévia ${label}`} frame={frame} focalPoint={focal} imageSize={imageSize} />
       </div>
     </div>
   );

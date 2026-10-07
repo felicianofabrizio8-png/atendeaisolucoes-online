@@ -6,6 +6,11 @@ import { useCallback, useState } from "react";
 import { GripVertical, Star, StarOff, X, Crop, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FocalPointInput } from "@/data/marketingRepo";
+import type { FrameSize } from "@/lib/render-engine/focal-geometry";
+import { FocalImage } from "./FocalImage";
+
+// Miniatura quadrada: usa a mesma geometria do render para posicionar o foco.
+const THUMBNAIL_FRAME: FrameSize = { width: 1, height: 1 };
 
 export interface CampaignImageItem {
   key: string; // stable id
@@ -98,17 +103,11 @@ export function CampaignImageList({
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : it.previewUrl ? (
-              <img
+              <FocalImage
                 src={it.previewUrl}
                 alt={`Imagem ${idx + 1} da campanha`}
-                className="absolute inset-0 h-full w-full object-cover"
-                style={
-                  it.focal_point
-                    ? {
-                        objectPosition: `${(it.focal_point.x * 100).toFixed(1)}% ${(it.focal_point.y * 100).toFixed(1)}%`,
-                      }
-                    : undefined
-                }
+                frame={THUMBNAIL_FRAME}
+                focalPoint={it.focal_point}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">

@@ -4,6 +4,8 @@
 // visual antes da renderização real.
 
 import type { FocalPointInput } from "@/data/marketingRepo";
+import { STORY_FRAME } from "@/lib/render-engine/focal-geometry";
+import { FocalImage } from "./FocalImage";
 
 interface Props {
   imageUrl: string | null;
@@ -20,24 +22,13 @@ export function CampaignTextPreview({
   subheadline,
   cta,
 }: Props) {
-  const objectPos =
-    focalPoint && typeof focalPoint.x === "number" && typeof focalPoint.y === "number"
-      ? `${Math.round(focalPoint.x * 100)}% ${Math.round(focalPoint.y * 100)}%`
-      : "50% 50%";
-
   return (
     <div
       className="relative w-full max-w-[280px] mx-auto overflow-hidden rounded-xl border bg-black shadow-md"
       style={{ aspectRatio: "9 / 16" }}
     >
       {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ objectPosition: objectPos }}
-          draggable={false}
-        />
+        <FocalImage src={imageUrl} alt="" frame={STORY_FRAME} focalPoint={focalPoint} />
       ) : (
         <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
           sem imagem
