@@ -122,17 +122,17 @@ async function validateProductMediaRefs(
 // Catálogo de ângulos estratégicos disponíveis (usado para diversidade).
 const STRATEGIC_ANGLES = [
   "pronta entrega",
-  "instalação rápida",
-  "valorização do imóvel",
-  "lazer em família",
-  "férias",
-  "segurança das crianças",
-  "economia comparada ao clube",
+  "agilidade no atendimento",
+  "custo-benefício",
+  "praticidade no dia a dia",
+  "ocasiões especiais",
+  "segurança e confiança",
+  "economia frente às alternativas",
   "parcelamento",
   "garantia",
-  "qualidade da fábrica",
+  "qualidade e procedência",
   "atendimento consultivo",
-  "transformação do quintal",
+  "resultado antes e depois",
   "qualidade de vida",
   "investimento",
 ] as const;
@@ -605,9 +605,9 @@ ${brandPromptBlock}
 # ETAPA 1 — DIREÇÃO ESTRATÉGICA (obrigatória, precede qualquer texto)
 Como Diretor de Criação, decida DELIBERADAMENTE para esta campanha:
 1. **ÂNGULO principal de venda** (obrigatório escolher UM do catálogo abaixo, respeitando a diversidade histórica);
-2. **EMOÇÃO** que deseja despertar (ex.: aconchego familiar, orgulho, alívio financeiro, alegria das crianças, sensação de conquista, tranquilidade, pertencimento);
+2. **EMOÇÃO** que deseja despertar (ex.: confiança, orgulho, alívio financeiro, satisfação, sensação de conquista, tranquilidade, pertencimento);
 3. **DIFERENCIAL** da empresa que sustenta o ângulo (extraído da Base de Conhecimento — não invente);
-4. **OBJEÇÃO principal a quebrar** (ex.: "é caro", "vai dar trabalho", "não vou usar tanto", "medo de manutenção", "prazo longo");
+4. **OBJEÇÃO principal a quebrar** (ex.: "é caro", "vai dar trabalho", "não sei se preciso agora", "medo de se arrepender", "prazo longo");
 5. **CTA de maior conversão** para a intenção definida (não confunda CTA de marca com CTA de venda);
 6. **INTENÇÃO** (marca, orcamento, relacionamento ou venda).
 
@@ -644,7 +644,7 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 - Se a base estiver vazia, gere conteúdo neutro sem inventar atributos.
 
 # LINGUAGEM PROIBIDA (frases genéricas — NÃO use nem variações próximas)
-"Transforme seu quintal em um oásis", "Você merece", "Seu sonho começa agora", "Não perca essa oportunidade", "Oportunidade imperdível", "Última chance", "Aproveite já", "Corra que é por tempo limitado", "O melhor da região", "Qualidade incomparável".
+"Transforme seu espaço em um oásis", "Você merece", "Seu sonho começa agora", "Não perca essa oportunidade", "Oportunidade imperdível", "Última chance", "Aproveite já", "Corra que é por tempo limitado", "O melhor da região", "Qualidade incomparável".
 
 # ESTILO POR FORMATO
 - FEED: consultor experiente. Priorize benefícios reais, diferenciais verdadeiros, atendimento consultivo, linguagem humana. Emojis com parcimônia. Até 3 CTAs. Quebre a objeção definida.
@@ -653,7 +653,7 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
   · \`format\`: "${reelFormat}";
   · \`total_duration_seconds\`: duração total entre 15 e 60s;
   · \`hook_summary\`: descrição do gancho dos 3 primeiros segundos;
-  · \`music_suggestion\`: estilo musical/ritmo sugerido (ex.: "lo-fi acústico, BPM 90, sensação de aconchego familiar") — nunca cite marcas ou faixas com direitos;
+  · \`music_suggestion\`: estilo musical/ritmo sugerido (ex.: "lo-fi acústico, BPM 90, sensação acolhedora") — nunca cite marcas ou faixas com direitos;
   · \`scenes\`: sequência de 3 a 8 cenas numeradas, cada uma com \`duration_seconds\`, \`media_reference\` (referência textual à mídia real usada — vídeo ou foto do bloco de mídias; se não houver mídia, escreva "sem mídia"), \`framing\` (ex.: close, plano médio, plano geral, contra-plongée, drone), \`camera_movement\` (ex.: dolly-in lento, pan lateral, zoom-in suave, static, tilt-up), \`cut_style\` (ex.: corte seco, match-cut, cross-dissolve, whip-pan), \`on_screen_text\` (texto curto que aparece sobreposto, ou "" se não houver), \`voiceover\` (narração daquela cena, ou "" se não houver), \`silence\` (true se a cena for de silêncio proposital, sem narração e sem música dominante);
   · \`final_cta_overlay\`: texto de CTA visual da cena final.
   Coloque também em \`reel.body\` uma versão em texto legível do mesmo roteiro (cena por cena, para o humano aprovar). E use \`reel.title\` como título curto do vídeo.
@@ -662,9 +662,9 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 # TEXTO VISUAL DA CAMPANHA (image_texts) — obrigatório
 Além dos 4 formatos, você produz UM ÚNICO bloco \`image_texts\` que será usado como texto sobreposto na imagem/vídeo. É o MESMO overlay para Feed e Story — não crie versões diferentes.
 Regras rigorosas (leitura em <1s no celular):
-- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Seu verão começa", "Mais lazer", "Uma escolha inteligente", "Conforto para família", "Qualidade que permanece".
+- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Chegou a novidade", "Mais praticidade", "Uma escolha inteligente", "Feito para você", "Qualidade que permanece".
 - \`subheadline\`: opcional, no máximo 45 caracteres, entre 3 e 8 palavras, UMA frase curta, complementa o headline SEM repetir literalmente. Deixe vazio se não conseguir cumprir.
-- \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça os modelos", "Fale conosco".
+- \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça as opções", "Fale conosco".
 NÃO use nenhuma das frases proibidas. NÃO repita os textos visuais recentes abaixo. Não é uma legenda — é o texto grande da peça visual.
 
 ## Textos visuais recentes desta empresa

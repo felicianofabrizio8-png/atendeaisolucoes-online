@@ -139,7 +139,7 @@ export function CampaignTextReview({
               value={headline}
               maxLength={HEADLINE_MAX}
               onChange={(e) => setHeadline(e.target.value)}
-              placeholder="Ex.: Seu verão começa aqui"
+              placeholder="Ex.: Chegou a novidade"
             />
           </div>
           <div>

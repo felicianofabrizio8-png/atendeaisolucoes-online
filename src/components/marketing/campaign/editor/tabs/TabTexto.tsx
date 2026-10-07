@@ -51,7 +51,7 @@ export function TabTexto({
           maxLength={HEADLINE_MAX}
           onChange={(e) => onHeadline(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Seu verão começa aqui"
+          placeholder="Ex.: Chegou a novidade"
         />
       </div>
       <div>
