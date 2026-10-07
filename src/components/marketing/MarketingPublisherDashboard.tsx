@@ -19,6 +19,7 @@ import {
   selectOperational,
   selectHistory,
   type HistoryFilters,
+  selectStalled,
 } from "@/lib/marketing-publisher/publication-filters";
 import type { PublicationRow, PublisherStats } from "@/lib/marketing-publisher/types";
 
@@ -80,6 +81,7 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
   }, [refresh]);
 
   const operational = useMemo(() => selectOperational(pubs), [pubs]);
+  const stalled = useMemo(() => selectStalled(pubs), [pubs]);
 
   async function onRetry(id: string) {
     setRetrying(id);
@@ -109,6 +111,20 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
           </Button>
         </div>
       </div>
+
+      {stalled.length > 0 && (
+        <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <div className="font-medium">
+              {stalled.length === 1 ? "1 publicação está" : `${stalled.length} publicações estão`} na fila há mais de 10 minutos.
+            </div>
+            <div className="text-xs text-muted-foreground">
+              A publicação automática pode estar parada. Nada foi perdido: os itens continuam na fila. Avise o suporte se isso persistir.
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <StatCard label="Agendados" value={stats?.scheduled ?? 0} />
@@ -187,6 +203,17 @@ function PublicationItem({
             <span className="break-words">
                             {p.error_message}
             </span>
+          </div>
+        )}
+        {(p.error_code || p.retry_count > 0 || p.platform_post_id) && (
+          <div className="text-[10px] text-muted-foreground mt-1 break-words" data-testid="publication-details">
+            {[
+              p.retry_count > 0 ? `tentativas: ${p.retry_count}` : null,
+              p.error_code ? `código: ${p.error_code}` : null,
+              p.platform_post_id ? `id do post: ${p.platform_post_id}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
         )}
         <div className="text-[10px] text-muted-foreground mt-1">

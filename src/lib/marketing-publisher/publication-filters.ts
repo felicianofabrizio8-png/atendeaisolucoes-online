@@ -79,3 +79,24 @@ export function selectHistory(
     .slice()
     .sort((a, b) => (b.published_at ?? b.created_at).localeCompare(a.published_at ?? a.created_at));
 }
+
+/** Tempo máximo esperado entre uma publicação ficar disponível e o publicador pegá-la. */
+export const STALLED_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Publicações que já deveriam ter sido processadas: estão na fila, liberadas
+ * há mais de `thresholdMs` e ninguém as pegou. Indica que a rotina automática
+ * de publicação não está rodando.
+ */
+export function selectStalled(
+  rows: PublicationRow[],
+  now: Date = new Date(),
+  thresholdMs: number = STALLED_AFTER_MS,
+): PublicationRow[] {
+  const limit = now.getTime() - thresholdMs;
+  return rows.filter((p) => {
+    if (p.status !== "queued" || p.locked_by) return false;
+    const available = Date.parse(p.available_at ?? p.created_at ?? "");
+    return Number.isFinite(available) && available <= limit;
+  });
+}
