@@ -59,7 +59,21 @@ const InputSchema = z.object({
     .enum(["feed", "story", "feed_story"])
     .optional()
     .default("feed_story"),
+  media_mode: z.enum(["photo", "uploaded_video", "generated_video"]).optional().default("generated_video"),
+  materialize_auxiliary_formats: z.boolean().optional().default(true),
 });
+
+export const SimpleMarketingPostInputSchema = z.object({
+  media_mode: z.enum(["photo", "uploaded_video"]),
+  media_ids: z.array(z.string().uuid()).length(1),
+  campaign_formats: z.enum(["feed", "story", "feed_story"]).default("feed_story"),
+  promotion_id: z.string().uuid().optional().nullable(),
+  tone: z.enum(["amigável", "profissional", "descontraído", "urgente"]).optional().default("amigável"),
+  audience: z.string().trim().max(300).optional().nullable(),
+  extra_instructions: z.string().trim().max(1000).optional().nullable(),
+});
+export type SimpleMarketingPostInput = z.infer<typeof SimpleMarketingPostInputSchema>;
+
 
 async function validateProductMediaRefs(
   sb: SB,
@@ -957,6 +971,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       // Persistência da escolha do usuário — fonte de verdade para aprovação,
       // render e publicação (lida por `resolveCampaignFormats`).
       formats: data.campaign_formats,
+      media_mode: data.media_mode,
       product_media_refs: productMediaDetails.map((p) => ({
         product_id: p.product_id,
         image_path: p.image_path,
@@ -1073,7 +1088,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       if (f === "feed" || f === "story") {
         return enabledRoles.includes(f as CampaignRole);
       }
-      return true;
+      return data.materialize_auxiliary_formats;
     });
 
     const { data: inserted, error } = await supabase
@@ -1113,4 +1128,22 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
     }
 
     return { contents: inserted ?? [] };
+  });
+
+export const generateSimpleMarketingPost = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => SimpleMarketingPostInputSchema.parse(i))
+  .handler(async ({ data, context }) => {
+    const { companyId, supabase } = await loadCompany(context);
+    const media = await validateMedia(supabase, companyId, data.media_ids);
+    const expectedType = data.media_mode === "photo" ? "image" : "video";
+    if (media.length !== 1 || media[0]?.media_type !== expectedType) {
+      throw new Error("Mídia incompatível com o modo " + data.media_mode + ". Selecione " + (expectedType === "image" ? "uma imagem" : "um vídeo") + ".");
+    }
+    return generateMarketingContent({
+      data: {
+        ...data,
+        materialize_auxiliary_formats: false,
+      },
+    });
   });

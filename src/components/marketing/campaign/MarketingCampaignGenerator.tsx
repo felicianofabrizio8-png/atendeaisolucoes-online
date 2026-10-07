@@ -11,7 +11,7 @@
 // Retrocompatível: se apenas 1 imagem for selecionada, o backend continua
 // enviando `primary_image` no payload legado; caso contrário envia `images`.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import {
   apiListPromotions,
   apiGenerateCampaign,
+  apiGenerateSimpleMarketingPost,
   apiGenerateManualCampaign,
   apiRetryCampaignRender,
   urlForMarketingPath,
@@ -30,13 +31,13 @@ import {
 } from "@/data/marketingRepo";
 import { getSignedImageUrl } from "@/lib/storage";
 import type { MarketingPromotionRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
-import { MarketingLibrary } from "../MarketingLibrary";
+import { MarketingAssetPicker } from "../MarketingAssetPicker";
 import {
   type MediaSelection,
   selectionKey,
   sameSelection,
 } from "@/lib/marketing/media-selection";
-import { CampaignAudioPicker } from "./CampaignAudioPicker";
+
 import { CampaignFramingPreview } from "./CampaignFramingPreview";
 import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
 import { FocalPointEditor } from "./FocalPointEditor";
@@ -53,6 +54,7 @@ import {
   useTrackedCampaign,
 } from "@/lib/marketing/useCampaignRenderTracker";
 import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
+import { claimPreviewResolution, releasePreviewResolution } from "@/lib/marketing/preview-resolution";
 
 type Duration = 8 | 10 | 15 | 30 | 60;
 // Alinhado com MAX_CAMPAIGN_IMAGES do backend/worker (render.types.ts).
@@ -80,6 +82,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [extra, setExtra] = useState("");
   // Seleção de formatos no modo IA — mesmo contrato canônico do modo manual.
   const [aiFormats, setAiFormats] = useState<CampaignFormatSelection>("feed_story");
+  const [mediaMode, setMediaMode] = useState<"photo" | "uploaded_video" | "generated_video">("generated_video");
 
   const [slots, setSlots] = useState<Slot[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -93,6 +96,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [mode, setMode] = useState<"ai" | "manual">("ai");
   // Falha da IA → oferecemos o modo manual sem bloquear o usuário.
   const [aiFailure, setAiFailure] = useState<AiFailureKind | null>(null);
+  const [step, setStep] = useState<"brief" | "assets" | "ready">("brief");
   const [campaignId, setCampaignId] = useState<string | null>(null);
   // Approval-gate: quando existe, renderiza a tela de revisão em vez do
   // progress. Só limpamos quando o usuário aprova (então o render começa).
@@ -108,11 +112,16 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     void apiListPromotions().then(setPromotions).catch(() => {});
   }, [companyId]);
 
-  // Resolve preview URL para cada slot novo.
+  // Resolve preview URL para cada slot novo. A chave em ref impede que o
+  // rerender causado por loading=true cancele ou duplique a mesma resolução.
+  const previewResolutionsRef = useRef(new Set<string>());
+
   useEffect(() => {
-    let cancelled = false;
     slots.forEach((slot, idx) => {
+      const key = selectionKey(slot.selection);
       if (slot.previewUrl || slot.loading || slot.failed) return;
+      if (!claimPreviewResolution(previewResolutionsRef.current, key)) return;
+
       setSlots((cur) => cur.map((s, i) => (i === idx ? { ...s, loading: true } : s)));
       (async () => {
         try {
@@ -122,7 +131,6 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
           } else if (slot.selection.origin === "product") {
             url = await getSignedImageUrl(slot.selection.imagePath).catch(() => null);
           }
-          if (cancelled) return;
           setSlots((cur) =>
             cur.map((s) =>
               sameSelection(s.selection, slot.selection)
@@ -131,7 +139,6 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             ),
           );
         } catch {
-          if (cancelled) return;
           setSlots((cur) =>
             cur.map((s) =>
               sameSelection(s.selection, slot.selection)
@@ -139,15 +146,19 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
                 : s,
             ),
           );
+        } finally {
+          releasePreviewResolution(previewResolutionsRef.current, key);
         }
       })();
     });
-    return () => {
-      cancelled = true;
-    };
   }, [slots]);
 
   const selectedMediaSelections = useMemo(() => slots.map((s) => s.selection), [slots]);
+
+  const replaceSelections = useCallback((next: MediaSelection[]) => {
+    const normalized = mediaMode === "generated_video" ? next.slice(0, MAX_IMAGES) : next.slice(-1);
+    setSlots((current) => normalized.map((selection) => current.find((slot) => sameSelection(slot.selection, selection)) ?? { selection, focal: null, previewUrl: null, loading: false, failed: false }));
+  }, [mediaMode]);
 
   const items: CampaignImageItem[] = useMemo(
     () =>
@@ -227,7 +238,33 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const primarySlot = slots[0] ?? null;
   const baseReady =
     slots.length > 0 && !!audio && !generating && slots.every((s) => !!s.previewUrl);
-  const canGenerate = baseReady;
+  const simpleReady =
+    mediaMode !== "generated_video" && slots.length === 1 && !generating && !!slots[0]?.previewUrl;
+  const canGenerate = mediaMode === "generated_video" ? baseReady : simpleReady;
+  const isSimpleMode = mediaMode !== "generated_video";
+  const isManual = !isSimpleMode && mode === "manual";
+  const assetsLabel = isSimpleMode ? "Mídia" : "Mídia e música";
+  const assetsHint =
+    slots.length === 0
+      ? mediaMode === "uploaded_video"
+        ? "Selecione 1 vídeo do Acervo"
+        : mediaMode === "photo"
+          ? "Selecione 1 foto do Acervo"
+          : "Selecione ao menos 1 imagem"
+      : isSimpleMode
+        ? "1 mídia selecionada"
+        : !audio
+          ? "Selecione um áudio"
+          : `${slots.length} imagem(ns) · ${duration}s`;
+
+  function changeMediaMode(next: typeof mediaMode) {
+    if (next === mediaMode) return;
+    // Cada modo aceita um tipo de mídia; a seleção anterior não se aplica.
+    setSlots([]);
+    setMediaMode(next);
+    setMode("ai");
+    setAiFailure(null);
+  }
 
   /** Imagens no formato aceito pelo backend (compartilhado IA + manual). */
   const buildImages = useCallback(
@@ -262,6 +299,31 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     onGenerated?.(contentsRet);
   }
 
+  async function generateSimple() {
+    if (!simpleReady || !primarySlot || primarySlot.selection.origin !== "marketing") {
+      toast.error("Selecione uma única mídia do Acervo para continuar.");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await apiGenerateSimpleMarketingPost({
+        media_mode: mediaMode === "photo" ? "photo" : "uploaded_video",
+        media_ids: [primarySlot.selection.id],
+        campaign_formats: aiFormats,
+        promotion_id: promotionId || null,
+        tone,
+        audience: audience.trim() || null,
+        extra_instructions: extra.trim() || null,
+      });
+      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
+      toast.success("Legenda gerada. Revise antes de aprovar ou agendar.");
+      onGenerated?.(contentsRet);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao gerar conteúdo.");
+    } finally {
+      setGenerating(false);
+    }
+  }
   async function generate() {
     if (!assertReady() || !audio) return;
     setGenerating(true);
@@ -327,42 +389,37 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Modo de criação — IA (acelerador) ou Manual (sempre disponível) */}
+      {/* Modo de mídia: mídia existente ou pipeline de vídeo gerado */}
       {!pendingReview && !campaignId && (
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-semibold mb-2">Como você quer criar?</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("ai")}
-              className={cn(
-                "rounded-md border p-3 text-left text-sm transition-colors",
-                mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted",
-              )}
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <Sparkles className="h-4 w-4" /> Gerar com IA
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                A IA sugere títulos, legenda e CTA — você edita antes de renderizar.
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("manual")}
-              className={cn(
-                "rounded-md border p-3 text-left text-sm transition-colors",
-                mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted",
-              )}
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <PencilRuler className="h-4 w-4" /> Criar manualmente
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                Sem IA e sem consumo de créditos. Você escreve os textos.
-              </span>
-            </button>
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="text-sm font-semibold mb-2">O que você quer criar?</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {[
+              ["photo", "Foto", "Use uma imagem existente e gere a legenda."],
+              ["uploaded_video", "Vídeo pronto", "Use um vídeo existente sem renderizar."],
+              ["generated_video", "Criar vídeo", "Use o pipeline atual com áudio e render."],
+            ].map(([value, label, description]) => (
+              <button key={value} type="button" onClick={() => changeMediaMode(value as typeof mediaMode)} className={cn("rounded-md border p-3 text-left text-sm transition-colors", mediaMode === value ? "border-primary bg-primary/10" : "hover:bg-muted")}>
+                <span className="block font-medium">{label}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+              </button>
+            ))}
           </div>
+          {mediaMode === "generated_video" && (
+            <div className="border-t pt-3">
+              <div className="text-xs font-medium text-muted-foreground mb-2">Como criar o vídeo?</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button type="button" onClick={() => setMode("ai")} className={cn("rounded-md border p-3 text-left text-sm", mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted")}>
+                  <span className="flex items-center gap-2 font-medium"><Sparkles className="h-4 w-4" /> Gerar com IA</span>
+                  <span className="block text-xs text-muted-foreground">Sugere título, legenda e CTA para revisar.</span>
+                </button>
+                <button type="button" onClick={() => setMode("manual")} className={cn("rounded-md border p-3 text-left text-sm", mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted")}>
+                  <span className="flex items-center gap-2 font-medium"><PencilRuler className="h-4 w-4" /> Criar manualmente</span>
+                  <span className="block text-xs text-muted-foreground">Escreva os textos sem consumir créditos.</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -379,8 +436,12 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         />
       )}
 
+      <div className="flex items-center gap-2 overflow-x-auto pb-1" aria-label="Etapas da criação">
+        {[['brief', 'Contexto'], ['assets', assetsLabel], ['ready', isManual ? 'Textos e criar' : 'Revisar e gerar']].map(([id, label], index) => <button key={id} type="button" onClick={() => setStep(id as typeof step)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs ${step === id ? "border-primary bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}>{index + 1}. {label}</button>)}
+      </div>
+
       {/* Contexto */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div hidden={step !== "brief"} className="rounded-lg border bg-card p-4 space-y-3">
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -398,6 +459,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
               ))}
             </select>
           </div>
+          {!isManual && (
+          <>
           <div>
             <Label>Tom da comunicação</Label>
             <select
@@ -416,7 +479,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             <Input
               value={audience}
               onChange={(e) => setAudience(e.target.value)}
-              placeholder="Ex.: famílias com crianças, moradores da região"
+              placeholder="Ex.: moradores da região, clientes recorrentes"
             />
           </div>
           <div className="md:col-span-2">
@@ -439,11 +502,13 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
               placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado"
             />
           </div>
+          </>
+          )}
         </div>
       </div>
 
-      {/* Imagens da campanha */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
+      {/* Imagens da campanha — só no pipeline de vídeo gerado */}
+      <div hidden={step !== "assets" || isSimpleMode} className="rounded-lg border bg-card p-4 space-y-3">
         <div className="flex items-baseline justify-between flex-wrap gap-2">
           <div className="text-sm font-semibold">
             Imagens da campanha ({slots.length}/{MAX_IMAGES})
@@ -467,58 +532,54 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             <CampaignFramingPreview
               imageUrl={primarySlot.previewUrl}
               focalPoint={primarySlot.focal}
+              compact
             />
           </div>
         )}
       </div>
 
-      {/* Biblioteca (seleção) */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="text-sm font-semibold">Escolher da biblioteca</div>
-        <MarketingLibrary
-          companyId={companyId}
-          selectable
-          selected={selectedMediaSelections}
-          onToggleSelect={toggleSelection}
-        />
-      </div>
-
-      {/* Áudio */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="text-sm font-semibold">Áudio da campanha</div>
-        <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
-        {audio && (
+      {/* Ativos: o acervo completo fica em um seletor compacto */}
+      <div hidden={step !== "assets"} className="rounded-lg border bg-card p-4 space-y-3">
+        <div><div className="text-sm font-semibold">{assetsLabel}</div><p className="text-xs text-muted-foreground">Escolha os ativos quando estiver pronto. Eles continuam disponíveis no Acervo.</p></div>
+        <MarketingAssetPicker companyId={companyId} selectedMedia={selectedMediaSelections} onMediaChange={replaceSelections} selectedAudio={audio} onAudioChange={setAudio} showAudio={!isSimpleMode} mediaKind={mediaMode === "uploaded_video" ? "video" : "image"} marketingOnly={isSimpleMode} maxItems={isSimpleMode ? 1 : MAX_IMAGES} />
+        {isSimpleMode && primarySlot && (
+          <div className="mx-auto w-full max-w-[220px] overflow-hidden rounded-md border bg-muted">
+            {!primarySlot.previewUrl ? (
+              <div className="flex aspect-square items-center justify-center text-xs text-muted-foreground">
+                {primarySlot.failed ? "Não foi possível carregar a prévia." : "Carregando prévia…"}
+              </div>
+            ) : mediaMode === "uploaded_video" ? (
+              <video src={primarySlot.previewUrl} className="w-full" controls muted preload="metadata" />
+            ) : (
+              <img src={primarySlot.previewUrl} alt="Mídia selecionada" className="w-full" loading="lazy" />
+            )}
+          </div>
+        )}
+        {mediaMode === "generated_video" && audio && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label>Início no áudio (segundos)</Label>
-              <Input
-                type="number"
-                min={0}
-                max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))}
-                value={audioStart}
-                onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))}
-              />
-            </div>
-            <div>
-              <Label>Duração do vídeo</Label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value) as Duration)}
-              >
-                {[8, 10, 15, 30, 60].map((d) => (
-                  <option key={d} value={d}>
-                    {d}s
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div><Label>Início no áudio (segundos)</Label><Input type="number" min={0} max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))} value={audioStart} onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))} /></div>
+            <div><Label>Duração do vídeo</Label><select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={duration} onChange={(e) => setDuration(Number(e.target.value) as Duration)}>{[8, 10, 15, 30, 60].map((d) => <option key={d} value={d}>{d}s</option>)}</select></div>
           </div>
         )}
       </div>
+      {/* Resumo antes de gerar (modos com IA) */}
+      {step === "ready" && !isManual && !pendingReview && !campaignId && (
+        <div className="rounded-lg border bg-card p-4 space-y-2 text-sm">
+          <div className="font-semibold">Confira antes de gerar</div>
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+            <div><dt className="inline text-muted-foreground">Tipo: </dt><dd className="inline">{mediaMode === "photo" ? "Foto" : mediaMode === "uploaded_video" ? "Vídeo pronto" : "Vídeo criado com IA"}</dd></div>
+            <div><dt className="inline text-muted-foreground">Formatos: </dt><dd className="inline">{aiFormats === "feed" ? "Feed" : aiFormats === "story" ? "Story" : "Feed + Story"}</dd></div>
+            <div><dt className="inline text-muted-foreground">Promoção: </dt><dd className="inline">{promotions.find((p) => p.id === promotionId)?.title ?? "Sem promoção específica"}</dd></div>
+            <div><dt className="inline text-muted-foreground">Tom: </dt><dd className="inline">{tone}</dd></div>
+            <div><dt className="inline text-muted-foreground">Mídia: </dt><dd className="inline">{isSimpleMode ? (slots.length ? "1 selecionada" : "nenhuma") : `${slots.length} imagem(ns)`}</dd></div>
+            {!isSimpleMode && <div><dt className="inline text-muted-foreground">Música: </dt><dd className="inline">{audio ? `${audio.name} · ${duration}s a partir de ${audioStart}s` : "nenhuma"}</dd></div>}
+          </dl>
+          {!canGenerate && <p className="text-xs text-destructive">{assetsHint}. Volte à etapa "{assetsLabel}".</p>}
+        </div>
+      )}
 
       {/* Modo manual — formulário completo, sem IA */}
-      {mode === "manual" && !pendingReview && !campaignId && (
+      {isManual && step === "ready" && !pendingReview && !campaignId && (
         <CampaignManualForm
           submitting={generating}
           disabled={!baseReady}
@@ -560,23 +621,19 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
       />
 
-      {/* Sticky action — só no modo IA (o manual tem seu próprio botão) */}
-      {mode === "ai" && !pendingReview && !campaignId && (
+      {/* Sticky action — no modo manual, a última etapa usa o botão do formulário */}
+      {!(isManual && step === "ready") && !pendingReview && !campaignId && (
         <CampaignStickyActionBar>
           <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
-            {slots.length === 0
-              ? "Selecione ao menos 1 imagem"
-              : !audio
-                ? "Selecione um áudio"
-                : `${slots.length} imagem(ns) · ${duration}s`}
+            {assetsHint}
           </div>
-          <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
+          <Button onClick={() => { if (step === "brief") setStep("assets"); else if (step === "assets") { if (canGenerate) setStep("ready"); } else void (isSimpleMode ? generateSimple() : generate()); }} disabled={generating || (step !== "brief" && !canGenerate)} size="lg" className="w-full md:w-auto">
             {generating ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : (
+            ) : step === "ready" ? (
               <Sparkles className="h-4 w-4 mr-1" />
-            )}
-            Gerar campanha (Feed + Story)
+            ) : null}
+            {step === "ready" ? "Gerar conteúdo" : "Continuar"}
           </Button>
         </CampaignStickyActionBar>
       )}

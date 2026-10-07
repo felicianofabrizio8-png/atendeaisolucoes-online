@@ -20,7 +20,7 @@ import {
   cancelMarketingSchedule,
   getFacebookPublishReadiness,
 } from "@/lib/marketing/marketing.functions";
-import { generateMarketingContent } from "@/lib/marketing/marketing-ai.functions";
+import { generateMarketingContent, generateSimpleMarketingPost } from "@/lib/marketing/marketing-ai.functions";
 import {
   generateMarketingCampaign,
   generateManualCampaign,
@@ -174,6 +174,18 @@ export async function apiGenerateContent(input: {
   return (res.contents ?? []) as unknown as MarketingContentRow[];
 }
 
+export async function apiGenerateSimpleMarketingPost(input: {
+  media_mode: "photo" | "uploaded_video";
+  media_ids: [string];
+  campaign_formats?: "feed" | "story" | "feed_story";
+  promotion_id?: string | null;
+  tone?: "amigável" | "profissional" | "descontraído" | "urgente";
+  audience?: string | null;
+  extra_instructions?: string | null;
+}): Promise<{ contents: MarketingContentRow[] }> {
+  const res = await generateSimpleMarketingPost({ data: input });
+  return { contents: (res.contents ?? []) as unknown as MarketingContentRow[] };
+}
 // ------- Schedule -------
 export async function apiListSchedule(): Promise<MarketingScheduleRow[]> {
   const res = await listMarketingSchedule();
