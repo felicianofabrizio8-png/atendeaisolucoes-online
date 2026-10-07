@@ -34,6 +34,17 @@ import { TabTexto } from "./tabs/TabTexto";
 import { TabLogo } from "./tabs/TabLogo";
 import { TabTextos } from "./tabs/TabTextos";
 import { TabTemplate } from "./tabs/TabTemplate";
+import { FocalPointEditor } from "../FocalPointEditor";
+
+export interface CampaignEditorImage {
+  key: string;
+  origin: "marketing" | "product";
+  mediaId?: string;
+  productId?: string;
+  imagePath?: string;
+  previewUrl: string | null;
+  focalPoint: FocalPointInput | null;
+}
 
 interface Props {
   campaignId: string;
@@ -42,6 +53,8 @@ interface Props {
   /** Se fornecido, sobrescreve a logo do Brand Center. Default: usa hook. */
   logoUrl?: string | null;
   focalPoint?: FocalPointInput | null;
+  imageSequence?: CampaignEditorImage[];
+  onImageSequenceChange?: (items: CampaignEditorImage[]) => void;
   onApproved: (jobId: string) => void;
   onContentsUpdated?: (contents: MarketingContentRow[]) => void;
 }
@@ -65,6 +78,8 @@ export function CampaignVideoEditor({
   previewImageUrl,
   logoUrl: logoUrlOverride,
   focalPoint,
+  imageSequence = [],
+  onImageSequenceChange,
   onApproved,
   onContentsUpdated,
 }: Props) {
@@ -84,6 +99,10 @@ export function CampaignVideoEditor({
   const [approving, setApproving] = useState(false);
   const [tab, setTab] = useState("template");
   const [showSafeArea, setShowSafeArea] = useState(false);
+  const [selectedImageKey, setSelectedImageKey] = useState<string | null>(imageSequence[0]?.key ?? null);
+  const [focalEditorOpen, setFocalEditorOpen] = useState(false);
+  const selectedImage = imageSequence.find((item) => item.key === selectedImageKey) ?? imageSequence[0] ?? null;
+  useEffect(() => { if (!selectedImageKey && imageSequence[0]) setSelectedImageKey(imageSequence[0].key); }, [imageSequence, selectedImageKey]);
 
   // Logo do Brand Center (com upload local como fallback).
   const brandLogo = useBrandLogo();
@@ -143,11 +162,13 @@ export function CampaignVideoEditor({
         cta: cta.trim() ? cta.trim() : null,
         layout: layout as unknown as Record<string, unknown>,
         template: layout.template,
+        images: imageSequence.length > 0 ? imageSequence.map((item) => item.origin === "marketing" ? { origin: "marketing" as const, media_id: item.mediaId!, focal_point: item.focalPoint } : { origin: "product" as const, product_id: item.productId!, image_path: item.imagePath!, focal_point: item.focalPoint }) : undefined,
       });
       toast.success("Aprovado! Iniciando renderização…");
       onApproved(res.job_id);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao aprovar.");
+      const message = e instanceof Error ? e.message : "Falha ao aprovar.";
+      toast.error(message.startsWith("campaign_image_sequence_invalid") || message === "campaign_image_sequence_persist_failed" ? "Não foi possível salvar o enquadramento das imagens. Revise a campanha e tente novamente." : message);
     } finally {
       setApproving(false);
     }
@@ -175,6 +196,21 @@ export function CampaignVideoEditor({
           Safe area
         </label>
       </div>
+
+      {imageSequence.length > 0 && (
+        <div className="border-b px-4 py-3">
+          <div className="mb-2 text-xs font-medium">Imagens da campanha</div>
+          <div className="flex flex-wrap gap-2">
+            {imageSequence.map((item, index) => (
+              <button key={item.key} type="button" className={`flex items-center gap-2 rounded-md border px-2 py-1 text-xs ${selectedImage?.key === item.key ? "border-primary bg-primary/10" : ""}`} onClick={() => { setSelectedImageKey(item.key); setFocalEditorOpen(true); }} disabled={!item.previewUrl}>
+                {item.previewUrl ? <img src={item.previewUrl} alt="" className="h-8 w-8 rounded object-cover" loading="lazy" /> : <ImageIcon className="h-4 w-4" />} Imagem {index + 1}
+              </button>
+            ))}
+          </div>
+          {selectedImage && <Button type="button" size="sm" variant="outline" className="mt-2" disabled={!selectedImage.previewUrl} onClick={() => setFocalEditorOpen(true)}>Ajustar enquadramento</Button>}
+        </div>
+      )}
+      {selectedImage && <FocalPointEditor open={focalEditorOpen} imageUrl={selectedImage.previewUrl} initialFocal={selectedImage.focalPoint} onCancel={() => setFocalEditorOpen(false)} onSave={(focal) => { onImageSequenceChange?.(imageSequence.map((item) => item.key === selectedImage.key ? { ...item, focalPoint: focal } : item)); setFocalEditorOpen(false); }} />}
 
       {/* Corpo: preview protagonista + sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">

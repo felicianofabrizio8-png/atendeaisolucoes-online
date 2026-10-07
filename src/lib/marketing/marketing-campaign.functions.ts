@@ -25,6 +25,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { generateMarketingContent } from "./marketing-ai.functions";
+import { matchesPrimary, readStoredSequence, sequenceToStore } from "./campaign-image-sequence";
 import type {
   MarketingContentRow,
   MarketingContentFormat,
@@ -145,6 +146,11 @@ async function resolveCompanyId(supabase: SB, userId: string): Promise<string> {
   if (error || !data?.company_id) throw new Error("company_not_found");
   return data.company_id;
 }
+async function updateMarketingContentOrThrow(supabase: SB, companyId: string, id: string, patch: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.from("marketing_contents").update(patch as never).eq("id", id).eq("company_id", companyId);
+  if (error) throw new Error("marketing_content_update_failed");
+}
+
 
 type ImageOwnershipRef =
   | { source: "marketing_media"; image_id: string }
@@ -220,6 +226,11 @@ async function validateOneImage(
 }
 
 /** Normaliza payload em lista de imagens (converte legado → novo internamente). */
+/**
+ * Recupera as imagens escolhidas na criação e revalida ownership antes de criar o job.
+ * Campanhas antigas sem image_sequence seguem pelo caminho legado da imagem primária.
+ */
+async function resolveRenderImages(supabase: SB, companyId: string, aiPrompt: unknown, primaryImage: ImageOwnershipRef): Promise<{ imageSequence: RenderImageSequenceItem[] | null; primaryFocalPoint: FocalPoint | null }> { const stored = readStoredSequence(aiPrompt); if (stored.length === 0) return { imageSequence: null, primaryFocalPoint: null }; if (!matchesPrimary(stored[0], primaryImage)) throw new Error("campaign_image_sequence_invalid:primary_mismatch"); const validated: ValidatedImage[] = []; for (const item of stored) { const input = item.origin === "marketing" ? { origin: "marketing" as const, media_id: item.media_id, focal_point: item.focal_point } : { origin: "product" as const, product_id: item.product_id, image_path: item.image_path, focal_point: item.focal_point }; validated.push(await validateOneImage(supabase, companyId, input, item.position, item.primary)); } const sequence = sequenceToStore(validated.map((item) => item.sequenceItem)); return { imageSequence: sequence, primaryFocalPoint: validated[0]?.focalPoint ?? null }; }
 function normalizeImages(
   data: z.infer<typeof GenerateCampaignInput>,
 ): Array<z.infer<typeof CampaignImageSchema>> {
@@ -559,17 +570,23 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audio_start_second: data.audio_start_second,
       duration_seconds: data.duration_seconds,
     };
+    const storedSequence = sequenceToStore(validated.map((item) => item.sequenceItem));
+    const withStoredSequence = (row: { ai_prompt?: unknown }) =>
+      storedSequence
+        ? {
+            ai_prompt: {
+              ...(row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt)
+                ? (row.ai_prompt as Record<string, unknown>)
+                : {}),
+              image_sequence: storedSequence,
+            } as unknown as never,
+          }
+        : {};
     if (feedRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ ...commonPatch, campaign_role: "feed" })
-        .eq("id", feedRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { ...commonPatch, ...withStoredSequence(feedRow as { ai_prompt?: unknown }), campaign_role: "feed" });
     }
     if (storyRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ ...commonPatch, campaign_role: "story" })
-        .eq("id", storyRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { ...commonPatch, ...withStoredSequence(storyRow as { ai_prompt?: unknown }), campaign_role: "story" });
     }
 
     // eslint-disable-next-line no-console
@@ -686,7 +703,7 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
       (x): x is string => typeof x === "string",
     );
     for (const id of regenIds) {
-      await supabase.from("marketing_contents").update(overlayPatch).eq("id", id);
+      await updateMarketingContentOrThrow(supabase, companyId, id, overlayPatch);
     }
 
     // Remove as linhas efêmeras geradas (não pertencem a nenhuma campanha).
@@ -740,6 +757,8 @@ const ApproveInput = z.object({
   template: z.string().max(40).nullable().optional(),
   /** ID do tema escolhido (biblioteca de temas). Opcional. */
   theme: z.string().max(40).nullable().optional(),
+  /** Sequência editada no editor, persistida antes do render. */
+  images: z.array(CampaignImageSchema).min(1).max(MAX_CAMPAIGN_IMAGES).optional(),
 });
 
 export const approveCampaignAndRender = createServerFn({ method: "POST" })
@@ -832,6 +851,25 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       throw new Error("campaign_missing_primary_image");
     }
 
+    // A sequência editada precisa ser validada e persistida antes de montar o snapshot do job.
+    // O company_id é sempre derivado da sessão e também restringe cada update.
+    let renderPrompt: unknown = baseRow.ai_prompt;
+    if (data.images) {
+      const edited: ValidatedImage[] = [];
+      for (let i = 0; i < data.images.length; i++) {
+        edited.push(await validateOneImage(supabase, companyId, data.images[i], i, i === 0));
+      }
+      const first = edited[0]?.ref;
+      const primaryMatches = first && ((first.source === "marketing_media" && baseRow.primary_image_media_id === first.image_id) || (first.source === "product_image" && baseRow.primary_image_product_ref?.product_id === first.product_id && baseRow.primary_image_product_ref?.image_path === first.product_image_path));
+      if (!primaryMatches) throw new Error("campaign_image_sequence_invalid:primary_mismatch");
+      const persistedSequence = sequenceToStore(edited.map((item) => item.sequenceItem));
+      for (const row of [feedRow, storyRow].filter(Boolean) as MarketingContentRow[]) {
+        const currentPrompt = row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt) ? row.ai_prompt as Record<string, unknown> : {};
+        const result = await supabase.from("marketing_contents").update({ ai_prompt: { ...currentPrompt, image_sequence: persistedSequence } as never }).eq("id", row.id).eq("company_id", companyId);
+        if (result.error) throw new Error("campaign_image_sequence_persist_failed");
+      }
+      renderPrompt = { ...(baseRow.ai_prompt && typeof baseRow.ai_prompt === "object" && !Array.isArray(baseRow.ai_prompt) ? baseRow.ai_prompt as Record<string, unknown> : {}), image_sequence: persistedSequence };
+    }
     // Persistência do texto aprovado + layout/template do editor visual
     // (mesmos valores nas duas linhas feed/story). Sempre roda antes de
     // montar o snapshot para garantir que o worker receba exatamente o
@@ -850,7 +888,7 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       (x): x is string => typeof x === "string",
     );
     for (const id of approveTargetIds) {
-      await supabase.from("marketing_contents").update(approvedPatch).eq("id", id);
+      await updateMarketingContentOrThrow(supabase, companyId, id, approvedPatch);
     }
 
     // Master 9:16 (Story quando habilitada; senão a linha disponível).
@@ -921,13 +959,14 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       }),
     );
 
+    const renderImages = await resolveRenderImages(supabase, companyId, renderPrompt, image);
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
       role: "story",
       primaryImage: image,
-      primaryFocalPoint: null,
-      imageSequence: null,
+      primaryFocalPoint: renderImages.primaryFocalPoint,
+      imageSequence: renderImages.imageSequence,
       audioId: baseRow.primary_audio_id,
       audioStart: Number(baseRow.audio_start_second ?? 0),
       duration: Number(baseRow.duration_seconds ?? 15),
@@ -945,16 +984,10 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     });
 
     if (feedRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ feed_render_job_id: jobId })
-        .eq("id", feedRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { feed_render_job_id: jobId });
     }
     if (storyRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ story_render_job_id: jobId })
-        .eq("id", storyRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { story_render_job_id: jobId });
     }
 
     return { job_id: jobId };
@@ -994,7 +1027,8 @@ export const getCampaignRenderStatus = createServerFn({ method: "POST" })
     if (jobIds.length > 0) {
       const { data: jobRows } = await supabase
         .from("video_render_jobs")
-        .select("id, status, progress, error_code, video_format")
+        .select("id, company_id, status, progress, error_code, video_format")
+        .eq("company_id", companyId)
         .in("id", jobIds);
       jobs = (jobRows ?? []) as typeof jobs;
     }
@@ -1048,7 +1082,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: rows, error } = await supabase
       .from("marketing_contents")
       .select(
-        "id, company_id, campaign_role, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id",
+        "id, company_id, campaign_role, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id, ai_prompt",
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id);
@@ -1072,6 +1106,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       story_render_job_id: string | null;
       feed_video_id: string | null;
       story_video_id: string | null;
+      ai_prompt: unknown;
     }>;
     const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
     const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
@@ -1145,16 +1180,10 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
         );
         // Reforça o vínculo em ambas as linhas (idempotente).
         if (feedRow) {
-          await supabase
-            .from("marketing_contents")
-            .update({ feed_render_job_id: active.id })
-            .eq("id", feedRow.id);
+          await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { feed_render_job_id: active.id });
         }
         if (storyRow) {
-          await supabase
-            .from("marketing_contents")
-            .update({ story_render_job_id: active.id })
-            .eq("id", storyRow.id);
+          await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { story_render_job_id: active.id });
         }
         return { job_id: active.id };
       }
@@ -1200,13 +1229,14 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       }),
     );
 
+    const retryImages = await resolveRenderImages(supabase, companyId, src.ai_prompt, image);
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
       role: "story", // master é sempre 9:16
       primaryImage: image,
-      primaryFocalPoint: null,
-      imageSequence: null,
+      primaryFocalPoint: retryImages.primaryFocalPoint,
+      imageSequence: retryImages.imageSequence,
       audioId: src.primary_audio_id,
       audioStart: Number(src.audio_start_second ?? 0),
       duration: Number(src.duration_seconds ?? 15),
@@ -1215,16 +1245,10 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     });
 
     if (feedRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ feed_render_job_id: jobId })
-        .eq("id", feedRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { feed_render_job_id: jobId });
     }
     if (storyRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ story_render_job_id: jobId })
-        .eq("id", storyRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { story_render_job_id: jobId });
     }
 
     return { job_id: jobId };
@@ -1320,6 +1344,7 @@ export const generateManualCampaign = createServerFn({ method: "POST" })
       template: data.template ?? null,
       media_ids: mediaIds,
       promotion_id: data.promotion_id ?? null,
+      image_sequence: sequenceToStore(validated.map((item) => item.sequenceItem)),
     };
 
     const campaignId = crypto.randomUUID();

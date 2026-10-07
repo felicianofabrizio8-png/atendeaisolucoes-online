@@ -127,6 +127,20 @@ export function CampaignImageList({
               )}
             </div>
 
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="absolute right-1 top-1 z-10 h-7 px-2 text-[11px] shadow-sm"
+              onClick={() => onEditFocal(it.key)}
+              title="Ajustar enquadramento"
+              aria-label={`Ajustar enquadramento da imagem ${idx + 1}`}
+              disabled={!it.previewUrl}
+            >
+              <Crop className="h-3.5 w-3.5" />
+              Ajustar
+            </Button>
+
             {/* Ações */}
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
               <div className="flex gap-1">
@@ -151,18 +165,6 @@ export function CampaignImageList({
                     <StarOff className="h-3.5 w-3.5" />
                   </span>
                 )}
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  className="h-7 w-7"
-                  onClick={() => onEditFocal(it.key)}
-                  title="Ajustar enquadramento"
-                  aria-label={`Ajustar enquadramento da imagem ${idx + 1}`}
-                  disabled={!it.previewUrl}
-                >
-                  <Crop className="h-3.5 w-3.5" />
-                </Button>
               </div>
               <Button
                 type="button"

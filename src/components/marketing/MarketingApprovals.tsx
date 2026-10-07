@@ -36,7 +36,8 @@ import type {
   MarketingMediaRow,
 } from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
-import { CampaignVideoEditor } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import { getSignedImageUrl } from "@/lib/storage";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -82,6 +83,7 @@ export function MarketingApprovals({ companyId }: Props) {
   const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null);
   const [editorPreviewUrl, setEditorPreviewUrl] = useState<string | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
+  const [editorImageSequence, setEditorImageSequence] = useState<CampaignEditorImage[]>([]);
   const [mediaIndex, setMediaIndex] = useState<Record<string, MarketingMediaRow>>({});
   const { trackCampaign, campaigns } = useCampaignRenderTracker();
   // Guarda campanhas cujo render completou para auto-refresh.
@@ -126,6 +128,25 @@ export function MarketingApprovals({ companyId }: Props) {
         const url = await urlForMarketingPath(media.storage_path).catch(() => null);
         setEditorPreviewUrl(url);
       }
+      const prompt = row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt) ? row.ai_prompt as { image_sequence?: unknown; focal_point?: { x: number; y: number; zoom?: number } | null } : {};
+      const sequence: CampaignEditorImage[] = [];
+      const rawSequence = Array.isArray(prompt.image_sequence) ? prompt.image_sequence : [];
+      for (const [index, item] of rawSequence.entries()) {
+        if (!item || typeof item !== "object") continue;
+        const entry = item as Record<string, unknown>;
+        const fp = entry.focal_point && typeof entry.focal_point === "object" ? entry.focal_point as CampaignEditorImage["focalPoint"] : null;
+        if (entry.source === "marketing_media" && typeof entry.image_id === "string") {
+          const source = idx[entry.image_id];
+          sequence.push({ key: `marketing:${entry.image_id}`, origin: "marketing", mediaId: entry.image_id, previewUrl: source?.storage_path ? await urlForMarketingPath(source.storage_path).catch(() => null) : null, focalPoint: fp });
+        } else if (entry.source === "product_image" && typeof entry.product_id === "string" && typeof entry.product_image_path === "string") {
+          sequence.push({ key: `product:${entry.product_id}:${index}`, origin: "product", productId: entry.product_id, imagePath: entry.product_image_path, previewUrl: await getSignedImageUrl(entry.product_image_path).catch(() => null), focalPoint: fp });
+        }
+      }
+      if (sequence.length === 0 && mediaId && mediaId === row.primary_image_media_id) {
+        const fp = prompt.focal_point ? { x: prompt.focal_point.x, y: prompt.focal_point.y, zoom: prompt.focal_point.zoom ?? 1 } : null;
+        sequence.push({ key: `marketing:${mediaId}`, origin: "marketing", mediaId, previewUrl: media?.storage_path ? await urlForMarketingPath(media.storage_path).catch(() => null) : null, focalPoint: fp });
+      }
+      setEditorImageSequence(sequence);
     } finally {
       setEditorLoading(false);
     }
@@ -134,6 +155,7 @@ export function MarketingApprovals({ companyId }: Props) {
   function closeVideoEditor() {
     setEditorCampaignId(null);
     setEditorPreviewUrl(null);
+    setEditorImageSequence([]);
   }
 
   const editorContents = useMemo(
@@ -141,15 +163,12 @@ export function MarketingApprovals({ companyId }: Props) {
     [rows, editorCampaignId],
   );
   const editorFocalPoint = useMemo(() => {
+    const first = editorImageSequence[0]?.focalPoint;
+    if (first) return first;
     const feed = editorContents.find((r) => r.campaign_role === "feed") ?? editorContents[0];
-    const prompt =
-      feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null
-        ? (feed.ai_prompt as { focal_point?: { x: number; y: number; zoom?: number } | null })
-        : null;
-    const fp = prompt?.focal_point;
-    if (!fp) return null;
-    return { x: fp.x, y: fp.y, zoom: fp.zoom ?? 1 };
-  }, [editorContents]);
+    const prompt = feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null ? feed.ai_prompt as { focal_point?: { x: number; y: number; zoom?: number } | null } : null;
+    return prompt?.focal_point ? { x: prompt.focal_point.x, y: prompt.focal_point.y, zoom: prompt.focal_point.zoom ?? 1 } : null;
+  }, [editorContents, editorImageSequence]);
   const [fbReadiness, setFbReadiness] = useState<
     | null
     | {
@@ -490,6 +509,8 @@ export function MarketingApprovals({ companyId }: Props) {
               contents={editorContents}
               previewImageUrl={editorPreviewUrl}
               focalPoint={editorFocalPoint}
+              imageSequence={editorImageSequence}
+              onImageSequenceChange={setEditorImageSequence}
               onContentsUpdated={(fresh) => {
                 setRows((cur) => {
                   const map = new Map(fresh.map((r) => [r.id, r]));

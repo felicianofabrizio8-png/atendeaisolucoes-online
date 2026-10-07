@@ -279,6 +279,7 @@ export async function apiApproveCampaignAndRender(input: {
   cta?: string | null;
   layout?: Record<string, unknown> | null;
   template?: string | null;
+  images?: CampaignImageInput[];
 }) {
   return approveCampaignAndRender({ data: input });
 }
