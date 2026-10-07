@@ -78,8 +78,8 @@ export async function urlForMarketingPath(path: string): Promise<string | null> 
 }
 
 // ------- Media -------
-export async function apiListMedia(): Promise<MarketingMediaRow[]> {
-  const res = await listMarketingMedia();
+export async function apiListMedia(query: { limit?: number; offset?: number } = {}): Promise<MarketingMediaRow[]> {
+  const res = await listMarketingMedia({ data: query });
   return (res.media ?? []) as unknown as MarketingMediaRow[];
 }
 export async function apiRegisterMedia(args: {

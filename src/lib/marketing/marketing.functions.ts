@@ -123,19 +123,28 @@ export const registerMarketingMedia = createServerFn({ method: "POST" })
     return row;
   });
 
+const ListMarketingMediaSchema = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+});
+
 export const listMarketingMedia = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input: unknown) => ListMarketingMediaSchema.parse(input ?? {}))
+  .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
-    const { data, error } = await supabase
+    const limit = data.limit ?? 500;
+    const offset = data.offset ?? 0;
+    const { data: rows, error } = await supabase
       .from("marketing_media")
       .select("*")
       .eq("company_id", companyId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .order("id", { ascending: false })
+      .range(offset, offset + limit - 1);
     if (error) throw new Error(error.message);
-    return { media: data ?? [] };
+    return { media: rows ?? [] };
   });
 
 const UpdateMediaSchema = z.object({

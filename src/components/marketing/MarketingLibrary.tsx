@@ -30,6 +30,10 @@ interface Props {
   selectable?: boolean;
   selected?: MediaSelection[];
   onToggleSelect?: (sel: MediaSelection) => void;
+  /** Restringe a lista a um tipo de mídia (usado pelos seletores de criação). */
+  mediaKind?: "image" | "video";
+  /** Esconde imagens de produtos (quando só mídias do acervo servem). */
+  marketingOnly?: boolean;
 }
 
 type SourceFilter = "all" | "marketing" | "products";
@@ -59,11 +63,16 @@ export function MarketingLibrary({
   selectable,
   selected = [],
   onToggleSelect,
+  mediaKind,
+  marketingOnly = false,
 }: Props) {
   const [marketingItems, setMarketingItems] = useState<MarketingMediaRow[]>([]);
   const [productImages, setProductImages] = useState<ProductImageItem[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState("");
   const [source, setSource] = useState<SourceFilter>("all");
@@ -71,56 +80,53 @@ export function MarketingLibrary({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedKeys = useMemo(() => new Set(selected.map(selectionKey)), [selected]);
+  const PAGE_SIZE = 30;
 
-  async function refresh() {
-    setLoading(true);
+  async function loadPage(nextPage: number, append: boolean) {
+    if (append) setLoadingMore(true); else setLoading(true);
     try {
+      const offset = nextPage * PAGE_SIZE;
       const [mediaRows, productsRes] = await Promise.all([
-        apiListMedia(),
+        apiListMedia({ limit: PAGE_SIZE, offset }),
         supabase
           .from("products")
           .select("id,name,category,images")
           .eq("company_id", companyId)
-          .eq("active", true),
+          .eq("active", true)
+          .order("name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(offset, offset + PAGE_SIZE - 1),
       ]);
-
-      setMarketingItems(mediaRows);
-
       const prodItems: ProductImageItem[] = [];
       for (const row of productsRes.data ?? []) {
-        const imgs = Array.isArray(row.images)
-          ? (row.images.filter((x) => typeof x === "string") as string[])
-          : [];
+        const imgs = Array.isArray(row.images) ? (row.images.filter((x) => typeof x === "string") as string[]) : [];
         for (const img of imgs) {
-          prodItems.push({
-            productId: row.id,
-            productName: row.name ?? "Produto",
-            category: (row.category as string | null) ?? null,
-            imagePath: img,
-          });
+          prodItems.push({ productId: row.id, productName: row.name ?? "Produto", category: (row.category as string | null) ?? null, imagePath: img });
         }
       }
-      setProductImages(prodItems);
-
-      // Resolve URLs for both sources in parallel.
-      const mediaEntries = await Promise.all(
-        mediaRows.map(
-          async (r) =>
-            [`m:${r.id}`, (await urlForMarketingPath(r.storage_path)) ?? ""] as const,
-        ),
-      );
-      const productEntries = await Promise.all(
-        prodItems.map(
-          async (p) =>
-            [`p:${p.productId}:${p.imagePath}`, await getSignedImageUrl(p.imagePath)] as const,
-        ),
-      );
-      setUrls(Object.fromEntries([...mediaEntries, ...productEntries]));
+      setMarketingItems((current) => {
+        if (!append) return mediaRows;
+        const known = new Set(current.map((m) => m.id));
+        return [...current, ...mediaRows.filter((m) => !known.has(m.id))];
+      });
+      setProductImages((current) => {
+        if (!append) return prodItems;
+        const known = new Set(current.map((p) => `${p.productId}:${p.imagePath}`));
+        return [...current, ...prodItems.filter((p) => !known.has(`${p.productId}:${p.imagePath}`))];
+      });
+      setPage(nextPage);
+      setHasMore(mediaRows.length === PAGE_SIZE || (productsRes.data?.length ?? 0) === PAGE_SIZE);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao carregar mídia.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
+  }
+
+  async function refresh() {
+    setPage(0);
+    await loadPage(0, false);
   }
 
   useEffect(() => {
@@ -222,6 +228,9 @@ export function MarketingLibrary({
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return unified.filter((u) => {
+      if (mediaKind === "image" && u.isVideo) return false;
+      if (mediaKind === "video" && !u.isVideo) return false;
+      if (marketingOnly && u.origin !== "marketing") return false;
       if (source === "marketing" && u.origin !== "marketing") return false;
       if (source === "products" && u.origin !== "product") return false;
       if (activeTag && !u.tags.includes(activeTag)) return false;
@@ -229,7 +238,25 @@ export function MarketingLibrary({
       const hay = [u.title, u.subtitle, ...u.tags].join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [unified, filter, source, activeTag]);
+  }, [unified, filter, source, activeTag, mediaKind, marketingOnly]);
+
+  const visible = filtered;
+
+  useEffect(() => {
+    let cancelled = false;
+    const missing = visible.filter((u) => !Object.prototype.hasOwnProperty.call(urls, u.key));
+    if (missing.length === 0) return () => { cancelled = true; };
+    void Promise.all(missing.map(async (u) => {
+      const url = u.origin === "marketing"
+        ? await urlForMarketingPath((u.raw as MarketingMediaRow).storage_path)
+        : await getSignedImageUrl((u.raw as ProductImageItem).imagePath);
+      return [u.key, url ?? ""] as const;
+    })).then((entries) => {
+      if (cancelled) return;
+      setUrls((current) => ({ ...current, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [visible, urls]);
 
   const counts = useMemo(
     () => ({
@@ -336,8 +363,9 @@ export function MarketingLibrary({
           Nada por aqui. Envie fotos e vídeos ou cadastre produtos com imagens.
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {filtered.map((u) => {
+          {visible.map((u) => {
             const isSel = selectedKeys.has(u.key);
             const isMarketing = u.origin === "marketing";
             return (
@@ -351,7 +379,7 @@ export function MarketingLibrary({
                 <div className="aspect-square bg-black/40 flex items-center justify-center">
                   {u.isVideo ? (
                     u.url ? (
-                      <video src={u.url} className="h-full w-full object-cover" muted />
+                      <video src={u.url} className="h-full w-full object-cover" muted preload="none" />
                     ) : (
                       <Video className="h-8 w-8 text-muted-foreground" />
                     )
@@ -359,6 +387,8 @@ export function MarketingLibrary({
                     <img
                       src={u.url}
                       alt={u.title}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -402,6 +432,14 @@ export function MarketingLibrary({
             );
           })}
         </div>
+        {hasMore && (
+          <div className="flex justify-center">
+            <Button type="button" variant="outline" disabled={loadingMore} onClick={() => void loadPage(page + 1, true)}>
+              {loadingMore ? "Carregando..." : "Carregar mais"}
+            </Button>
+          </div>
+        )}
+        </>
       )}
     </div>
   );
