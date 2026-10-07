@@ -19,6 +19,8 @@ interface CachedUrl {
 }
 
 const cache = new Map<string, CachedUrl>();
+const pendingImageUrls = new Map<string, Promise<string>>();
+const pendingGenericUrls = new Map<string, Promise<string | null>>();
 
 /**
  * Extrai o path dentro do bucket a partir de um valor armazenado no banco.
@@ -60,24 +62,28 @@ export async function getSignedImageUrl(stored: string): Promise<string> {
   const hit = cache.get(path);
   if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
 
-  try {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
-    if (error || !data?.signedUrl) {
-      // Fallback: tenta URL pública (funciona enquanto o bucket estiver público)
-      const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
-      return pub.data.publicUrl;
+  const pending = pendingImageUrls.get(path);
+  if (pending) return pending;
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+      if (error || !data?.signedUrl) {
+        const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
+        return pub.data.publicUrl;
+      }
+      cache.set(path, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000 });
+      return data.signedUrl;
+    } catch (e) {
+      console.error("[getSignedImageUrl] falhou, devolvendo valor original", e);
+      return stored;
+    } finally {
+      pendingImageUrls.delete(path);
     }
-    cache.set(path, {
-      url: data.signedUrl,
-      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
-    });
-    return data.signedUrl;
-  } catch (e) {
-    console.error("[getSignedImageUrl] falhou, devolvendo valor original", e);
-    return stored;
-  }
+  })();
+  pendingImageUrls.set(path, request);
+  return request;
 }
 
 // Thumbnails leves via Supabase Storage Image Transform (resize/quality no edge).
@@ -170,20 +176,25 @@ export async function getSignedMediaUrl(
   const now = Date.now();
   const hit = genericMediaCache.get(key);
   if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
-  try {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(clean, SIGNED_URL_TTL_SECONDS);
-    if (error || !data?.signedUrl) return null;
-    genericMediaCache.set(key, {
-      url: data.signedUrl,
-      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
-    });
-    return data.signedUrl;
-  } catch (e) {
-    console.error("[getSignedMediaUrl] falhou", e);
-    return null;
-  }
+  const pending = pendingGenericUrls.get(key);
+  if (pending) return pending;
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(clean, SIGNED_URL_TTL_SECONDS);
+      if (error || !data?.signedUrl) return null;
+      genericMediaCache.set(key, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000 });
+      return data.signedUrl;
+    } catch (e) {
+      console.error("[getSignedMediaUrl] falhou", e);
+      return null;
+    } finally {
+      pendingGenericUrls.delete(key);
+    }
+  })();
+  pendingGenericUrls.set(key, request);
+  return request;
 }
 
 /**
