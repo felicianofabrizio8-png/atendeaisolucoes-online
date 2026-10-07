@@ -56,14 +56,16 @@ describe("computeFocalCrop reproduz o corte do worker", () => {
           for (const x of POSITIONS) {
             for (const y of POSITIONS) {
               const focal = { x, y, zoom };
-              const ref = workerCrop(image, frame, focal);
+              // O worker sempre renderiza o quadro 9:16; o Feed mostra uma janela dele.
+              const ref = workerCrop(image, { width: frame.width, height: frame.height }, focal);
+              const view = frame.window ?? { x: 0, y: 0, width: frame.width, height: frame.height };
               const crop = computeFocalCrop(image, frame, focal)!;
               const label = `x=${x} y=${y} zoom=${zoom}`;
-              // tolerância de 0,01 px do quadro final
-              expect((-crop.leftPct / 100) * frame.width, label).toBeCloseTo(ref.x, 2);
-              expect((-crop.topPct / 100) * frame.height, label).toBeCloseTo(ref.y, 2);
-              expect((crop.widthPct / 100) * frame.width, label).toBeCloseTo(ref.scaledW, 2);
-              expect((crop.heightPct / 100) * frame.height, label).toBeCloseTo(ref.scaledH, 2);
+              // tolerância de 0,01 px do vídeo final
+              expect((-crop.leftPct / 100) * view.width, label).toBeCloseTo(ref.x + view.x, 2);
+              expect((-crop.topPct / 100) * view.height, label).toBeCloseTo(ref.y + view.y, 2);
+              expect((crop.widthPct / 100) * view.width, label).toBeCloseTo(ref.scaledW, 2);
+              expect((crop.heightPct / 100) * view.height, label).toBeCloseTo(ref.scaledH, 2);
             }
           }
         }
@@ -80,16 +82,21 @@ describe("computeFocalCrop — invariantes", () => {
           for (const x of POSITIONS) {
             for (const y of POSITIONS) {
               const c = computeFocalCrop(image, frame, { x, y, zoom })!;
+              const view = frame.window ?? { x: 0, y: 0, width: frame.width, height: frame.height };
               expect(c.leftPct).toBeLessThanOrEqual(1e-9);
               expect(c.topPct).toBeLessThanOrEqual(1e-9);
               expect(c.leftPct + c.widthPct).toBeGreaterThanOrEqual(100 - 1e-9);
               expect(c.topPct + c.heightPct).toBeGreaterThanOrEqual(100 - 1e-9);
-              const shownRatio = (c.widthPct * frame.width) / (c.heightPct * frame.height);
+              const shownRatio = (c.widthPct * view.width) / (c.heightPct * view.height);
               expect(shownRatio).toBeCloseTo(image.width / image.height, 6);
               expect(c.markerXPct).toBeGreaterThanOrEqual(-1e-9);
               expect(c.markerXPct).toBeLessThanOrEqual(100 + 1e-9);
-              expect(c.markerYPct).toBeGreaterThanOrEqual(-1e-9);
-              expect(c.markerYPct).toBeLessThanOrEqual(100 + 1e-9);
+              if (!frame.window) {
+                // No Story o foco sempre cai dentro do quadro; no Feed ele pode
+                // ficar acima ou abaixo da área central exibida.
+                expect(c.markerYPct).toBeGreaterThanOrEqual(-1e-9);
+                expect(c.markerYPct).toBeLessThanOrEqual(100 + 1e-9);
+              }
             }
           }
         }
@@ -164,11 +171,30 @@ describe("panFocalPoint (arrastar a imagem)", () => {
     const saved = { x: 0.5, y: 0.2, zoom: 1 };
     // paisagem em Story: não há sobra vertical
     expect(panFocalPoint(landscape, STORY_FRAME, saved, 0.1, 0.4).y).toBe(0.2);
-    // retrato 9:16 em Feed: sobra só na vertical
+    // retrato 9:16 preenche o master exatamente: nada a mover, em Feed ou Story
     const portrait = { width: 1080, height: 1920 };
-    const next = panFocalPoint(portrait, FEED_FRAME, { x: 0.8, y: 0.5, zoom: 1 }, 0.3, -0.1);
+    expect(panFocalPoint(portrait, FEED_FRAME, { x: 0.8, y: 0.3, zoom: 1 }, 0.3, -0.1)).toEqual({ x: 0.8, y: 0.3, zoom: 1 });
+    // retrato mais alto que 9:16: sobra só na vertical
+    const tall = { width: 1000, height: 3000 };
+    const next = panFocalPoint(tall, STORY_FRAME, { x: 0.8, y: 0.5, zoom: 1 }, 0.3, -0.1);
     expect(next.x).toBe(0.8);
     expect(next.y).toBeGreaterThan(0.5);
+  });
+
+  it("Feed é a área central 4:5 do mesmo vídeo 9:16 do Story", () => {
+    const image = { width: 1920, height: 1080 };
+    const focal = { x: 0.3, y: 0.5, zoom: 1.5 };
+    const story = computeFocalCrop(image, STORY_FRAME, focal)!;
+    const feed = computeFocalCrop(image, FEED_FRAME, focal)!;
+    // mesma largura e mesmo deslocamento horizontal
+    expect(feed.widthPct).toBeCloseTo(story.widthPct, 6);
+    expect(feed.leftPct).toBeCloseTo(story.leftPct, 6);
+    // na vertical, o Feed mostra 1350 dos 1920 px, centralizados (285 px cortados em cima e embaixo)
+    expect((feed.heightPct / 100) * 1350).toBeCloseTo((story.heightPct / 100) * 1920, 6);
+    expect((-feed.topPct / 100) * 1350).toBeCloseTo((-story.topPct / 100) * 1920 + 285, 6);
+    // arrastar 20% da área do Feed move a imagem os mesmos 20% dessa área
+    const moved = panFocalPoint(image, FEED_FRAME, focal, 0.2, 0);
+    expect(computeFocalCrop(image, FEED_FRAME, moved)!.leftPct - feed.leftPct).toBeCloseTo(20, 1);
   });
 
   it("não ultrapassa as bordas e sem movimento não altera nada", () => {

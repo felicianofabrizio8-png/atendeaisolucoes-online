@@ -1,4 +1,5 @@
-// Pré-visualização de enquadramento para Feed (4:5) e Story (9:16).
+// Pré-visualização de enquadramento para Story (9:16) e Feed.
+// A campanha gera um único vídeo 9:16; no Feed aparece a área central 4:5 dele.
 //
 // Fase C.2:
 // - Mostra a imagem principal (primeira do array) com o mesmo corte que o
@@ -23,7 +24,7 @@ export function CampaignFramingPreview({ imageUrl, focalPoint, className, compac
   return (
     <div className={`${compact ? "grid grid-cols-1 items-start gap-2 sm:grid-cols-2" : "grid grid-cols-2 gap-3"} ${className ?? ""}`}>
       <FrameBox
-        label="Feed 4:5 (1080×1350)"
+        label="Feed (área central 4:5 do vídeo)"
         aspect="4 / 5"
         frame={FEED_FRAME}
         imageSize={imageSize}

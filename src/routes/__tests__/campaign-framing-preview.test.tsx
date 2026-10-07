@@ -53,7 +53,7 @@ describe("CampaignFramingPreview", () => {
     render(<CampaignFramingPreview imageUrl="https://example.test/photo.jpg" focalPoint={focal} />);
 
     const cases = [
-      ["Enquadramento Feed 4:5 (1080×1350)", FEED_FRAME],
+      ["Enquadramento Feed (área central 4:5 do vídeo)", FEED_FRAME],
       ["Enquadramento Story 9:16 (1080×1920)", STORY_FRAME],
     ] as const;
     for (const [alt, frame] of cases) {
@@ -67,8 +67,10 @@ describe("CampaignFramingPreview", () => {
       expect(img.style.maxWidth).toBe("none");
       expect(img.className).not.toContain("object-cover");
     }
-    // Feed e Story recebem cortes diferentes para o mesmo foco.
-    expect(screen.getByAltText(cases[0][0]).style.width).not.toBe(screen.getByAltText(cases[1][0]).style.width);
+    // Feed é uma janela do mesmo vídeo: mesma largura, altura e topo diferentes.
+    expect(screen.getByAltText(cases[0][0]).style.width).toBe(screen.getByAltText(cases[1][0]).style.width);
+    expect(screen.getByAltText(cases[0][0]).style.height).not.toBe(screen.getByAltText(cases[1][0]).style.height);
+    expect(screen.getByAltText(cases[0][0]).style.top).not.toBe(screen.getByAltText(cases[1][0]).style.top);
   });
 
   it("compacta os frames sem perder as proporções e empilha no mobile", () => {

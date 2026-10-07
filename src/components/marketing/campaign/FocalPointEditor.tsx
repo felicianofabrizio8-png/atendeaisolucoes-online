@@ -109,7 +109,7 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
         <DialogHeader className="shrink-0 pb-3">
           <DialogTitle>Ajustar enquadramento</DialogTitle>
           <DialogDescription>
-            Escolha Feed ou Story, arraste a imagem e ajuste o zoom. O mesmo enquadramento será usado no arquivo final.
+            Arraste a imagem e ajuste o zoom. O vídeo final é 9:16 (Story); no Feed aparece a área central 4:5 dele.
           </DialogDescription>
         </DialogHeader>
 
@@ -149,7 +149,7 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
                   imageSize={imageSize}
                   className="pointer-events-none"
                 />
-                {crop && (
+                {crop && crop.markerYPct >= 0 && crop.markerYPct <= 100 && crop.markerXPct >= 0 && crop.markerXPct <= 100 && (
                   <div
                     className="absolute pointer-events-none"
                     data-testid="focal-marker"
