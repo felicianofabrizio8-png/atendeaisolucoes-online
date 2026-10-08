@@ -6,6 +6,7 @@
 //  - "Restaurar original"       → volta ao snapshot da 1ª sugestão (client-side).
 //  - "Aprovar e gerar vídeo"    → persiste texto aprovado + enfileira render.
 
+import { OVERLAY_LIMITS } from "@/lib/marketing/manual-campaign";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,9 +33,10 @@ interface Props {
   onContentsUpdated?: (contents: MarketingContentRow[]) => void;
 }
 
-const HEADLINE_MAX = 80;
-const SUB_MAX = 120;
-const CTA_MAX = 60;
+// Limites do texto sobre o vídeo (iguais aos do banco).
+const HEADLINE_MAX = OVERLAY_LIMITS.headline;
+const SUB_MAX = OVERLAY_LIMITS.subheadline;
+const CTA_MAX = OVERLAY_LIMITS.cta;
 
 export function CampaignTextReview({
   campaignId,

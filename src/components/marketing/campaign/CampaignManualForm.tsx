@@ -4,6 +4,7 @@
 // `apiGenerateManualCampaign`, que cria as linhas feed/story e devolve o
 // controle para o MESMO editor de aprovação usado no modo IA.
 
+import { OVERLAY_LIMITS, buildManualOverlay } from "@/lib/marketing/manual-campaign";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +88,8 @@ export function CampaignManualForm({
     onSubmit({ fields, formats, theme, template: preset.template });
   }
 
+  const overlayPreview = buildManualOverlay({ title: v.title, subtitle: v.subtitle, promo_text: v.promo_text, price: v.price, cta_text: v.cta_text });
+
   return (
     <div className="rounded-lg border bg-card p-4 space-y-4">
       <div className="flex items-center gap-2">
@@ -98,6 +101,11 @@ export function CampaignManualForm({
         <div className="md:col-span-2">
           <Label>Título *</Label>
           <Input value={v.title} onChange={set("title")} maxLength={80} placeholder="Ex.: Produto com entrega rápida" />
+          {overlayPreview.overlay_headline !== v.title.trim() && v.title.trim().length > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground" data-testid="overlay-headline-hint">
+              No vídeo cabem até {OVERLAY_LIMITS.headline} caracteres. Vai aparecer: <strong className="text-foreground">{overlayPreview.overlay_headline}</strong>. O título completo vai na legenda.
+            </p>
+          )}
         </div>
         <div>
           <Label>Subtítulo</Label>

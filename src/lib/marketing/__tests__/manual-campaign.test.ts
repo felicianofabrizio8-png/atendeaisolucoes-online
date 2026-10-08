@@ -40,12 +40,14 @@ describe("modo manual — overlays", () => {
     expect(buildManualOverlay({ title: "T" }).overlay_subheadline).toBeNull();
   });
 
-  it("respeita os limites aceitos pela aprovação", () => {
+  it("respeita os limites do banco para o texto do vídeo", () => {
     const long = "x".repeat(200);
     const o = buildManualOverlay({ title: long, subtitle: long, cta_text: long });
-    expect(o.overlay_headline.length).toBeLessThanOrEqual(MANUAL_LIMITS.headline);
-    expect(o.overlay_subheadline!.length).toBeLessThanOrEqual(MANUAL_LIMITS.subheadline);
-    expect(o.overlay_cta!.length).toBeLessThanOrEqual(MANUAL_LIMITS.cta);
+    // limites do texto sobre o vídeo = CHECKs do banco (40 / 60 / 40)
+    expect(o.overlay_headline.length).toBeLessThanOrEqual(40);
+    expect(o.overlay_subheadline!.length).toBeLessThanOrEqual(60);
+    expect(o.overlay_cta!.length).toBeLessThanOrEqual(40);
+    expect(MANUAL_LIMITS.headline).toBeGreaterThanOrEqual(40);
   });
 });
 

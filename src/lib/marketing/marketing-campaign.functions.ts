@@ -54,6 +54,7 @@ import {
 import { buildThemeSnapshot, themeIdForTemplate } from "./theme-snapshot";
 import {
   MANUAL_LIMITS,
+  OVERLAY_LIMITS,
   buildManualOverlay,
   composeManualCaption,
   normalizeHashtags,
@@ -148,7 +149,13 @@ async function resolveCompanyId(supabase: SB, userId: string): Promise<string> {
 }
 async function updateMarketingContentOrThrow(supabase: SB, companyId: string, id: string, patch: Record<string, unknown>): Promise<void> {
   const { error } = await supabase.from("marketing_contents").update(patch as never).eq("id", id).eq("company_id", companyId);
-  if (error) throw new Error("marketing_content_update_failed");
+  if (error) throw new Error(overlayLimitMessage(error.message) ?? "marketing_content_update_failed");
+}
+
+/** Traduz a violação dos CHECKs de tamanho do overlay em uma mensagem útil. */
+function overlayLimitMessage(dbMessage: string | null | undefined): string | null {
+  if (!dbMessage || !/marketing_contents_overlay_(headline|subheadline|cta)_len/.test(dbMessage)) return null;
+  return `O texto do vídeo passou do limite: título até ${OVERLAY_LIMITS.headline}, subtítulo até ${OVERLAY_LIMITS.subheadline} e botão até ${OVERLAY_LIMITS.cta} caracteres.`;
 }
 
 
@@ -747,9 +754,10 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
 
 const ApproveInput = z.object({
   campaign_id: z.string().uuid(),
-  headline: z.string().trim().min(1).max(80),
-  subheadline: z.string().trim().max(120).nullable().optional(),
-  cta: z.string().trim().max(60).nullable().optional(),
+  // Mesmos limites dos CHECKs do banco para o texto sobre o vídeo.
+  headline: z.string().trim().min(1).max(OVERLAY_LIMITS.headline, "overlay_headline_too_long"),
+  subheadline: z.string().trim().max(OVERLAY_LIMITS.subheadline, "overlay_subheadline_too_long").nullable().optional(),
+  cta: z.string().trim().max(OVERLAY_LIMITS.cta, "overlay_cta_too_long").nullable().optional(),
   // Fase M4-editor: layout visual + template persistidos junto do texto
   // aprovado. Nesta rodada o worker ainda não consome; ficam prontos para
   // a próxima fase ler `video_layout` do content ou `brand_snapshot.overlay_layout`.
@@ -1408,7 +1416,7 @@ export const generateManualCampaign = createServerFn({ method: "POST" })
       .from("marketing_contents")
       .insert(rowsToInsert as never)
       .select("*");
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(overlayLimitMessage(error.message) ?? error.message);
 
     // eslint-disable-next-line no-console
     console.info(
