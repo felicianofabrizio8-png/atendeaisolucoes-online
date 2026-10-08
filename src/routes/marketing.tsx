@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Sparkles } from "lucide-react";
 import { MarketingWorkspace } from "@/components/marketing/MarketingWorkspace";
+import "@/components/marketing/marketing-redesign.css";
 
 export const Route = createFileRoute("/marketing")({
   component: MarketingPage,
@@ -20,7 +21,7 @@ function MarketingPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 w-full min-w-0 max-w-6xl mx-auto space-y-4">
+    <div className="marketing-redesign p-4 md:p-6 w-full min-w-0 max-w-6xl mx-auto space-y-4">
       <header className="flex items-center gap-2">
         <Sparkles className="h-5 w-5 text-primary" />
         <div>

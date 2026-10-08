@@ -1,0 +1,125 @@
+﻿.marketing-redesign {
+  --mk-purple: #6d4aff;
+  --mk-pink: #ff4a8d;
+}
+
+.marketing-redesign .marketing-primary {
+  background: linear-gradient(90deg, var(--mk-purple), var(--mk-pink));
+  color: white;
+  border: 0;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.marketing-redesign .marketing-primary:hover {
+  opacity: .92;
+}
+
+.marketing-redesign .marketing-card {
+  border: 1px solid #e6e8f0;
+  border-radius: 16px;
+  background: #fff;
+  padding: 16px;
+}
+
+.dark .marketing-redesign .marketing-card {
+  background: #171a24;
+  border-color: #272b3a;
+}
+
+/* Navegação do Marketing IA */
+@media (max-width: 700px) {
+  .marketing-redesign {
+    padding-bottom: 90px;
+  }
+
+  .marketing-redesign .marketing-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    max-width: none;
+    border-radius: 0;
+    border-top: 1px solid #e6e8f0;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 20px #00000010;
+  }
+
+  .dark .marketing-redesign .marketing-nav {
+    border-color: #272b3a;
+  }
+}
+
+/* Cartões adaptados ao tema do Atende Aí */
+.marketing-redesign .marketing-card {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border-color: hsl(var(--border));
+}
+
+.marketing-redesign .marketing-card:hover {
+  border-color: #6d4aff66;
+}
+
+.marketing-redesign .marketing-card .text-muted-foreground {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Galeria de fotos do Marketing IA */
+.marketing-redesign .marketing-media-grid {
+  gap: 12px;
+}
+
+.marketing-redesign .marketing-media-grid > div {
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.marketing-redesign .marketing-media-grid > div:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px #00000025;
+}
+
+.marketing-redesign .marketing-media-caption {
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+
+.marketing-redesign .marketing-media-grid > div:hover .marketing-media-caption,
+.marketing-redesign .marketing-media-grid > div:focus-visible .marketing-media-caption {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .marketing-redesign .marketing-media-caption {
+    opacity: 1;
+  }
+}
+
+/* Acabamento do fluxo Criar */
+.marketing-redesign .marketing-step-active {
+  background: linear-gradient(90deg, #6d4aff, #ff4a8d);
+}
+
+.marketing-redesign .marketing-summary {
+  gap: 12px;
+}
+
+.marketing-redesign .marketing-summary > div {
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--muted) / .35);
+}
+
+.marketing-redesign .marketing-create-layout aside {
+  max-width: 280px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+@media (max-width: 1023px) {
+  .marketing-redesign .marketing-create-layout aside {
+    max-width: 260px;
+  }
+}

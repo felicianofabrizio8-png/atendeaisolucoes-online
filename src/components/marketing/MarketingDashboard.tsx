@@ -55,7 +55,7 @@ export function MarketingDashboard({ companyId, onCreate, onOpenPublish }: Props
       <div>
         <h2 className="text-2xl font-semibold tracking-tight">O que vamos criar hoje?</h2>
         <p className="mt-1 text-sm text-muted-foreground">Crie, revise e publique no Instagram e no Facebook.</p>
-        <Button onClick={onCreate} size="lg" className="mt-4 rounded-full px-6">
+        <Button onClick={onCreate} size="lg" className="marketing-primary mt-4 px-6 shadow-md">
           <Plus className="mr-2 h-4 w-4" /> Criar publicação
         </Button>
       </div>
@@ -80,7 +80,7 @@ export function MarketingDashboard({ companyId, onCreate, onOpenPublish }: Props
 
       <section>
         <h3 className="mb-2 font-semibold">Próximas publicações</h3>
-        <div className="rounded-2xl border bg-card px-4">
+        <div className="marketing-card">
           {loading ? (
             <p className="py-5 text-sm text-muted-foreground">Carregando…</p>
           ) : upcoming.length === 0 ? (
@@ -113,7 +113,7 @@ function StatCard({ label, value, loading, danger, onClick }: { label: string; v
     <button
       type="button"
       onClick={onClick}
-      className="rounded-2xl border bg-card p-4 text-center transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="marketing-card text-center transition-all hover:-translate-y-0.5 hover:shadow-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className={`block text-3xl font-semibold tabular-nums ${danger && value > 0 ? "text-destructive" : ""}`}>{loading ? "–" : value}</span>
       <span className="text-xs text-muted-foreground sm:text-sm">{label}</span>

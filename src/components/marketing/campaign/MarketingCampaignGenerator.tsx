@@ -358,11 +358,11 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
     <div className="space-y-4">
       <div className="flex gap-1.5" role="progressbar" aria-label="Etapas da criação" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step}>
         {[1, 2, 3].map((n) => (
-          <span key={n} className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-primary" : "bg-border"}`} />
+          <span key={n} className={`marketing-step h-1.5 flex-1 rounded-full ${n <= step ? "marketing-step-active" : "bg-border"}`} />
         ))}
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="marketing-create-layout grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 space-y-4 rounded-2xl border bg-card p-4">
           {step === 1 && (
             <>
@@ -496,7 +496,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
               {isManual ? (
                 <CampaignManualForm submitting={generating} disabled={!videoReady} disabledReason="Escolha as fotos e uma música para continuar." onSubmit={(payload) => void generateManual(payload)} />
               ) : (
-                <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-2" data-testid="create-summary">
+                <dl className="marketing-summary grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-2" data-testid="create-summary">
                   <SummaryRow label="Tipo" value={kindLabel} />
                   <SummaryRow label="Formato" value={FORMATS.find(([id]) => id === aiFormats)?.[1] ?? ""} />
                   <SummaryRow label="Mídia" value={slots.length === 1 ? "1 selecionada" : `${slots.length} fotos`} />

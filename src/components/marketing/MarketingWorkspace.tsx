@@ -33,7 +33,7 @@ export function MarketingWorkspace({ companyId }: Props) {
 
   return (
     <Tabs value={group} onValueChange={(value) => setGroup(value as MarketingGroupId)} className="w-full min-w-0">
-      <TabsList className="mx-auto flex h-auto w-full max-w-md justify-between gap-1 rounded-full bg-card p-1 sm:w-fit sm:max-w-none">
+      <TabsList className="marketing-nav mx-auto flex h-auto w-full max-w-md justify-between gap-1 rounded-full bg-card p-1 sm:w-fit sm:max-w-none">
         {MARKETING_NAV.map((item) => {
           const Icon = ICONS[item.id];
           return (

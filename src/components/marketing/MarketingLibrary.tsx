@@ -367,7 +367,7 @@ export function MarketingLibrary({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="marketing-media-grid grid grid-cols-2 gap-3 sm:grid-cols-3">
             {visible.map((u) => {
               const order = selectedOrder.get(u.key);
               const isMarketing = u.origin === "marketing";
@@ -404,7 +404,7 @@ export function MarketingLibrary({
                   {order && (
                     <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{order}</span>
                   )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-6 text-white">
+                  <div className="marketing-media-caption absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-6 text-white">
                     <div className="truncate text-xs font-semibold">{u.title}</div>
                     <div className="truncate text-[10px] opacity-80">
                       {u.subtitle}
