@@ -123,3 +123,18 @@
     max-width: 260px;
   }
 }
+
+/* Galeria limpa também no celular */
+@media (max-width: 700px) {
+  .marketing-redesign .marketing-media-caption {
+    display: none;
+  }
+
+  .marketing-redesign .marketing-media-grid {
+    gap: 8px;
+  }
+
+  .marketing-redesign .marketing-media-grid > div {
+    border-radius: 12px;
+  }
+}
