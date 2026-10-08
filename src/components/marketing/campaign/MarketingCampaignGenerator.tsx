@@ -362,7 +362,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
         ))}
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-4 rounded-2xl border bg-card p-4">
           {step === 1 && (
             <>
@@ -404,20 +404,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
                       <Music2 className="mr-2 h-4 w-4" />
                       {audio ? audio.name : "Escolher música"}
                     </Button>
-                    {audio && (
-                      <>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          Início (s)
-                          <Input type="number" min={0} max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))} value={audioStart} onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))} className="h-8 w-20" />
-                        </label>
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          Duração
-                          <select className="h-8 rounded-md border bg-background px-2 text-sm" value={duration} onChange={(e) => setDuration(Number(e.target.value) as Duration)}>
-                            {[8, 10, 15, 30, 60].map((d) => <option key={d} value={d}>{d}s</option>)}
-                          </select>
-                        </label>
-                      </>
-                    )}
+                    {audio && <span className="text-xs text-muted-foreground">{duration}s de vídeo</span>}
                   </div>
                   <div>
                     <div className="mb-1 flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
@@ -433,44 +420,59 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
                 </div>
               )}
 
-              {!isManual && (
-                <>
-                  <div>
-                    <Label className="mb-2 block">Tom</Label>
-                    <ChipRow label="Tom">
-                      {TONES.map(([id, label]) => (
-                        <Chip key={id} active={tone === id} onClick={() => setTone(id)}>{label}</Chip>
-                      ))}
-                    </ChipRow>
-                  </div>
+              <details className="group rounded-xl border" data-testid="more-options">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                  Mais opções
+                  <span className="text-xs font-normal text-muted-foreground group-open:hidden">tom, promoção, público{!isSimpleMode ? ", duração" : ""}</span>
+                </summary>
+                <div className="space-y-3 border-t p-3">
+                  {!isManual && (
+                    <div>
+                      <Label className="mb-2 block">Tom</Label>
+                      <ChipRow label="Tom">
+                        {TONES.map(([id, label]) => (
+                          <Chip key={id} active={tone === id} onClick={() => setTone(id)}>{label}</Chip>
+                        ))}
+                      </ChipRow>
+                    </div>
+                  )}
+                  {!isSimpleMode && audio && (
+                    <div className="flex flex-wrap gap-3">
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        Início da música (s)
+                        <Input type="number" min={0} max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))} value={audioStart} onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))} className="h-8 w-20" />
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        Duração do vídeo
+                        <select className="h-8 rounded-md border bg-background px-2 text-sm" value={duration} onChange={(e) => setDuration(Number(e.target.value) as Duration)}>
+                          {[8, 10, 15, 30, 60].map((d) => <option key={d} value={d}>{d}s</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  )}
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <Label>Público (opcional)</Label>
-                      <Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Ex.: moradores da região, clientes recorrentes" />
-                    </div>
-                    <div>
-                      <Label>Promoção (opcional)</Label>
+                      <Label>Promoção</Label>
                       <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={promotionId} onChange={(e) => setPromotionId(e.target.value)}>
                         <option value="">Sem promoção</option>
                         {promotions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
                       </select>
                     </div>
-                    <div className="sm:col-span-2">
-                      <Label>O que destacar (opcional)</Label>
-                      <Textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={2} placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado" />
-                    </div>
+                    {!isManual && (
+                      <div>
+                        <Label>Público</Label>
+                        <Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Ex.: moradores da região" />
+                      </div>
+                    )}
+                    {!isManual && (
+                      <div className="sm:col-span-2">
+                        <Label>O que destacar</Label>
+                        <Textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={2} placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado" />
+                      </div>
+                    )}
                   </div>
-                </>
-              )}
-              {isManual && (
-                <div>
-                  <Label>Promoção (opcional)</Label>
-                  <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={promotionId} onChange={(e) => setPromotionId(e.target.value)}>
-                    <option value="">Sem promoção</option>
-                    {promotions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-                  </select>
                 </div>
-              )}
+              </details>
             </>
           )}
 
@@ -507,7 +509,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
           )}
         </div>
 
-        <aside className="space-y-2 lg:sticky lg:top-4">
+        <aside className={`space-y-2 lg:sticky lg:top-4 lg:order-none ${step === 1 ? "" : "order-first"}`}>
           <p className="text-center text-xs text-muted-foreground">Prévia real</p>
           <PhonePreview format={effectivePreviewFormat} account={kindLabel} caption={mediaMode === "generated_video" && isManual ? null : "A legenda será criada no último passo e você poderá editar antes de publicar."}>
             <PreviewMedia slot={primarySlot} mediaMode={mediaMode} format={effectivePreviewFormat} />

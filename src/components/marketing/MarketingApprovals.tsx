@@ -19,7 +19,9 @@ import {
   RefreshCw,
   Film,
   Play,
+  MoreHorizontal,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { openSettings } from "@/lib/settings-dialog";
 import {
@@ -54,6 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
   approved: "Aprovado",
   rejected: "Rejeitado",
 };
+const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp" };
 const FILTER_LABEL: Record<string, string> = {
   draft: "Rascunhos",
   pending: "Em revisão",
@@ -454,7 +457,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={forcedFilter ? "hidden" : "flex flex-wrap items-center gap-2"}>
         {!forcedFilter && (["draft", "pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
           <button
             key={f}
@@ -466,39 +469,40 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
             {FILTER_LABEL[f]}
           </button>
         ))}
-        <Button variant="ghost" size="sm" onClick={() => void refresh()} className="ml-auto">
-          Recarregar
-        </Button>
+        {!forcedFilter && (
+          <Button variant="ghost" size="sm" onClick={() => void refresh()} className="ml-auto">
+            Recarregar
+          </Button>
+        )}
       </div>
 
       {fbReadiness && !fbReadiness.ok ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex flex-wrap items-start gap-3"
-        >
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-          <div className="min-w-0 flex-1 basis-48 space-y-1">
-            <div className="font-semibold">Publicação no Facebook bloqueada</div>
-            <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
+        <details role="alert" className="group rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+            <span className="min-w-0 flex-1 truncate font-medium">Facebook não está pronto para publicar</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 rounded-full px-3 text-xs"
+              onClick={(e) => {
+                e.preventDefault();
+                openSettings("conexoes");
+              }}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" /> Reconectar
+            </Button>
+          </summary>
+          <div className="space-y-1 px-3 pb-3 text-xs">
+            <div className="leading-relaxed">{fbReadiness.message}</div>
             <div className="text-[11px] text-muted-foreground">
               Código: <code>{fbReadiness.code}</code>
               {fbReadiness.integrationChannel ? ` · integração: ${fbReadiness.integrationChannel}` : ""}
               {fbReadiness.pageId ? ` · page_id: ${fbReadiness.pageId}` : ""}
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              openSettings("conexoes");
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reconectar Meta
-          </Button>
-        </div>
+        </details>
       ) : null}
-
-
 
       {loading ? (
         <div className="text-sm text-muted-foreground flex items-center gap-2">
@@ -714,25 +718,17 @@ function ContentCard({
   const trackerProgress = renderState?.progress ?? (tracked ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0) : null);
 
   return (
-    <div data-testid="content-card" className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-[150px_minmax(0,1fr)]">
-      <MediaThumb preview={preview} alt="" className={`w-full max-w-[220px] justify-self-center sm:max-w-none ${row.format === "story" ? "aspect-[9/16] sm:aspect-[3/4]" : "aspect-[4/5]"}`} />
+    <div data-testid="content-card" className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+      <MediaThumb preview={preview} alt="" className={`w-full self-start ${row.format === "story" ? "aspect-[3/4]" : "aspect-[4/5]"}`} />
       <div className="min-w-0 space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="uppercase font-semibold rounded bg-primary/10 text-primary px-1.5 py-0.5">
-          {row.format}
+        <span className="rounded-full bg-muted px-2 py-0.5 font-semibold">
+          {FORMAT_LABEL[row.format] ?? row.format}
+          {isVideo ? " · vídeo" : ""}
         </span>
-        <span className="uppercase text-[10px] text-muted-foreground">{row.channel}</span>
-        <span className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}>
+        <span className={`rounded-full px-2 py-0.5 font-semibold ${statusColor[row.status] ?? ""}`}>
           {STATUS_LABEL[row.status] ?? row.status}
         </span>
-        {isVideo && (
-          <span className="uppercase text-[10px] rounded bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 px-1.5 py-0.5">
-            vídeo
-          </span>
-        )}
-        {row.ai_model && (
-          <span className="text-[10px] text-muted-foreground ml-auto">{row.ai_model}</span>
-        )}
       </div>
 
       {editing ? (
@@ -779,27 +775,8 @@ function ContentCard({
         </div>
       ) : (
         <>
-          {row.title && <div className="font-medium text-sm">{row.title}</div>}
-          {isVideo && (row.overlay_headline || row.overlay_subheadline) ? (
-            <div className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Overlay:</span>{" "}
-              {row.overlay_headline}
-              {row.overlay_subheadline ? ` — ${row.overlay_subheadline}` : ""}
-              {row.overlay_cta ? ` · ${row.overlay_cta}` : ""}
-            </div>
-          ) : null}
-          <div className="text-sm whitespace-pre-wrap">{row.body}</div>
-          {row.hashtags?.length ? (
-            <div className="text-xs text-muted-foreground">
-              {row.hashtags.map((h) => `#${h.replace(/^#+/, "")}`).join(" ")}
-            </div>
-          ) : null}
-          {row.cta_text && (
-            <div className="text-xs">
-              <strong>CTA:</strong> {row.cta_text}
-              {row.cta_destination ? ` → ${row.cta_destination}` : ""}
-            </div>
-          )}
+          {row.title && <div className="truncate text-sm font-semibold">{row.title}</div>}
+          <p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">{row.body}</p>
 
           {isVideo && isRendering && (
             <div className="rounded-md border border-dashed bg-muted/40 p-2 text-xs flex items-center gap-2">
@@ -828,69 +805,43 @@ function ContentCard({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 justify-end">
-            {/* Ações específicas de vídeo */}
-            {isVideo ? (
-              <>
-                {videoReady && (
-                  <Button size="sm" variant="outline" onClick={onViewVideo}>
-                    <Play className="h-4 w-4 mr-1" /> Visualizar vídeo
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant={videoReady ? "ghost" : "default"}
-                  onClick={onOpenVideoEditor}
-                  disabled={isRendering}
-                  title={
-                    isRendering
-                      ? "Aguarde a renderização terminar"
-                      : "Abrir Editor Visual do Vídeo IA"
-                  }
-                >
-                  <Film className="h-4 w-4 mr-1" />
-                  {videoReady ? "Editar novamente" : "Editar vídeo"}
-                </Button>
-                {/* Aprovar só faz sentido depois do vídeo renderizado */}
-                {videoReady && row.status !== "approved" && (
-                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
-                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Button size="sm" variant="ghost" onClick={onEdit}>
-                  Editar
-                </Button>
-                {row.status !== "approved" && (
-                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
-                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-                  </Button>
-                )}
-              </>
-            )}
-
-            {row.status !== "rejected" && (
-              <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
-                <XCircle className="h-4 w-4 mr-1" /> Rejeitar
+          <div className="flex items-center justify-end gap-2" data-testid="card-actions">
+            {isVideo && !videoReady ? (
+              <Button size="sm" className="rounded-full" onClick={onOpenVideoEditor} disabled={isRendering} title={isRendering ? "Aguarde a renderização terminar" : undefined}>
+                <Film className="h-4 w-4 mr-1" /> Editar vídeo
               </Button>
-            )}
-            {row.status === "draft" && (
-              <Button size="sm" variant="outline" onClick={onMarkPending} disabled={busy}>
-                <Send className="h-4 w-4 mr-1" /> Enviar p/ revisão
-              </Button>
-            )}
-            {row.status === "approved" && (
+            ) : row.status === "approved" ? (
               <>
-                <Button size="sm" variant="outline" onClick={onPublishNow} disabled={busy}>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={onPublishNow} disabled={busy}>
                   <Send className="h-4 w-4 mr-1" /> Publicar agora
                 </Button>
-                <Button size="sm" onClick={onSchedule} disabled={busy}>
+                <Button size="sm" className="rounded-full" onClick={onSchedule} disabled={busy}>
                   <Calendar className="h-4 w-4 mr-1" /> Agendar
                 </Button>
               </>
+            ) : row.status === "rejected" ? (
+              <Button size="sm" className="rounded-full" onClick={onMarkPending} disabled={busy}>
+                <Send className="h-4 w-4 mr-1" /> Enviar para revisão
+              </Button>
+            ) : (
+              <Button size="sm" className="rounded-full" onClick={onApprove} disabled={busy}>
+                <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
+              </Button>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full" aria-label="Mais ações">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {isVideo && videoReady && <DropdownMenuItem onSelect={onViewVideo}><Play className="h-4 w-4 mr-2" /> Ver vídeo</DropdownMenuItem>}
+                {isVideo && videoReady && <DropdownMenuItem onSelect={onOpenVideoEditor} disabled={isRendering}><Film className="h-4 w-4 mr-2" /> Editar vídeo de novo</DropdownMenuItem>}
+                {!isVideo && <DropdownMenuItem onSelect={onEdit}>Editar texto</DropdownMenuItem>}
+                {row.status === "draft" && <DropdownMenuItem onSelect={onMarkPending} disabled={busy}><Send className="h-4 w-4 mr-2" /> Enviar para revisão</DropdownMenuItem>}
+                {row.status !== "rejected" && <DropdownMenuItem onSelect={onReject} disabled={busy} className="text-destructive"><XCircle className="h-4 w-4 mr-2" /> Rejeitar</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {row.rejection_reason && (
             <div className="text-xs text-destructive">Motivo: {row.rejection_reason}</div>

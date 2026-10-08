@@ -105,7 +105,7 @@ export function PhonePreview({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[28px] border-[6px] border-foreground/90 bg-black text-white shadow-lg">
+    <div className="mx-auto w-full max-w-[240px] overflow-hidden rounded-[28px] lg:max-w-[320px] border-[6px] border-foreground/90 bg-black text-white shadow-lg">
       <div className="flex items-center gap-2 bg-neutral-900 px-3 py-2 text-xs font-semibold">
         <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
         <span className="truncate">{account}</span>
