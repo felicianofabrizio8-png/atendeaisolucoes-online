@@ -41,6 +41,8 @@ import { validateScheduleForm } from "@/lib/marketing/schedule-form";
 import { isActiveMarketingRenderStatus, resolveMarketingRenderState, type MarketingRenderState } from "@/lib/marketing/render-status";
 import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
 import { getSignedImageUrl } from "@/lib/storage";
+import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
+import { MediaThumb, type MediaPreview } from "./ui/MarketingUi";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -79,11 +81,15 @@ function hasPendingRenderJob(row: MarketingContentRow): boolean {
 
 interface Props {
   companyId: string;
+  /** Etapa fixada pelo hub de Publicar; esconde os filtros internos. */
+  forcedFilter?: "review" | "approved";
+  /** Avisado depois de cada recarga, para o hub atualizar os contadores. */
+  onChanged?: () => void;
 }
 
 type Filter = "all" | "draft" | "pending" | "approved" | "rejected";
 
-export function MarketingApprovals({ companyId }: Props) {
+export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props) {
   const [rows, setRows] = useState<MarketingContentRow[]>([]);
   const [renderStates, setRenderStates] = useState<Record<string, { feed: MarketingRenderState; story: MarketingRenderState }>>({});
   const [loading, setLoading] = useState(true);
@@ -263,6 +269,7 @@ export function MarketingApprovals({ companyId }: Props) {
     try {
       const nextRows = await apiListContents();
       setRows(nextRows);
+      onChanged?.();
       await refreshRenderStates(nextRows);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao carregar conteúdos.");
@@ -276,9 +283,18 @@ export function MarketingApprovals({ companyId }: Props) {
   }, [companyId]);
 
   const filtered = useMemo(
-    () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
-    [rows, filter],
+    () => {
+      if (forcedFilter === "review") {
+        // Rascunhos e em revisão primeiro; rejeitados ficam no fim, para reenviar.
+        const order = { draft: 0, pending: 0, rejected: 1 } as Record<string, number>;
+        return rows.filter((r) => r.status in order).sort((a, b) => order[a.status] - order[b.status]);
+      }
+      if (forcedFilter === "approved") return rows.filter((r) => r.status === "approved");
+      return filter === "all" ? rows : rows.filter((r) => r.status === filter);
+    },
+    [rows, filter, forcedFilter],
   );
+  const previews = useContentPreviews(companyId, filtered);
 
   async function saveEdit(row: MarketingContentRow, patch: { body: string; title: string | null; hashtags: string[]; cta_text: string | null; cta_destination: string | null }) {
     setBusy(true);
@@ -439,7 +455,7 @@ export function MarketingApprovals({ companyId }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {(["draft", "pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
+        {!forcedFilter && (["draft", "pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -490,7 +506,7 @@ export function MarketingApprovals({ companyId }: Props) {
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nenhum conteúdo para este filtro.
+          {forcedFilter === "review" ? "Nada para revisar. Crie uma publicação para começar." : forcedFilter === "approved" ? "Nenhuma publicação aprovada aguardando agendamento." : "Nenhum conteúdo para este filtro."}
         </div>
       ) : (
         <div className="space-y-3">
@@ -510,6 +526,7 @@ export function MarketingApprovals({ companyId }: Props) {
               onMarkPending={() => void setStatus(c, "pending")}
               onSchedule={() => openSchedule(c)}
               onPublishNow={() => void publishNow(c)}
+              preview={previews[c.id] ?? null}
               renderState={c.campaign_id ? renderStates[c.campaign_id]?.[c.campaign_role === "story" ? "story" : "feed"] ?? null : null}
               onRetryRender={() => void retryRender(c)}
               onOpenVideoEditor={() => void openVideoEditor(c)}
@@ -654,6 +671,7 @@ function ContentCard({
   tracked,
   renderState,
   onRetryRender,
+  preview,
   busy,
 }: {
   row: MarketingContentRow;
@@ -671,6 +689,7 @@ function ContentCard({
   tracked: import("@/lib/marketing/useCampaignRenderTracker").TrackedCampaign | null;
   renderState: MarketingRenderState | null;
   onRetryRender: () => void;
+  preview: MediaPreview | null;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(row.title ?? "");
@@ -695,8 +714,10 @@ function ContentCard({
   const trackerProgress = renderState?.progress ?? (tracked ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0) : null);
 
   return (
-    <div className="rounded-lg border bg-card p-3 space-y-2">
-      <div className="flex items-center gap-2 text-xs">
+    <div data-testid="content-card" className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+      <MediaThumb preview={preview} alt="" className={`w-full max-w-[220px] justify-self-center sm:max-w-none ${row.format === "story" ? "aspect-[9/16] sm:aspect-[3/4]" : "aspect-[4/5]"}`} />
+      <div className="min-w-0 space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="uppercase font-semibold rounded bg-primary/10 text-primary px-1.5 py-0.5">
           {row.format}
         </span>
@@ -876,6 +897,7 @@ function ContentCard({
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

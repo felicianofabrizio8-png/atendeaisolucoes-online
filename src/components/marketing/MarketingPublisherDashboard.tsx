@@ -25,6 +25,8 @@ import type { PublicationRow, PublisherStats } from "@/lib/marketing-publisher/t
 
 interface Props {
   companyId: string;
+  /** "published" mostra só o histórico de publicadas; o padrão é o acompanhamento. */
+  view?: "problems" | "published";
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -45,7 +47,41 @@ const STATUS_CLASS: Record<string, string> = {
 
 const AUTO_REFRESH_MS = 15_000;
 
-export function MarketingPublisherDashboard({ companyId }: Props) {
+export function MarketingPublisherDashboard(props: Props) {
+  if (props.view === "published") return <PublishedList />;
+  return <PublisherTracking {...props} />;
+}
+
+/** Histórico de publicações concluídas. */
+function PublishedList() {
+  const [rows, setRows] = useState<PublicationRow[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    void listMarketingPublications({ data: { scope: "history", limit: 100 } })
+      .then((r) => { if (active) setRows(r.publications as PublicationRow[]); })
+      .catch(() => { if (active) setRows([]); });
+    return () => { active = false; };
+  }, []);
+  if (rows === null) {
+    return (
+      <div className="text-sm text-muted-foreground flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhuma publicação concluída ainda.</div>;
+  }
+  return (
+    <div className="rounded-2xl border bg-card px-4 divide-y">
+      {rows.map((p) => (
+        <PublicationItem key={p.id} p={p} />
+      ))}
+    </div>
+  );
+}
+
+function PublisherTracking({ companyId }: Props) {
   void companyId;
   const [stats, setStats] = useState<(PublisherStats & { scheduled: number }) | null>(null);
   const [pubs, setPubs] = useState<PublicationRow[]>([]);

@@ -34,6 +34,8 @@ interface Props {
   mediaKind?: "image" | "video";
   /** Esconde imagens de produtos (quando só mídias do acervo servem). */
   marketingOnly?: boolean;
+  /** Fora do modo de seleção: tocar em uma mídia começa uma publicação com ela. */
+  onUse?: (sel: MediaSelection) => void;
 }
 
 type SourceFilter = "all" | "marketing" | "products";
@@ -70,6 +72,7 @@ export function MarketingLibrary({
   onToggleSelect,
   mediaKind,
   marketingOnly = false,
+  onUse,
 }: Props) {
   const [marketingItems, setMarketingItems] = useState<MarketingMediaRow[]>([]);
   const [productImages, setProductImages] = useState<ProductImageItem[]>([]);
@@ -203,7 +206,7 @@ export function MarketingLibrary({
       url: urls[`m:${m.id}`] ?? "",
       tags: m.tags ?? [],
       sizeBytes: m.size_bytes,
-      selection: { origin: "marketing", id: m.id, storagePath: m.storage_path },
+      selection: { origin: "marketing", id: m.id, storagePath: m.storage_path, mediaType: m.media_type === "video" ? "video" : "image" },
       raw: m,
     }));
     const products: UnifiedItem[] = productImages.map((p) => {
@@ -280,62 +283,59 @@ export function MarketingLibrary({
     [unified],
   );
 
+  const selectedOrder = new Map(selected.map((sel, i) => [selectionKey(sel), i + 1]));
+  const showSources = !marketingOnly && mediaKind !== "video";
+
   return (
     <div className="space-y-4">
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={mediaKind === "video" ? "video/*" : mediaKind === "image" ? "image/*" : "image/*,video/*"}
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-sm text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+      >
+        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+        {uploading ? "Enviando…" : mediaKind === "video" ? "Enviar vídeos" : mediaKind === "image" ? "Enviar fotos" : "Enviar fotos ou vídeos"}
+      </button>
+
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="Buscar por título, produto, categoria ou tag"
+          placeholder="Buscar por nome ou tag"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          className="max-w-xs"
+          className="h-9 min-w-0 flex-1 basis-40 rounded-full sm:max-w-xs"
         />
-        <div className="inline-flex rounded-md border overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setSource("all")}
-            className={`px-3 h-9 text-xs ${source === "all" ? "bg-primary text-primary-foreground" : "bg-background"}`}
-          >
-            Todos <span className="opacity-70">({counts.total})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSource("marketing")}
-            className={`px-3 h-9 text-xs border-l inline-flex items-center gap-1 ${source === "marketing" ? "bg-primary text-primary-foreground" : "bg-background"}`}
-          >
-            <Sparkles className="h-3 w-3" /> Marketing{" "}
-            <span className="opacity-70">({counts.marketing})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSource("products")}
-            className={`px-3 h-9 text-xs border-l inline-flex items-center gap-1 ${source === "products" ? "bg-primary text-primary-foreground" : "bg-background"}`}
-          >
-            <Package className="h-3 w-3" /> Produtos{" "}
-            <span className="opacity-70">({counts.products})</span>
-          </button>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept="image/*,video/*"
-            className="hidden"
-            onChange={(e) => handleFiles(e.target.files)}
-          />
-          <Button onClick={() => inputRef.current?.click()} disabled={uploading}>
-            {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : (
-              <Upload className="h-4 w-4 mr-1" />
-            )}
-            Enviar fotos/vídeos
-          </Button>
-        </div>
+        {showSources && (
+          <div className="flex gap-1.5 overflow-x-auto">
+            {([
+              ["all", "Tudo", counts.total],
+              ["marketing", "Enviadas", counts.marketing],
+              ["products", "Produtos", counts.products],
+            ] as Array<[SourceFilter, string, number]>).map(([id, label, n]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setSource(id)}
+                aria-pressed={source === id}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs ${source === id ? "border-foreground bg-foreground text-background" : "bg-card"}`}
+              >
+                {label} <span className="opacity-70">{n}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {allTags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
           {allTags.map((t) => {
             const active = activeTag === t;
             return (
@@ -343,113 +343,98 @@ export function MarketingLibrary({
                 key={t}
                 type="button"
                 onClick={() => setActiveTag(active ? null : t)}
-                className={`text-[11px] rounded-full border px-2 py-0.5 ${active ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-accent"}`}
+                className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${active ? "border-foreground bg-foreground text-background" : "bg-card text-muted-foreground"}`}
               >
                 {t}
               </button>
             );
           })}
           {activeTag && (
-            <button
-              type="button"
-              onClick={() => setActiveTag(null)}
-              className="text-[11px] rounded-full border px-2 py-0.5 inline-flex items-center gap-1 text-muted-foreground"
-            >
+            <button type="button" onClick={() => setActiveTag(null)} className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] text-muted-foreground">
               <X className="h-3 w-3" /> limpar
             </button>
           )}
         </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground">
-        Centro de mídia unificado — imagens de produtos aparecem em somente leitura
-        e podem ser combinadas com fotos e vídeos do marketing. Nenhuma cópia é
-        duplicada.
-      </p>
-
       {loading ? (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nada por aqui. Envie fotos e vídeos ou cadastre produtos com imagens.
+      ) : visible.length === 0 ? (
+        <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {mediaKind === "video" ? "Nenhum vídeo por aqui. Envie um vídeo para começar." : "Nada por aqui. Envie fotos ou cadastre produtos com imagens."}
         </div>
       ) : (
         <>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {visible.map((u) => {
-            const isSel = selectedKeys.has(u.key);
-            const isMarketing = u.origin === "marketing";
-            return (
-              <div
-                key={u.key}
-                className={`group relative rounded-lg border overflow-hidden bg-muted/30 ${
-                  selectable ? "cursor-pointer" : ""
-                } ${isSel ? "ring-2 ring-primary" : ""}`}
-                onClick={() => selectable && onToggleSelect?.(u.selection)}
-              >
-                <div className="aspect-square bg-black/40 flex items-center justify-center">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {visible.map((u) => {
+              const order = selectedOrder.get(u.key);
+              const isMarketing = u.origin === "marketing";
+              const activate = () => (selectable ? onToggleSelect?.(u.selection) : onUse?.(u.selection));
+              const clickable = selectable || !!onUse;
+              return (
+                <div
+                  key={u.key}
+                  role={clickable ? "button" : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  aria-pressed={selectable ? !!order : undefined}
+                  aria-label={selectable ? u.title : onUse ? `Criar publicação com ${u.title}` : undefined}
+                  onClick={clickable ? activate : undefined}
+                  onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } } : undefined}
+                  className={`group relative overflow-hidden rounded-2xl bg-muted ${u.isVideo ? "aspect-[3/4]" : "aspect-square"} ${clickable ? "cursor-pointer" : ""} ${order ? "ring-4 ring-primary" : "ring-1 ring-border"}`}
+                >
                   {u.isVideo ? (
                     u.url ? (
-                      <video src={`${u.url}#t=0.1`} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                      <video src={`${u.url}#t=0.1`} className="absolute inset-0 h-full w-full object-cover" muted playsInline preload="metadata" />
                     ) : (
-                      <Video className="h-8 w-8 text-muted-foreground" />
+                      <div className="absolute inset-0 grid place-items-center"><Video className="h-8 w-8 text-muted-foreground" /></div>
                     )
                   ) : u.url ? (
-                    <img
-                      src={u.url}
-                      alt={u.title}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-cover"
-                    />
+                    <img src={u.url} alt={u.title} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
                   ) : (
-                    <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                    <div className="absolute inset-0 grid place-items-center"><ImageIcon className="h-8 w-8 text-muted-foreground" /></div>
+                  )}
+                  {u.isVideo && (
+                    <span className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white"><Video className="h-3 w-3" /></span>
+                  )}
+                  {!isMarketing && (
+                    <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">Produto</span>
+                  )}
+                  {order && (
+                    <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{order}</span>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-6 text-white">
+                    <div className="truncate text-xs font-semibold">{u.title}</div>
+                    <div className="truncate text-[10px] opacity-80">
+                      {u.subtitle}
+                      {u.sizeBytes ? ` · ${formatSize(u.sizeBytes)}` : ""}
+                    </div>
+                  </div>
+                  {!selectable && isMarketing && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete((u.raw as MarketingMediaRow).id);
+                      }}
+                      className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                      aria-label={`Remover ${u.title}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   )}
                 </div>
-                <div className="absolute top-1 left-1">
-                  <span
-                    className={`text-[9px] uppercase tracking-wide rounded px-1.5 py-0.5 font-semibold ${
-                      isMarketing
-                        ? "bg-primary/90 text-primary-foreground"
-                        : "bg-secondary/90 text-secondary-foreground"
-                    }`}
-                  >
-                    {isMarketing ? "MKT" : "Produto"}
-                  </span>
-                </div>
-                <div className="p-2 text-xs">
-                  <div className="truncate font-medium">{u.title}</div>
-                  <div className="text-muted-foreground truncate">
-                    {u.subtitle}
-                    {u.sizeBytes ? ` · ${formatSize(u.sizeBytes)}` : ""}
-                  </div>
-                </div>
-                {!selectable && isMarketing && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const raw = u.raw as MarketingMediaRow;
-                      void handleDelete(raw.id);
-                    }}
-                    className="absolute top-1 right-1 p-1 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Remover"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {hasMore && (
-          <div className="flex justify-center">
-            <Button type="button" variant="outline" disabled={loadingMore} onClick={() => void loadPage(page + 1, true)}>
-              {loadingMore ? "Carregando..." : "Carregar mais"}
-            </Button>
+              );
+            })}
           </div>
-        )}
+          {hasMore && (
+            <div className="flex justify-center">
+              <Button type="button" variant="outline" className="rounded-full" disabled={loadingMore} onClick={() => void loadPage(page + 1, true)}>
+                {loadingMore ? "Carregando..." : "Carregar mais"}
+              </Button>
+            </div>
+          )}
         </>
       )}
     </div>

@@ -1,24 +1,24 @@
-// Gerador de Campanha (Fase C.2).
+// Criação de publicações do Marketing IA.
 //
-// Evoluções vs. C.1:
-// - Múltiplas imagens (ordenáveis) via CampaignImageList.
-// - Focal point real por imagem via FocalPointEditor (aplicado no render).
-// - Progresso desacoplado da tela via useCampaignRenderTracker (o polling
-//   segue rodando mesmo se o usuário navegar de aba).
-// - Barra de ação sticky (visível o tempo todo em mobile e desktop).
-// - Preview WYSIWYG do focal point sobre Feed 4:5 e Story 9:16.
+// Três passos, começando pela mídia:
+//   1. Escolher fotos ou vídeos do acervo.
+//   2. Legenda e formato (e música/enquadramento quando vira vídeo).
+//   3. Conferir e criar. O conteúdo vai para Publicar › Para revisar; nada é
+//      publicado sem aprovação.
 //
-// Retrocompatível: se apenas 1 imagem for selecionada, o backend continua
-// enviando `primary_image` no payload legado; caso contrário envia `images`.
+// O tipo de publicação é deduzido da seleção:
+//   - 1 vídeo do acervo           → vídeo pronto (só gera a legenda);
+//   - 1 foto do acervo            → foto (só gera a legenda), ou vídeo se pedido;
+//   - 2+ fotos / imagem de produto → vídeo criado com música (render no worker).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2, PencilRuler } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sparkles, Loader2, Music2 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import {
   apiListPromotions,
   apiGenerateCampaign,
@@ -31,38 +31,49 @@ import {
 } from "@/data/marketingRepo";
 import { getSignedImageUrl } from "@/lib/storage";
 import type { MarketingPromotionRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
-import { MarketingAssetPicker } from "../MarketingAssetPicker";
-import {
-  type MediaSelection,
-  selectionKey,
-  sameSelection,
-} from "@/lib/marketing/media-selection";
+import { MarketingLibrary } from "../MarketingLibrary";
+import { Chip, ChipRow, PhonePreview } from "../ui/MarketingUi";
+import { type MediaSelection, selectionKey, sameSelection } from "@/lib/marketing/media-selection";
+import { FEED_FRAME, STORY_FRAME } from "@/lib/render-engine/focal-geometry";
 
-import { CampaignFramingPreview } from "./CampaignFramingPreview";
+import { FocalImage } from "./FocalImage";
+import { CampaignAudioPicker } from "./CampaignAudioPicker";
 import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
 import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
 import { CampaignVideoEditor } from "./editor/CampaignVideoEditor";
 import { CampaignManualForm, type ManualSubmitPayload } from "./CampaignManualForm";
-import { CampaignFormatsField } from "./CampaignFormatsField";
 import type { CampaignFormatSelection } from "@/lib/marketing/campaign-formats";
 import { AiUnavailableNotice } from "./AiUnavailableNotice";
 import { classifyAiFailure, type AiFailureKind } from "@/lib/marketing/ai-failure";
-import {
-  useCampaignRenderTracker,
-  useTrackedCampaign,
-} from "@/lib/marketing/useCampaignRenderTracker";
+import { useCampaignRenderTracker, useTrackedCampaign } from "@/lib/marketing/useCampaignRenderTracker";
 import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
 import { claimPreviewResolution, releasePreviewResolution } from "@/lib/marketing/preview-resolution";
 
 type Duration = 8 | 10 | 15 | 30 | 60;
+type Tone = "amigável" | "profissional" | "descontraído" | "urgente";
+type Step = 1 | 2 | 3;
 // Alinhado com MAX_CAMPAIGN_IMAGES do backend/worker (render.types.ts).
 const MAX_IMAGES = 8;
+
+const TONES: Array<[Tone, string]> = [
+  ["amigável", "Amigável"],
+  ["profissional", "Profissional"],
+  ["descontraído", "Descontraído"],
+  ["urgente", "Urgente"],
+];
+const FORMATS: Array<[CampaignFormatSelection, string]> = [
+  ["feed_story", "Feed + Story"],
+  ["feed", "Feed"],
+  ["story", "Story"],
+];
 
 interface Props {
   companyId: string;
   onGenerated?: (contents: MarketingContentRow[]) => void;
+  /** Mídia já escolhida (ex.: tocada no Acervo). */
+  initialSelection?: MediaSelection[];
 }
 
 interface Slot {
@@ -73,37 +84,36 @@ interface Slot {
   failed: boolean;
 }
 
-export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
+const isVideoSelection = (sel: MediaSelection) => sel.origin === "marketing" && sel.mediaType === "video";
+const newSlot = (selection: MediaSelection): Slot => ({ selection, focal: null, previewUrl: null, loading: false, failed: false });
+
+export function MarketingCampaignGenerator({ companyId, onGenerated, initialSelection = [] }: Props) {
   const [promotions, setPromotions] = useState<MarketingPromotionRow[]>([]);
   const [promotionId, setPromotionId] = useState<string>("");
-  const [tone, setTone] =
-    useState<"amigável" | "profissional" | "descontraído" | "urgente">("amigável");
+  const [tone, setTone] = useState<Tone>("amigável");
   const [audience, setAudience] = useState("");
   const [extra, setExtra] = useState("");
-  // Seleção de formatos no modo IA — mesmo contrato canônico do modo manual.
   const [aiFormats, setAiFormats] = useState<CampaignFormatSelection>("feed_story");
-  const [mediaMode, setMediaMode] = useState<"photo" | "uploaded_video" | "generated_video">("generated_video");
 
-  const [slots, setSlots] = useState<Slot[]>([]);
+  const [slots, setSlots] = useState<Slot[]>(() => initialSelection.slice(0, MAX_IMAGES).map(newSlot));
   const [editingKey, setEditingKey] = useState<string | null>(null);
+  // Com uma única foto do acervo o padrão é publicar a foto; isto pede o vídeo.
+  const [asVideo, setAsVideo] = useState(false);
 
   const [audio, setAudio] = useState<AudioLibraryRow | null>(null);
+  const [audioOpen, setAudioOpen] = useState(false);
   const [audioStart, setAudioStart] = useState<number>(0);
   const [duration, setDuration] = useState<Duration>(15);
 
   const [generating, setGenerating] = useState(false);
-  // Modo de criação: IA (padrão) ou manual (sem IA, sem créditos).
+  // Textos do vídeo: IA (padrão) ou escritos à mão (sem IA, sem créditos).
   const [mode, setMode] = useState<"ai" | "manual">("ai");
-  // Falha da IA → oferecemos o modo manual sem bloquear o usuário.
   const [aiFailure, setAiFailure] = useState<AiFailureKind | null>(null);
-  const [step, setStep] = useState<"brief" | "assets" | "ready">("brief");
+  const [step, setStep] = useState<Step>(initialSelection.length > 0 ? 2 : 1);
+  const [previewFormat, setPreviewFormat] = useState<"feed" | "story">("feed");
   const [campaignId, setCampaignId] = useState<string | null>(null);
-  // Approval-gate: quando existe, renderiza a tela de revisão em vez do
-  // progress. Só limpamos quando o usuário aprova (então o render começa).
-  const [pendingReview, setPendingReview] = useState<{
-    campaignId: string;
-    contents: MarketingContentRow[];
-  } | null>(null);
+  // Approval-gate: quando existe, mostra a revisão em vez do progresso.
+  const [pendingReview, setPendingReview] = useState<{ campaignId: string; contents: MarketingContentRow[] } | null>(null);
 
   const { trackCampaign } = useCampaignRenderTracker();
   const tracked = useTrackedCampaign(campaignId);
@@ -112,93 +122,69 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     void apiListPromotions().then(setPromotions).catch(() => {});
   }, [companyId]);
 
-  // Resolve preview URL para cada slot novo. A chave em ref impede que o
-  // rerender causado por loading=true cancele ou duplique a mesma resolução.
+  // Resolve a URL de prévia de cada mídia escolhida, uma única vez por item.
   const previewResolutionsRef = useRef(new Set<string>());
-
   useEffect(() => {
     slots.forEach((slot, idx) => {
       const key = selectionKey(slot.selection);
       if (slot.previewUrl || slot.loading || slot.failed) return;
       if (!claimPreviewResolution(previewResolutionsRef.current, key)) return;
-
       setSlots((cur) => cur.map((s, i) => (i === idx ? { ...s, loading: true } : s)));
       (async () => {
+        let url: string | null = null;
         try {
-          let url: string | null = null;
           if (slot.selection.origin === "marketing" && slot.selection.storagePath) {
             url = await urlForMarketingPath(slot.selection.storagePath).catch(() => null);
           } else if (slot.selection.origin === "product") {
             url = await getSignedImageUrl(slot.selection.imagePath).catch(() => null);
           }
-          setSlots((cur) =>
-            cur.map((s) =>
-              sameSelection(s.selection, slot.selection)
-                ? { ...s, previewUrl: url, loading: false, failed: !url }
-                : s,
-            ),
-          );
-        } catch {
-          setSlots((cur) =>
-            cur.map((s) =>
-              sameSelection(s.selection, slot.selection)
-                ? { ...s, previewUrl: null, loading: false, failed: true }
-                : s,
-            ),
-          );
         } finally {
+          setSlots((cur) => cur.map((s) => (sameSelection(s.selection, slot.selection) ? { ...s, previewUrl: url, loading: false, failed: !url } : s)));
           releasePreviewResolution(previewResolutionsRef.current, key);
         }
       })();
     });
   }, [slots]);
 
-  const selectedMediaSelections = useMemo(() => slots.map((s) => s.selection), [slots]);
+  const selections = useMemo(() => slots.map((s) => s.selection), [slots]);
+  const primarySlot = slots[0] ?? null;
+  const hasVideo = slots.some((s) => isVideoSelection(s.selection));
+  const singleLibraryPhoto = slots.length === 1 && !hasVideo && slots[0].selection.origin === "marketing";
+  const mediaMode: "photo" | "uploaded_video" | "generated_video" = hasVideo
+    ? "uploaded_video"
+    : singleLibraryPhoto && !asVideo
+      ? "photo"
+      : "generated_video";
+  const isSimpleMode = mediaMode !== "generated_video";
+  const isManual = !isSimpleMode && mode === "manual";
 
-  const replaceSelections = useCallback((next: MediaSelection[]) => {
-    const normalized = mediaMode === "generated_video" ? next.slice(0, MAX_IMAGES) : next.slice(-1);
-    setSlots((current) => normalized.map((selection) => current.find((slot) => sameSelection(slot.selection, selection)) ?? { selection, focal: null, previewUrl: null, loading: false, failed: false }));
-  }, [mediaMode]);
+  const toggleSelection = useCallback((sel: MediaSelection) => {
+    setSlots((cur) => {
+      if (cur.some((s) => sameSelection(s.selection, sel))) return cur.filter((s) => !sameSelection(s.selection, sel));
+      if (isVideoSelection(sel)) {
+        if (cur.length > 0) toast.info("Vídeo pronto usa um único vídeo; a seleção anterior foi substituída.");
+        return [newSlot(sel)];
+      }
+      const photos = cur.filter((s) => !isVideoSelection(s.selection));
+      if (photos.length !== cur.length) toast.info("Fotos e vídeo pronto não se misturam; o vídeo foi removido da seleção.");
+      if (photos.length >= MAX_IMAGES) {
+        toast.error(`Você pode escolher até ${MAX_IMAGES} fotos.`);
+        return cur;
+      }
+      return [...photos, newSlot(sel)];
+    });
+  }, []);
 
   const items: CampaignImageItem[] = useMemo(
     () =>
       slots.map((s) => {
         const key = selectionKey(s.selection);
-        if (s.selection.origin === "marketing") {
-          return {
-            key,
-            origin: "marketing",
-            media_id: s.selection.id,
-            storagePath: s.selection.storagePath,
-            previewUrl: s.previewUrl,
-            loadingPreview: s.loading,
-            focal_point: s.focal,
-          };
-        }
-        return {
-          key,
-          origin: "product",
-          product_id: s.selection.productId,
-          image_path: s.selection.imagePath,
-          previewUrl: s.previewUrl,
-          loadingPreview: s.loading,
-          focal_point: s.focal,
-        };
+        return s.selection.origin === "marketing"
+          ? { key, origin: "marketing", media_id: s.selection.id, storagePath: s.selection.storagePath, previewUrl: s.previewUrl, loadingPreview: s.loading, focal_point: s.focal }
+          : { key, origin: "product", product_id: s.selection.productId, image_path: s.selection.imagePath, previewUrl: s.previewUrl, loadingPreview: s.loading, focal_point: s.focal };
       }),
     [slots],
   );
-
-  const toggleSelection = useCallback((sel: MediaSelection) => {
-    setSlots((cur) => {
-      const idx = cur.findIndex((s) => sameSelection(s.selection, sel));
-      if (idx >= 0) return cur.filter((_, i) => i !== idx);
-      if (cur.length >= MAX_IMAGES) {
-        toast.error(`Você pode adicionar até ${MAX_IMAGES} imagens por campanha.`);
-        return cur;
-      }
-      return [...cur, { selection: sel, focal: null, previewUrl: null, loading: false, failed: false }];
-    });
-  }, []);
 
   const reorder = useCallback((next: CampaignImageItem[]) => {
     setSlots((cur) => {
@@ -206,12 +192,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       return next.map((n) => byKey.get(n.key)!).filter(Boolean);
     });
   }, []);
-
-  const removeByKey = useCallback(
-    (key: string) => setSlots((cur) => cur.filter((s) => selectionKey(s.selection) !== key)),
-    [],
-  );
-
+  const removeByKey = useCallback((key: string) => setSlots((cur) => cur.filter((s) => selectionKey(s.selection) !== key)), []);
   const makePrimary = useCallback((key: string) => {
     setSlots((cur) => {
       const idx = cur.findIndex((s) => selectionKey(s.selection) === key);
@@ -222,72 +203,38 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       return next;
     });
   }, []);
-
   const saveFocal = useCallback((key: string, focal: FocalPointInput | null) => {
-    setSlots((cur) =>
-      cur.map((s) => (selectionKey(s.selection) === key ? { ...s, focal } : s)),
-    );
+    setSlots((cur) => cur.map((s) => (selectionKey(s.selection) === key ? { ...s, focal } : s)));
     setEditingKey(null);
   }, []);
+  const editingSlot = useMemo(() => (editingKey ? slots.find((s) => selectionKey(s.selection) === editingKey) ?? null : null), [editingKey, slots]);
 
-  const editingSlot = useMemo(
-    () => (editingKey ? slots.find((s) => selectionKey(s.selection) === editingKey) ?? null : null),
-    [editingKey, slots],
-  );
-
-  const primarySlot = slots[0] ?? null;
-  const baseReady =
-    slots.length > 0 && !!audio && !generating && slots.every((s) => !!s.previewUrl);
-  const simpleReady =
-    mediaMode !== "generated_video" && slots.length === 1 && !generating && !!slots[0]?.previewUrl;
-  const canGenerate = mediaMode === "generated_video" ? baseReady : simpleReady;
-  const isSimpleMode = mediaMode !== "generated_video";
-  const isManual = !isSimpleMode && mode === "manual";
-  const assetsLabel = isSimpleMode ? "Mídia" : "Mídia e música";
-  const assetsHint =
+  const previewsReady = slots.length > 0 && slots.every((s) => !!s.previewUrl);
+  const videoReady = previewsReady && !!audio;
+  const canContinue = step === 1 ? slots.length > 0 : isSimpleMode ? previewsReady : videoReady;
+  const blockedHint =
     slots.length === 0
-      ? mediaMode === "uploaded_video"
-        ? "Selecione 1 vídeo do Acervo"
-        : mediaMode === "photo"
-          ? "Selecione 1 foto do Acervo"
-          : "Selecione ao menos 1 imagem"
-      : isSimpleMode
-        ? "1 mídia selecionada"
-        : !audio
-          ? "Selecione um áudio"
-          : `${slots.length} imagem(ns) · ${duration}s`;
+      ? "Escolha ao menos uma foto ou um vídeo"
+      : !previewsReady
+        ? "Carregando a mídia escolhida…"
+        : !isSimpleMode && !audio
+          ? "Escolha uma música para o vídeo"
+          : null;
 
-  function changeMediaMode(next: typeof mediaMode) {
-    if (next === mediaMode) return;
-    // Cada modo aceita um tipo de mídia; a seleção anterior não se aplica.
-    setSlots([]);
-    setMediaMode(next);
-    setMode("ai");
-    setAiFailure(null);
-  }
-
-  /** Imagens no formato aceito pelo backend (compartilhado IA + manual). */
   const buildImages = useCallback(
     (): CampaignImageInput[] =>
       slots.map((s) =>
         s.selection.origin === "marketing"
           ? { origin: "marketing", media_id: s.selection.id, focal_point: s.focal ?? null }
-          : {
-              origin: "product",
-              product_id: s.selection.productId,
-              image_path: s.selection.imagePath,
-              focal_point: s.focal ?? null,
-            },
+          : { origin: "product", product_id: s.selection.productId, image_path: s.selection.imagePath, focal_point: s.focal ?? null },
       ),
     [slots],
   );
 
-  /** Valida áudio/imagens antes de qualquer chamada (IA ou manual). */
-  function assertReady(): boolean {
+  function assertVideoReady(): boolean {
     if (!audio || slots.length === 0) return false;
-    const audioDur = Number(audio.duration_seconds ?? 0);
-    if (audioStart + duration > audioDur + 0.001) {
-      toast.error("O trecho do áudio excede sua duração total.");
+    if (audioStart + duration > Number(audio.duration_seconds ?? 0) + 0.001) {
+      toast.error("O trecho da música passa do fim dela. Diminua o início ou a duração.");
       return false;
     }
     return true;
@@ -300,10 +247,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   }
 
   async function generateSimple() {
-    if (!simpleReady || !primarySlot || primarySlot.selection.origin !== "marketing") {
-      toast.error("Selecione uma única mídia do Acervo para continuar.");
-      return;
-    }
+    if (!primarySlot || primarySlot.selection.origin !== "marketing") return;
     setGenerating(true);
     try {
       const res = await apiGenerateSimpleMarketingPost({
@@ -315,17 +259,17 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         audience: audience.trim() || null,
         extra_instructions: extra.trim() || null,
       });
-      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
-      toast.success("Legenda gerada. Revise antes de aprovar ou agendar.");
-      onGenerated?.(contentsRet);
+      toast.success("Legenda criada. Revise antes de aprovar.");
+      onGenerated?.((res.contents ?? []) as MarketingContentRow[]);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao gerar conteúdo.");
+      toast.error(e instanceof Error ? e.message : "Não foi possível criar a legenda.");
     } finally {
       setGenerating(false);
     }
   }
+
   async function generate() {
-    if (!assertReady() || !audio) return;
+    if (!assertVideoReady() || !audio) return;
     setGenerating(true);
     setAiFailure(null);
     try {
@@ -340,12 +284,10 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         extra_instructions: extra.trim() || null,
         formats: aiFormats,
       });
-      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
-      // Approval-gate: NÃO iniciamos o tracking do render aqui — o job
-      // ainda não foi enfileirado. Abrimos a tela de revisão.
-      openReview(res.campaign_id, contentsRet, "Textos sugeridos. Revise antes de gerar o vídeo.");
+      // Approval-gate: o render só começa depois da revisão.
+      openReview(res.campaign_id, (res.contents ?? []) as MarketingContentRow[], "Textos sugeridos. Revise antes de gerar o vídeo.");
     } catch (e) {
-      // Nunca bloquear: classificamos a falha e oferecemos o modo manual.
+      // Nunca bloquear: classificamos a falha e oferecemos escrever à mão.
       setAiFailure(classifyAiFailure(e));
     } finally {
       setGenerating(false);
@@ -353,7 +295,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   }
 
   async function generateManual(payload: ManualSubmitPayload) {
-    if (!assertReady() || !audio) return;
+    if (!assertVideoReady() || !audio) return;
     setGenerating(true);
     try {
       const res = await apiGenerateManualCampaign({
@@ -367,15 +309,13 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         theme: payload.theme,
         template: payload.template,
       });
-      const contentsRet = (res.contents ?? []) as MarketingContentRow[];
-      openReview(res.campaign_id, contentsRet, "Campanha criada. Revise e gere o vídeo.");
+      openReview(res.campaign_id, (res.contents ?? []) as MarketingContentRow[], "Publicação criada. Revise e gere o vídeo.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao criar campanha manual.");
+      toast.error(e instanceof Error ? e.message : "Não foi possível criar a publicação.");
     } finally {
       setGenerating(false);
     }
   }
-
 
   async function handleRetry(role: "feed" | "story") {
     if (!campaignId) return;
@@ -387,232 +327,215 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     }
   }
 
+  const inProgress = !!pendingReview || !!campaignId;
+  const kindLabel = mediaMode === "photo" ? "Foto" : mediaMode === "uploaded_video" ? "Vídeo pronto" : "Vídeo com música";
+  const effectivePreviewFormat = aiFormats === "story" ? "story" : aiFormats === "feed" ? "feed" : previewFormat;
+
+  if (inProgress) {
+    return (
+      <div className="space-y-4">
+        {pendingReview && !campaignId && (
+          <CampaignVideoEditor
+            campaignId={pendingReview.campaignId}
+            contents={pendingReview.contents}
+            previewImageUrl={primarySlot?.previewUrl ?? null}
+            focalPoint={primarySlot?.focal ?? null}
+            onContentsUpdated={(fresh: MarketingContentRow[]) => setPendingReview((cur) => (cur ? { ...cur, contents: fresh } : cur))}
+            onApproved={() => {
+              const id = pendingReview.campaignId;
+              setPendingReview(null);
+              setCampaignId(id);
+              trackCampaign(id);
+            }}
+          />
+        )}
+        {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {/* Modo de mídia: mídia existente ou pipeline de vídeo gerado */}
-      {!pendingReview && !campaignId && (
-        <div className="rounded-lg border bg-card p-4 space-y-3">
-          <div className="text-sm font-semibold mb-2">O que você quer criar?</div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {[
-              ["photo", "Foto", "Use uma foto do acervo e gere a legenda."],
-              ["uploaded_video", "Vídeo pronto", "Use um vídeo do acervo e gere a legenda."],
-              ["generated_video", "Criar vídeo", "Monte um vídeo com suas fotos e uma música."],
-            ].map(([value, label, description]) => (
-              <button key={value} type="button" onClick={() => changeMediaMode(value as typeof mediaMode)} className={cn("rounded-md border p-3 text-left text-sm transition-colors", mediaMode === value ? "border-primary bg-primary/10" : "hover:bg-muted")}>
-                <span className="block font-medium">{label}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
-              </button>
-            ))}
-          </div>
-          {mediaMode === "generated_video" && (
-            <div className="border-t pt-3">
-              <div className="text-xs font-medium text-muted-foreground mb-2">Como criar o vídeo?</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button type="button" onClick={() => setMode("ai")} className={cn("rounded-md border p-3 text-left text-sm", mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted")}>
-                  <span className="flex items-center gap-2 font-medium"><Sparkles className="h-4 w-4" /> Gerar com IA</span>
-                  <span className="block text-xs text-muted-foreground">Sugere título, legenda e CTA para revisar.</span>
-                </button>
-                <button type="button" onClick={() => setMode("manual")} className={cn("rounded-md border p-3 text-left text-sm", mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted")}>
-                  <span className="flex items-center gap-2 font-medium"><PencilRuler className="h-4 w-4" /> Criar manualmente</span>
-                  <span className="block text-xs text-muted-foreground">Escreva os textos sem consumir créditos.</span>
-                </button>
+      <div className="flex gap-1.5" role="progressbar" aria-label="Etapas da criação" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step}>
+        {[1, 2, 3].map((n) => (
+          <span key={n} className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-primary" : "bg-border"}`} />
+        ))}
+      </div>
+
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4 rounded-2xl border bg-card p-4">
+          {step === 1 && (
+            <>
+              <div>
+                <h3 className="text-lg font-semibold">1. Escolha fotos ou vídeos</h3>
+                <p className="text-sm text-muted-foreground">Toque para selecionar. Várias fotos viram um vídeo com música.</p>
               </div>
-            </div>
+              <MarketingLibrary companyId={companyId} selectable selected={selections} onToggleSelect={toggleSelection} />
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <div>
+                <h3 className="text-lg font-semibold">2. Legenda e formato</h3>
+                <p className="text-sm text-muted-foreground">{kindLabel} · {slots.length === 1 ? "1 mídia" : `${slots.length} fotos`}</p>
+              </div>
+
+              {singleLibraryPhoto && (
+                <ChipRow label="Tipo de publicação">
+                  <Chip active={!asVideo} onClick={() => setAsVideo(false)}>Publicar a foto</Chip>
+                  <Chip active={asVideo} onClick={() => setAsVideo(true)}>Transformar em vídeo</Chip>
+                </ChipRow>
+              )}
+
+              <div>
+                <Label className="mb-2 block">Onde vai aparecer</Label>
+                <ChipRow label="Formato">
+                  {FORMATS.map(([id, label]) => (
+                    <Chip key={id} active={aiFormats === id} onClick={() => setAiFormats(id)}>{label}</Chip>
+                  ))}
+                </ChipRow>
+              </div>
+
+              {!isSimpleMode && (
+                <div className="space-y-3 rounded-xl border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setAudioOpen(true)}>
+                      <Music2 className="mr-2 h-4 w-4" />
+                      {audio ? audio.name : "Escolher música"}
+                    </Button>
+                    {audio && (
+                      <>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          Início (s)
+                          <Input type="number" min={0} max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))} value={audioStart} onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))} className="h-8 w-20" />
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          Duração
+                          <select className="h-8 rounded-md border bg-background px-2 text-sm" value={duration} onChange={(e) => setDuration(Number(e.target.value) as Duration)}>
+                            {[8, 10, 15, 30, 60].map((d) => <option key={d} value={d}>{d}s</option>)}
+                          </select>
+                        </label>
+                      </>
+                    )}
+                  </div>
+                  <div>
+                    <div className="mb-1 flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+                      <span>Fotos do vídeo ({slots.length}/{MAX_IMAGES})</span>
+                      <span>Arraste para reordenar · a 1ª é a capa</span>
+                    </div>
+                    <CampaignImageList items={items} onReorder={reorder} onRemove={removeByKey} onMakePrimary={makePrimary} onEditFocal={(key) => setEditingKey(key)} />
+                  </div>
+                  <ChipRow label="Textos do vídeo">
+                    <Chip active={mode === "ai"} onClick={() => setMode("ai")}><Sparkles className="h-3.5 w-3.5" /> Textos com IA</Chip>
+                    <Chip active={mode === "manual"} onClick={() => setMode("manual")}>Escrever eu mesmo</Chip>
+                  </ChipRow>
+                </div>
+              )}
+
+              {!isManual && (
+                <>
+                  <div>
+                    <Label className="mb-2 block">Tom</Label>
+                    <ChipRow label="Tom">
+                      {TONES.map(([id, label]) => (
+                        <Chip key={id} active={tone === id} onClick={() => setTone(id)}>{label}</Chip>
+                      ))}
+                    </ChipRow>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label>Público (opcional)</Label>
+                      <Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Ex.: moradores da região, clientes recorrentes" />
+                    </div>
+                    <div>
+                      <Label>Promoção (opcional)</Label>
+                      <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={promotionId} onChange={(e) => setPromotionId(e.target.value)}>
+                        <option value="">Sem promoção</option>
+                        {promotions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>O que destacar (opcional)</Label>
+                      <Textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={2} placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado" />
+                    </div>
+                  </div>
+                </>
+              )}
+              {isManual && (
+                <div>
+                  <Label>Promoção (opcional)</Label>
+                  <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={promotionId} onChange={(e) => setPromotionId(e.target.value)}>
+                    <option value="">Sem promoção</option>
+                    {promotions.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <div>
+                <h3 className="text-lg font-semibold">3. Conferir e criar</h3>
+                <p className="text-sm text-muted-foreground">Depois de criar, você revisa e aprova em Publicar. Nada é publicado sem a sua aprovação.</p>
+              </div>
+              {aiFailure && mode === "ai" && (
+                <AiUnavailableNotice
+                  kind={aiFailure}
+                  retrying={generating}
+                  onRetry={() => void generate()}
+                  onContinueManually={() => {
+                    setAiFailure(null);
+                    setMode("manual");
+                  }}
+                />
+              )}
+              {isManual ? (
+                <CampaignManualForm submitting={generating} disabled={!videoReady} disabledReason="Escolha as fotos e uma música para continuar." onSubmit={(payload) => void generateManual(payload)} />
+              ) : (
+                <dl className="grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-2" data-testid="create-summary">
+                  <SummaryRow label="Tipo" value={kindLabel} />
+                  <SummaryRow label="Formato" value={FORMATS.find(([id]) => id === aiFormats)?.[1] ?? ""} />
+                  <SummaryRow label="Mídia" value={slots.length === 1 ? "1 selecionada" : `${slots.length} fotos`} />
+                  <SummaryRow label="Tom" value={TONES.find(([id]) => id === tone)?.[1] ?? ""} />
+                  <SummaryRow label="Promoção" value={promotions.find((p) => p.id === promotionId)?.title ?? "Sem promoção"} />
+                  {!isSimpleMode && <SummaryRow label="Música" value={audio ? `${audio.name} · ${duration}s a partir de ${audioStart}s` : "nenhuma"} />}
+                </dl>
+              )}
+            </>
           )}
         </div>
-      )}
 
-      {/* Fallback automático quando a IA falha */}
-      {aiFailure && mode === "ai" && !pendingReview && (
-        <AiUnavailableNotice
-          kind={aiFailure}
-          retrying={generating}
-          onRetry={() => void generate()}
-          onContinueManually={() => {
-            setAiFailure(null);
-            setMode("manual");
-          }}
-        />
-      )}
-
-      <div className="flex items-center gap-2 overflow-x-auto pb-1" aria-label="Etapas da criação">
-        {[['brief', 'Contexto'], ['assets', assetsLabel], ['ready', isManual ? 'Textos e criar' : 'Revisar e gerar']].map(([id, label], index) => <button key={id} type="button" onClick={() => setStep(id as typeof step)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs ${step === id ? "border-primary bg-primary/10 font-medium text-primary" : "text-muted-foreground"}`}>{index + 1}. {label}</button>)}
-      </div>
-
-      {/* Contexto */}
-      <div hidden={step !== "brief"} className="rounded-lg border bg-card p-4 space-y-3">
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <Label>Promoção (opcional)</Label>
-            <select
-              className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-              value={promotionId}
-              onChange={(e) => setPromotionId(e.target.value)}
-            >
-              <option value="">— Sem promoção específica —</option>
-              {promotions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          {!isManual && (
-          <>
-          <div>
-            <Label>Tom da comunicação</Label>
-            <select
-              className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-              value={tone}
-              onChange={(e) => setTone(e.target.value as typeof tone)}
-            >
-              <option value="amigável">Amigável</option>
-              <option value="profissional">Profissional</option>
-              <option value="descontraído">Descontraído</option>
-              <option value="urgente">Urgente</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <Label>Público-alvo</Label>
-            <Input
-              value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-              placeholder="Ex.: moradores da região, clientes recorrentes"
-            />
-          </div>
-          <div className="md:col-span-2">
-            {/* Mesmo componente do modo manual — escolha visível e editável
-                ANTES de "Gerar campanha". */}
-            <CampaignFormatsField
-              id="ai-campaign-formats"
-              value={aiFormats}
-              onChange={setAiFormats}
-              disabled={generating}
-              hint="A IA gera e o render/publicação usam somente os formatos escolhidos."
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label>Instruções extras (opcional)</Label>
-            <Textarea
-              value={extra}
-              onChange={(e) => setExtra(e.target.value)}
-              rows={2}
-              placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado"
-            />
-          </div>
-          </>
+        <aside className="space-y-2 lg:sticky lg:top-4">
+          <p className="text-center text-xs text-muted-foreground">Prévia real</p>
+          <PhonePreview format={effectivePreviewFormat} account={kindLabel} caption={mediaMode === "generated_video" && isManual ? null : "A legenda será criada no último passo e você poderá editar antes de publicar."}>
+            <PreviewMedia slot={primarySlot} mediaMode={mediaMode} format={effectivePreviewFormat} />
+          </PhonePreview>
+          {aiFormats === "feed_story" && (
+            <ChipRow label="Formato da prévia" className="justify-center">
+              <Chip active={previewFormat === "feed"} onClick={() => setPreviewFormat("feed")}>Feed</Chip>
+              <Chip active={previewFormat === "story"} onClick={() => setPreviewFormat("story")}>Story</Chip>
+            </ChipRow>
           )}
-        </div>
+        </aside>
       </div>
 
-      {/* Imagens da campanha — só no pipeline de vídeo gerado */}
-      <div hidden={step !== "assets" || isSimpleMode} className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
-          <div className="text-sm font-semibold">
-            Imagens da campanha ({slots.length}/{MAX_IMAGES})
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Arraste para reordenar · a 1ª é a principal
-          </div>
-        </div>
-        <CampaignImageList
-          items={items}
-          onReorder={reorder}
-          onRemove={removeByKey}
-          onMakePrimary={makePrimary}
-          onEditFocal={(key) => setEditingKey(key)}
-        />
-        {primarySlot && (
-          <div className="pt-2">
-            <div className="text-xs font-medium text-muted-foreground mb-1">
-              Prévia do enquadramento (imagem principal)
+      <Dialog open={audioOpen} onOpenChange={setAudioOpen}>
+        {audioOpen && (
+          <DialogContent mobileFullscreen className="sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Escolher música</DialogTitle>
+              <DialogDescription>Ouça e selecione um áudio já autorizado no acervo da empresa.</DialogDescription>
+            </DialogHeader>
+            <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
+            <div className="flex justify-end">
+              <Button type="button" onClick={() => setAudioOpen(false)}>Concluir seleção</Button>
             </div>
-            <CampaignFramingPreview
-              imageUrl={primarySlot.previewUrl}
-              focalPoint={primarySlot.focal}
-              compact
-            />
-          </div>
+          </DialogContent>
         )}
-      </div>
+      </Dialog>
 
-      {/* Ativos: o acervo completo fica em um seletor compacto */}
-      <div hidden={step !== "assets"} className="rounded-lg border bg-card p-4 space-y-3">
-        <div><div className="text-sm font-semibold">{assetsLabel}</div><p className="text-xs text-muted-foreground">Escolha os ativos quando estiver pronto. Eles continuam disponíveis no Acervo.</p></div>
-        <MarketingAssetPicker companyId={companyId} selectedMedia={selectedMediaSelections} onMediaChange={replaceSelections} selectedAudio={audio} onAudioChange={setAudio} showAudio={!isSimpleMode} mediaKind={mediaMode === "uploaded_video" ? "video" : "image"} marketingOnly={isSimpleMode} maxItems={isSimpleMode ? 1 : MAX_IMAGES} />
-        {isSimpleMode && primarySlot && (
-          <div className="mx-auto w-full max-w-[220px] overflow-hidden rounded-md border bg-muted">
-            {!primarySlot.previewUrl ? (
-              <div className="flex aspect-square items-center justify-center text-xs text-muted-foreground">
-                {primarySlot.failed ? "Não foi possível carregar a prévia." : "Carregando prévia…"}
-              </div>
-            ) : mediaMode === "uploaded_video" ? (
-              <video src={primarySlot.previewUrl} className="w-full" controls muted preload="metadata" />
-            ) : (
-              <img src={primarySlot.previewUrl} alt="Mídia selecionada" className="w-full" loading="lazy" />
-            )}
-          </div>
-        )}
-        {mediaMode === "generated_video" && audio && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div><Label>Início no áudio (segundos)</Label><Input type="number" min={0} max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))} value={audioStart} onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))} /></div>
-            <div><Label>Duração do vídeo</Label><select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={duration} onChange={(e) => setDuration(Number(e.target.value) as Duration)}>{[8, 10, 15, 30, 60].map((d) => <option key={d} value={d}>{d}s</option>)}</select></div>
-          </div>
-        )}
-      </div>
-      {/* Resumo antes de gerar (modos com IA) */}
-      {step === "ready" && !isManual && !pendingReview && !campaignId && (
-        <div className="rounded-lg border bg-card p-4 space-y-2 text-sm">
-          <div className="font-semibold">Confira antes de gerar</div>
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-            <div><dt className="inline text-muted-foreground">Tipo: </dt><dd className="inline">{mediaMode === "photo" ? "Foto" : mediaMode === "uploaded_video" ? "Vídeo pronto" : "Vídeo criado com IA"}</dd></div>
-            <div><dt className="inline text-muted-foreground">Formatos: </dt><dd className="inline">{aiFormats === "feed" ? "Feed" : aiFormats === "story" ? "Story" : "Feed + Story"}</dd></div>
-            <div><dt className="inline text-muted-foreground">Promoção: </dt><dd className="inline">{promotions.find((p) => p.id === promotionId)?.title ?? "Sem promoção específica"}</dd></div>
-            <div><dt className="inline text-muted-foreground">Tom: </dt><dd className="inline">{tone}</dd></div>
-            <div><dt className="inline text-muted-foreground">Mídia: </dt><dd className="inline">{isSimpleMode ? (slots.length ? "1 selecionada" : "nenhuma") : `${slots.length} imagem(ns)`}</dd></div>
-            {!isSimpleMode && <div><dt className="inline text-muted-foreground">Música: </dt><dd className="inline">{audio ? `${audio.name} · ${duration}s a partir de ${audioStart}s` : "nenhuma"}</dd></div>}
-          </dl>
-          {!canGenerate && <p className="text-xs text-destructive">{assetsHint}. Volte à etapa "{assetsLabel}".</p>}
-        </div>
-      )}
-
-      {/* Modo manual — formulário completo, sem IA */}
-      {isManual && step === "ready" && !pendingReview && !campaignId && (
-        <CampaignManualForm
-          submitting={generating}
-          disabled={!baseReady}
-          disabledReason="Selecione ao menos 1 imagem e um áudio para continuar."
-          onSubmit={(payload) => void generateManual(payload)}
-        />
-      )}
-
-      {/* Revisão de texto (approval-gate) — sem job de render ainda */}
-      {pendingReview && !campaignId && (
-        <CampaignVideoEditor
-          campaignId={pendingReview.campaignId}
-          contents={pendingReview.contents}
-          previewImageUrl={primarySlot?.previewUrl ?? null}
-          focalPoint={primarySlot?.focal ?? null}
-          onContentsUpdated={(fresh: MarketingContentRow[]) =>
-            setPendingReview((cur) =>
-              cur ? { ...cur, contents: fresh } : cur,
-            )
-          }
-          onApproved={() => {
-            const id = pendingReview.campaignId;
-            setPendingReview(null);
-            setCampaignId(id);
-            trackCampaign(id);
-          }}
-        />
-      )}
-
-      {/* Progresso da renderização (global) */}
-      {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
-
-      {/* Editor de focal point */}
       <FocalPointEditor
         open={!!editingSlot}
         imageUrl={editingSlot?.previewUrl ?? null}
@@ -621,23 +544,53 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
       />
 
-      {/* Sticky action — no modo manual, a última etapa usa o botão do formulário */}
-      {!(isManual && step === "ready") && !pendingReview && !campaignId && (
+      {/* No modo manual, o último passo usa o botão do próprio formulário. */}
+      {!(isManual && step === 3) || step < 3 ? (
         <CampaignStickyActionBar>
-          <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
-            {assetsHint}
+          <div className="mr-auto hidden min-w-0 truncate text-xs text-muted-foreground md:block">
+            {step === 1 ? (slots.length === 0 ? "Escolha ao menos uma foto ou um vídeo" : slots.length === 1 ? "1 mídia selecionada" : `${slots.length} fotos selecionadas`) : blockedHint ?? kindLabel}
           </div>
-          <Button onClick={() => { if (step === "brief") setStep("assets"); else if (step === "assets") { if (canGenerate) setStep("ready"); } else void (isSimpleMode ? generateSimple() : generate()); }} disabled={generating || (step !== "brief" && !canGenerate)} size="lg" className="w-full md:w-auto">
-            {generating ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : step === "ready" ? (
-              <Sparkles className="h-4 w-4 mr-1" />
-            ) : null}
-            {step === "ready" ? "Gerar conteúdo" : "Continuar"}
-          </Button>
+          {step > 1 && (
+            <Button variant="outline" size="lg" className="rounded-full" onClick={() => setStep((step - 1) as Step)} disabled={generating}>
+              Voltar
+            </Button>
+          )}
+          {step < 3 ? (
+            <Button size="lg" className="flex-1 rounded-full md:flex-none" onClick={() => setStep((step + 1) as Step)} disabled={!canContinue}>
+              Continuar
+            </Button>
+          ) : !isManual ? (
+            <Button size="lg" className="flex-1 rounded-full md:flex-none" onClick={() => void (isSimpleMode ? generateSimple() : generate())} disabled={generating || !canContinue}>
+              {generating ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+              {isSimpleMode ? "Criar legenda" : "Criar textos do vídeo"}
+            </Button>
+          ) : null}
         </CampaignStickyActionBar>
-      )}
-
+      ) : null}
     </div>
   );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="inline text-muted-foreground">{label}: </dt>
+      <dd className="inline">{value}</dd>
+    </div>
+  );
+}
+
+/** Mídia real na moldura do celular: foto, vídeo pronto ou o corte do vídeo a ser criado. */
+function PreviewMedia({ slot, mediaMode, format }: { slot: Slot | null; mediaMode: "photo" | "uploaded_video" | "generated_video"; format: "feed" | "story" }) {
+  if (!slot) return <div className="absolute inset-0 grid place-items-center px-4 text-center text-xs text-white/50">Escolha uma mídia</div>;
+  if (!slot.previewUrl) {
+    return <div className="absolute inset-0 grid place-items-center text-xs text-white/50">{slot.failed ? "Não foi possível carregar." : "Carregando…"}</div>;
+  }
+  if (mediaMode === "uploaded_video") {
+    return <video src={`${slot.previewUrl}#t=0.1`} className="absolute inset-0 h-full w-full object-cover" muted playsInline controls preload="metadata" />;
+  }
+  if (mediaMode === "generated_video") {
+    return <FocalImage src={slot.previewUrl} alt="Prévia do vídeo" frame={format === "story" ? STORY_FRAME : FEED_FRAME} focalPoint={slot.focal} />;
+  }
+  return <img src={slot.previewUrl} alt="Prévia da publicação" className="absolute inset-0 h-full w-full object-cover" />;
 }

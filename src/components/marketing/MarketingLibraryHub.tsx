@@ -2,20 +2,40 @@ import { useState } from "react";
 import { AudioLibrary } from "./AudioLibrary";
 import { MarketingLibrary } from "./MarketingLibrary";
 import { VideoLibraryGrid } from "./video-render/VideoLibraryGrid";
+import { Chip, ChipRow } from "./ui/MarketingUi";
+import type { MediaSelection } from "@/lib/marketing/media-selection";
 
-interface Props { companyId: string; }
-type Kind = "media" | "audio" | "generated";
+interface Props {
+  companyId: string;
+  /** Começa uma publicação com a mídia tocada. */
+  onUseMedia?: (selection: MediaSelection) => void;
+}
+type Kind = "photos" | "videos" | "audio" | "generated";
 
-export function MarketingLibraryHub({ companyId }: Props) {
-  const [kind, setKind] = useState<Kind>("media");
-  const tabs: Array<[Kind, string]> = [["media", "Imagens e vídeos"], ["audio", "Áudios"], ["generated", "Vídeos gerados"]];
+const TABS: Array<[Kind, string]> = [
+  ["photos", "Fotos"],
+  ["videos", "Vídeos"],
+  ["audio", "Músicas"],
+  ["generated", "Vídeos criados"],
+];
+
+export function MarketingLibraryHub({ companyId, onUseMedia }: Props) {
+  const [kind, setKind] = useState<Kind>("photos");
   return (
     <div className="space-y-4">
-      <div><h2 className="text-lg font-semibold">Acervo</h2><p className="text-sm text-muted-foreground">Todos os ativos da empresa em um só lugar. O mesmo acervo é usado ao criar campanhas.</p></div>
-      <div className="flex gap-1 overflow-x-auto border-b pb-1" role="tablist" aria-label="Acervo">
-        {tabs.map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={kind === id} onClick={() => setKind(id)} className={`shrink-0 rounded-t-md px-3 py-2 text-sm ${kind === id ? "border-b-2 border-primary font-medium text-primary" : "text-muted-foreground hover:text-foreground"}`}>{label}</button>)}
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Acervo</h2>
+        <p className="text-sm text-muted-foreground">Todas as mídias da empresa em um só lugar.</p>
       </div>
-      {kind === "media" && <MarketingLibrary companyId={companyId} />}
+      <ChipRow label="Tipo de mídia">
+        {TABS.map(([id, label]) => (
+          <Chip key={id} active={kind === id} onClick={() => setKind(id)}>
+            {label}
+          </Chip>
+        ))}
+      </ChipRow>
+      {kind === "photos" && <MarketingLibrary key="photos" companyId={companyId} mediaKind="image" onUse={onUseMedia} />}
+      {kind === "videos" && <MarketingLibrary key="videos" companyId={companyId} mediaKind="video" marketingOnly onUse={onUseMedia} />}
       {kind === "audio" && <AudioLibrary companyId={companyId} />}
       {kind === "generated" && <VideoLibraryGrid companyId={companyId} />}
     </div>

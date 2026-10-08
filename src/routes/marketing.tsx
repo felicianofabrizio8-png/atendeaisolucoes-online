@@ -20,7 +20,7 @@ function MarketingPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4">
+    <div className="p-4 md:p-6 w-full min-w-0 max-w-6xl mx-auto space-y-4">
       <header className="flex items-center gap-2">
         <Sparkles className="h-5 w-5 text-primary" />
         <div>
