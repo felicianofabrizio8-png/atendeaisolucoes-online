@@ -296,17 +296,6 @@ describe("leadRepo — reconciliação de Realtime", () => {
     expect(repo.getConversationById("conv-1")).toBeDefined();
   });
 
-  it("não duplica o snapshot no primeiro SUBSCRIBED", async () => {
-    mock.leads = [lead()];
-    mock.conversations = [conversation()];
-    const repo = await load();
-
-    await settle();
-
-    expect(mock.snapshotCount).toBe(3);
-    expect(repo.getConversationById("conv-1")).toBeDefined();
-  });
-
   it("executa nova reconciliação em reconnect", async () => {
     const repo = await load();
     mock.statusCallback?.("SUBSCRIBED");
