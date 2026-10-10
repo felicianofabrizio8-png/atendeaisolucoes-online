@@ -2,7 +2,7 @@
 // Fase 2 aditiva. Módulo isolado; não altera Marketing IA/Learning Loop/etc.
 
 export type PublicationChannel = "instagram" | "facebook";
-export type PublicationFormat = "feed" | "reel" | "story";
+export type PublicationFormat = "feed" | "reel" | "story" | "carousel";
 export type PublicationStatus =
   | "queued"
   | "publishing"

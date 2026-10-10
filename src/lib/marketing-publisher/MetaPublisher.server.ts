@@ -6,6 +6,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isFailure, isSimulation } from "@/lib/outbound/MetaOutboundContract";
 import type { PublicationChannel, PublicationFormat } from "./types";
+import { publishFacebookCarousel, publishInstagramCarousel, type CarouselOutcome, type CarouselPending, type CarouselPost } from "./CarouselPublisher.server";
+import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "./carousel-flag";
 
 const GRAPH = "https://graph.facebook.com/v25.0";
 
@@ -97,6 +99,12 @@ export class MetaPublisher {
       const content = await this.loadContent(input.contentId, input.companyId);
       if (!content) {
         return this.fail("content_not_found", "Conteúdo não encontrado.", false);
+      }
+
+      // Carrossel: fluxo próprio (várias imagens), desligado por padrão.
+      if (input.format === "carousel") {
+        if (!isCarouselPublishEnabled()) return this.fail("carousel_publish_disabled", CAROUSEL_PUBLISH_DISABLED_MESSAGE, false);
+        return await this.publishCarousel(input, content, this.buildCaption(content));
       }
 
       const media = await this.resolvePrimaryMedia(content, input.format);
@@ -800,6 +808,62 @@ export class MetaPublisher {
   // ==========================================================================
   // Loaders (service_role)
   // ==========================================================================
+
+  /**
+   * Links assinados das imagens do carrossel, NA ORDEM de `media_ids` (a ordem
+   * das páginas). Qualquer imagem ausente, inativa, de outra empresa ou que
+   * não seja imagem invalida o conjunto: carrossel não é publicado pela metade.
+   */
+  private async resolveCarouselImages(content: ContentPayload): Promise<string[] | null> {
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any; storage: { from: (b: string) => any } };
+    if (content.media_ids.length === 0) return null;
+    const r = await admin
+      .from("marketing_media")
+      .select("id, storage_path, media_type")
+      .in("id", content.media_ids)
+      .eq("company_id", content.companyId)
+      .eq("active", true)
+      .is("deleted_at", null);
+    const rows = (r.data ?? []) as Array<{ id: string; storage_path: string; media_type: string }>;
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const urls: string[] = [];
+    for (const id of content.media_ids) {
+      const row = byId.get(id);
+      // Guard multi-tenant: o arquivo precisa estar na pasta da empresa.
+      if (!row || row.media_type !== "image" || !row.storage_path.startsWith(`${content.companyId}/`)) return null;
+      const signed = await admin.storage.from("marketing-media").createSignedUrl(row.storage_path, 60 * 60);
+      const url = signed?.data?.signedUrl as string | undefined;
+      if (!url) return null;
+      urls.push(url);
+    }
+    return urls;
+  }
+
+  private async publishCarousel(input: PublishInput, content: ContentPayload, caption: string): Promise<PublishOutcome> {
+    const imageUrls = await this.resolveCarouselImages(content);
+    if (!imageUrls) return this.fail("no_media", "O carrossel não tem todas as imagens disponíveis no acervo da empresa.", false);
+    const shared = {
+      companyId: input.companyId,
+      graph: GRAPH,
+      imageUrls,
+      caption,
+      pending: ((input.pendingState as { carousel?: CarouselPending } | null | undefined)?.carousel ?? null) as CarouselPending | null,
+      onPending: input.onPendingUpdate ? (patch: CarouselPending) => input.onPendingUpdate!({ carousel: patch }) : undefined,
+      post: postGraph as unknown as CarouselPost,
+    };
+    let outcome: CarouselOutcome;
+    if (input.channel === "instagram") {
+      const ctx = await this.loadInstagramContext(input.companyId);
+      if (!ctx.ok) return this.fail(ctx.code, ctx.message, false);
+      outcome = await publishInstagramCarousel({ ...shared, accessToken: ctx.pageAccessToken, igUserId: ctx.igUserId });
+    } else {
+      const ctx = await this.loadFacebookContext(input.companyId);
+      if (!ctx.ok) return this.fail(ctx.code, ctx.message, false);
+      outcome = await publishFacebookCarousel({ ...shared, accessToken: ctx.pageAccessToken, pageId: ctx.pageId });
+    }
+    if (!outcome.success) return this.fail(outcome.errorCode, outcome.errorMessage, outcome.retryable);
+    return { success: true, simulated: outcome.simulated, platformPostId: outcome.platformPostId, platformResponse: outcome.platformResponse };
+  }
 
   private async loadContent(id: string, companyId: string): Promise<ContentPayload | null> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };

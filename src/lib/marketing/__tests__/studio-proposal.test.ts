@@ -103,7 +103,7 @@ describe("proposta de carrossel a partir do cadastro", () => {
     for (const page of doc.pages) {
       for (const value of Object.values(page.text)) {
         if (!value || value === "Inclui" || value.startsWith("De R$") || value.startsWith("Válido até")) continue;
-        for (const word of value.split(/[\s,]+/).filter((w) => w.length > 3)) expect(source).toContain(word);
+        for (const word of value.split(/[\s,]+/).filter((w: string) => w.length > 3)) expect(source).toContain(word);
       }
     }
   });

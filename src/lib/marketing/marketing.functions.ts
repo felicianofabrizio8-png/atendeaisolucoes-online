@@ -12,6 +12,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { missingMediaMessage, publishableMediaSource } from "./publishable-media";
+import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "@/lib/marketing-publisher/carousel-flag";
 
 type SB = SupabaseClient<Database>;
 
@@ -619,6 +620,11 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
       throw new Error(
         "Apenas conteúdos aprovados podem ser agendados. Aprove antes de programar.",
       );
+    }
+    // Carrossel: a publicação automática fica desligada até ser liberada
+    // (sem isto o agendamento seria aceito e falharia na hora de publicar).
+    if (content.format === "carousel" && !isCarouselPublishEnabled()) {
+      throw new Error(CAROUSEL_PUBLISH_DISABLED_MESSAGE);
     }
     // IG/FB feed/reel/story exigem mídia publicável — pela mesma regra do
     // publicador: vídeo renderizado da campanha, acervo, fotos de produto.

@@ -4,6 +4,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { PublisherRepository } from "./PublisherRepository.server";
 import type { PublicationChannel, PublicationFormat } from "./types";
+import { isCarouselPublishEnabled } from "./carousel-flag";
 import {
   resolveCampaignFormats,
   roleFromContentFormat,
@@ -65,7 +66,13 @@ export class PublisherPlanner {
     for (const s of rows) {
       const contentOk = s.marketing_contents?.status === "approved";
       const channelOk = SUPPORTED_CHANNELS.has(s.channel);
-      const mappedFormat = FORMAT_MAP[s.marketing_contents?.format ?? ""] ?? null;
+      // Carrossel só entra na fila com a publicação de carrossel ligada.
+      const mappedFormat: PublicationFormat | null =
+        s.marketing_contents?.format === "carousel"
+          ? isCarouselPublishEnabled()
+            ? "carousel"
+            : null
+          : (FORMAT_MAP[s.marketing_contents?.format ?? ""] ?? null);
 
       if (!contentOk || !channelOk || !mappedFormat) {
         // Não materializa. Deixa o schedule como está (Marketing IA/UX
