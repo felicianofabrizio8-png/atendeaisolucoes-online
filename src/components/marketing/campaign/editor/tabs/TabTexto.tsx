@@ -20,9 +20,10 @@ interface Props {
   onHeadline: (v: string) => void;
   onSubheadline: (v: string) => void;
   onCta: (v: string) => void;
-  onRegenerate: () => void;
-  onRestore: () => void;
-  regenerating: boolean;
+  /** Sem estes dois, o painel não oferece sugestão de IA nem restauração. */
+  onRegenerate?: () => void;
+  onRestore?: () => void;
+  regenerating?: boolean;
   disabled?: boolean;
 }
 
@@ -89,6 +90,7 @@ export function TabTexto({
           placeholder="Ex.: Fale conosco"
         />
       </div>
+      {onRegenerate && onRestore && (
       <div className="flex flex-wrap gap-2 pt-2 border-t">
         <Button
           variant="outline"
@@ -108,6 +110,7 @@ export function TabTexto({
           Restaurar original
         </Button>
       </div>
+      )}
     </div>
   );
 }

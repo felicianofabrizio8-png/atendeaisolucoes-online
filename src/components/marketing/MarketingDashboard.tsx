@@ -13,7 +13,7 @@ interface Props {
   onOpenPublish?: (view: PublishView) => void;
 }
 
-const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp" };
+const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp", carousel: "Carrossel" };
 
 export function MarketingDashboard({ companyId, onCreate, onOpenPublish }: Props) {
   const [contents, setContents] = useState<MarketingContentRow[]>([]);

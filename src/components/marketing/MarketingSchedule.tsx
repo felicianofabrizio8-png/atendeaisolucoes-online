@@ -29,7 +29,7 @@ const SCHEDULE_STATUS: Record<string, string> = {
   failed: "Com problema",
   cancelled: "Cancelada",
 };
-const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp" };
+const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp", carousel: "Carrossel" };
 const CHANNEL_LABEL: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp" };
 
 export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {

@@ -25,8 +25,10 @@ import type { ColorRole, SceneDefinition, ScenePurpose } from "@/lib/marketing/v
 import {
   FONTS,
   FONT_IDS,
+  SCENE_FORMATS,
   SCENE_PURPOSES,
   type ImageFraming,
+  type SceneFormat,
   SCENE_LIST,
   TRANSITIONS,
 } from "@/lib/marketing/video-editor/scenes/registry";
@@ -126,6 +128,8 @@ interface TemplatePanelProps {
   headline: string;
   subheadline: string | null;
   cta: string | null;
+  /** Formato das miniaturas. Padrão: 9:16 (vídeo). */
+  format?: SceneFormat;
 }
 
 const GRID_GAP = 6;
@@ -142,14 +146,20 @@ const GRID_SCROLL_CELL = 64;
  * miniatura legível couber (painel baixo, ex.: celular), devolve uma grade
  * confortável e a lista rola.
  */
-export function fitTemplateGrid(width: number, height: number, count: number): { columns: number; cell: number; fits: boolean } {
+export function fitTemplateGrid(
+  width: number,
+  height: number,
+  count: number,
+  /** Altura ÷ largura da miniatura (9:16 = 16/9). */
+  aspect: number = 16 / 9,
+): { columns: number; cell: number; fits: boolean } {
   const cellFor = (columns: number) => Math.min(GRID_MAX_CELL, Math.floor((width - GRID_GAP * (columns - 1)) / columns));
   if (width > 0 && height > 0 && count > 0) {
     for (let columns = 1; columns <= count; columns++) {
       const cell = cellFor(columns);
       if (cell < GRID_MIN_CELL) break;
       const rows = Math.ceil(count / columns);
-      const total = rows * ((cell * 16) / 9 + GRID_LABEL_H) + GRID_GAP * (rows - 1);
+      const total = rows * (cell * aspect + GRID_LABEL_H) + GRID_GAP * (rows - 1);
       if (total <= height) return { columns, cell, fits: true };
     }
   }
@@ -167,6 +177,7 @@ export const TemplatePanel = memo(function TemplatePanel({
   headline,
   subheadline,
   cta,
+  format = "story",
 }: TemplatePanelProps) {
   // Modelos organizados pela finalidade comercial (um modelo pode servir a mais de uma).
   const [category, setCategory] = useState<ScenePurpose | "all">("all");
@@ -188,13 +199,13 @@ export const TemplatePanel = memo(function TemplatePanel({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const grid = fitTemplateGrid(area.width, area.height, scenes.length);
+  const grid = fitTemplateGrid(area.width, area.height, scenes.length, SCENE_FORMATS[format].height / SCENE_FORMATS[format].width);
   const current = SCENE_LIST.find((s) => s.id === value);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="shrink-0 space-y-1.5">
-        <Segmented label="Finalidade do vídeo" options={categories} value={category} onChange={setCategory} scrollOnSmall />
+        <Segmented label={format === "story" ? "Finalidade do vídeo" : "Finalidade"} options={categories} value={category} onChange={setCategory} scrollOnSmall />
         {current && (
           <p className="truncate text-xs text-muted-foreground">
             <b className="text-foreground">{current.label}</b> · {current.description}
@@ -227,10 +238,11 @@ export const TemplatePanel = memo(function TemplatePanel({
                 )}
                 <SceneRenderer
                   compact
+                  format={format}
                   imageUrl={imageUrl}
                   focalPoint={focalPoint}
                   logoUrl={logoUrl}
-                  headline={headline || "Título do vídeo"}
+                  headline={headline || (format === "story" ? "Título do vídeo" : "Seu título aqui")}
                   subheadline={subheadline}
                   cta={cta}
                   layout={{ ...scene.defaultLayout, colors: paletteFor(scene) }}
@@ -272,7 +284,7 @@ export function ColorsPanel({ mode, palette, roles, hasBrand, onMode, onTheme, o
   return (
     <div className="space-y-4">
       <div>
-        <PanelTitle hint="As cores valem para a prévia e para o vídeo gerado.">Origem das cores</PanelTitle>
+        <PanelTitle hint="As cores valem para a prévia e para o resultado final.">Origem das cores</PanelTitle>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={mode === "brand" ? "default" : "outline"} disabled={!hasBrand} onClick={() => onMode("brand")}>
             Cores da marca
@@ -491,6 +503,10 @@ interface PropertiesPanelProps {
 
 export interface ImageProperties {
   sceneNumber: number;
+  /** Como a unidade se chama neste editor. Padrão: "cena" (vídeo). */
+  noun?: "cena" | "página";
+  /** Texto exibido quando o enquadramento não é editável. */
+  lockedHint?: string;
   /** A sequência de imagens pode ser alterada neste fluxo. */
   editable: boolean;
   /** Enquadramento efetivo (já com o padrão seguro do modelo). */
@@ -577,8 +593,8 @@ function FramingProperties({ image }: { image: ImageProperties }) {
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   return (
     <div className="space-y-3">
-      <PanelTitle hint="O padrão mostra a imagem inteira, sem cortar o produto. Vale para a cena em exibição.">
-        Enquadramento da cena {image.sceneNumber}
+      <PanelTitle hint={`O padrão mostra a imagem inteira, sem cortar o produto. Vale para a ${image.noun ?? "cena"} em exibição.`}>
+        Enquadramento da {image.noun ?? "cena"} {image.sceneNumber}
       </PanelTitle>
       {image.editable ? (
         <>
@@ -595,7 +611,7 @@ function FramingProperties({ image }: { image: ImageProperties }) {
           </Button>
         </>
       ) : (
-        <p className="text-xs text-muted-foreground">Este vídeo usa a imagem escolhida na criação, inteira e centralizada na área do modelo.</p>
+        <p className="text-xs text-muted-foreground">{image.lockedHint ?? "Este vídeo usa a imagem escolhida na criação, inteira e centralizada na área do modelo."}</p>
       )}
     </div>
   );

@@ -54,6 +54,7 @@ import {
 import { buildThemeSnapshot, sanitizeThemeSnapshot, themeIdForTemplate } from "./theme-snapshot";
 import { PROCESSING_STALL_MS, detectRenderStall, type RenderStall } from "./render-status";
 import { getScene, normalizeLayout } from "./video-editor/scenes/registry";
+import { documentFromContentRow } from "./studio/content-mapping";
 import { fitPaletteToScene, paletteToThemeInput } from "./video-editor/palette";
 import {
   MANUAL_LIMITS,
@@ -1007,6 +1008,30 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     );
     for (const id of approveTargetIds) {
       await updateMarketingContentOrThrow(supabase, companyId, id, approvedPatch);
+    }
+
+    // Documento do Estúdio Criativo equivalente ao que foi aprovado. É um
+    // espelho: o render continua lendo as colunas acima. Melhor esforço — num
+    // banco ainda sem a coluna `design`, o vídeo é gerado normalmente.
+    try {
+      const design = documentFromContentRow({
+        ...baseRow,
+        design: null,
+        overlay_headline: data.headline,
+        overlay_subheadline: data.subheadline ?? null,
+        overlay_cta: data.cta ?? null,
+        video_template: approvedTemplate,
+        video_layout: approvedLayout ?? (baseRow as { video_layout?: unknown }).video_layout ?? null,
+        ai_prompt: renderPrompt,
+      });
+      if (design) {
+        for (const id of approveTargetIds) {
+          const saved = await supabase.from("marketing_contents").update({ design: design as unknown as never }).eq("id", id).eq("company_id", companyId);
+          if (saved.error) break;
+        }
+      }
+    } catch {
+      // Espelho opcional: nunca impede a geração do vídeo.
     }
 
     // Master 9:16 (Story quando habilitada; senão a linha disponível).

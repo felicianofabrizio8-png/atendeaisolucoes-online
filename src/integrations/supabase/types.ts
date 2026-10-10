@@ -3552,6 +3552,7 @@ export type Database = {
           company_id: string
           created_at: string
           created_by: string | null
+          design: Json | null
           cta_destination: string | null
           cta_text: string | null
           duration_seconds: number | null
@@ -3597,6 +3598,7 @@ export type Database = {
           company_id: string
           created_at?: string
           created_by?: string | null
+          design?: Json | null
           cta_destination?: string | null
           cta_text?: string | null
           duration_seconds?: number | null
@@ -3642,6 +3644,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           created_by?: string | null
+          design?: Json | null
           cta_destination?: string | null
           cta_text?: string | null
           duration_seconds?: number | null
@@ -7000,7 +7003,12 @@ export type Database = {
         | "fechado"
         | "perdido"
       marketing_content_channel: "instagram" | "facebook" | "whatsapp"
-      marketing_content_format: "story" | "feed" | "reel" | "whatsapp_cta"
+      marketing_content_format:
+        | "story"
+        | "feed"
+        | "reel"
+        | "whatsapp_cta"
+        | "carousel"
       marketing_content_status:
         | "draft"
         | "pending"
@@ -7250,7 +7258,7 @@ export const Constants = {
         "perdido",
       ],
       marketing_content_channel: ["instagram", "facebook", "whatsapp"],
-      marketing_content_format: ["story", "feed", "reel", "whatsapp_cta"],
+      marketing_content_format: ["story", "feed", "reel", "whatsapp_cta", "carousel"],
       marketing_content_status: [
         "draft",
         "pending",

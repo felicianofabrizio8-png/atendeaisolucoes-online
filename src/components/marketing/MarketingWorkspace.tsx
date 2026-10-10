@@ -6,6 +6,7 @@ import { MarketingLibraryHub } from "./MarketingLibraryHub";
 import { MarketingPromotions } from "./MarketingPromotions";
 import { MarketingGenerator } from "./MarketingGenerator";
 import { MarketingPublishHub, type PublishView } from "./MarketingPublishHub";
+import { StudioLauncher } from "./studio/StudioLauncher";
 import { Chip, ChipRow } from "./ui/MarketingUi";
 import { DEFAULT_MARKETING_GROUP, GENERATED_DESTINATION, MARKETING_NAV, type MarketingGroupId } from "@/lib/marketing/marketing-nav";
 import type { MediaSelection } from "@/lib/marketing/media-selection";
@@ -16,7 +17,7 @@ const ICONS: Record<MarketingGroupId, typeof Home> = { inicio: Home, criar: Spar
 
 export function MarketingWorkspace({ companyId }: Props) {
   const [group, setGroup] = useState<MarketingGroupId>(DEFAULT_MARKETING_GROUP);
-  const [createScreen, setCreateScreen] = useState<"generator" | "promotions">("generator");
+  const [createScreen, setCreateScreen] = useState<"generator" | "studio" | "promotions">("generator");
   const [publishView, setPublishView] = useState<PublishView>("review");
   // Mídia escolhida no Acervo para começar uma publicação; `nonce` reinicia o fluxo.
   const [seed, setSeed] = useState<{ selection: MediaSelection[]; nonce: number }>({ selection: [], nonce: 0 });
@@ -56,6 +57,7 @@ export function MarketingWorkspace({ companyId }: Props) {
       <TabsContent value="criar" className="mt-5 min-w-0 space-y-4">
         <ChipRow label="Criar">
           <Chip active={createScreen === "generator"} onClick={() => setCreateScreen("generator")}>Nova publicação</Chip>
+          <Chip active={createScreen === "studio"} onClick={() => setCreateScreen("studio")}>Estúdio criativo</Chip>
           <Chip active={createScreen === "promotions"} onClick={() => setCreateScreen("promotions")}>Promoções</Chip>
         </ChipRow>
         {createScreen === "generator" ? (
@@ -70,6 +72,8 @@ export function MarketingWorkspace({ companyId }: Props) {
               setPublishView("review");
             }}
           />
+        ) : createScreen === "studio" ? (
+          <StudioLauncher companyId={companyId} />
         ) : (
           <MarketingPromotions companyId={companyId} />
         )}

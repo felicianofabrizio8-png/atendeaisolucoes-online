@@ -2,6 +2,8 @@
 // - Chama server functions para toda mutação.
 // - Uploads passam pelo bucket privado `marketing-media` com prefixo por empresa.
 
+import { getStudioContent, saveStudioContent } from "@/lib/marketing/studio/studio.functions";
+import type { StudioDocument } from "@/lib/marketing/studio/document";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedImageUrl, getSignedMediaUrl } from "@/lib/storage";
 import type { MediaResolverDeps } from "@/lib/marketing/campaign-media";
@@ -336,4 +338,21 @@ export async function apiApproveCampaignAndRender(input: {
   duration_seconds?: number;
 }) {
   return approveCampaignAndRender({ data: input });
+}
+
+// ------- Estúdio Criativo (carrossel e arte) -------
+export async function apiSaveStudioContent(input: {
+  id?: string;
+  title?: string | null;
+  caption?: string;
+  document: StudioDocument;
+  exported_media_ids?: string[];
+}): Promise<MarketingContentRow> {
+  const res = await saveStudioContent({ data: input });
+  return res.content as unknown as MarketingContentRow;
+}
+
+export async function apiGetStudioContent(id: string): Promise<MarketingContentRow> {
+  const res = await getStudioContent({ data: { id } });
+  return res.content as unknown as MarketingContentRow;
 }

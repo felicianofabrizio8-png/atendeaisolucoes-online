@@ -56,7 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
   approved: "Aprovado",
   rejected: "Rejeitado",
 };
-const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp" };
+const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp", carousel: "Carrossel" };
 const FILTER_LABEL: Record<string, string> = {
   draft: "Rascunhos",
   pending: "Em revisão",
