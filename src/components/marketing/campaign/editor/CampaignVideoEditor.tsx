@@ -449,6 +449,7 @@ export function CampaignVideoEditor({
       onChange={setLayout}
       onAnchor={handleAnchor}
       logo={logoManager}
+      image={{ sceneNumber: currentIndex + 1, editable: sequenceEditable, framing: stageFraming, onFraming: updateFraming }}
     />
   );
 
@@ -464,17 +465,17 @@ export function CampaignVideoEditor({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm" data-testid="video-studio">
       {/* Cabeçalho */}
-      <div data-studio-header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b px-3 py-1.5">
-        <div className="min-w-0">
+      <div data-studio-header className="flex shrink-0 items-center justify-between gap-x-3 gap-y-1 border-b px-3 py-1.5">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">Estúdio de vídeo</div>
-          <div className="truncate text-xs text-muted-foreground">
+          <div className="hidden truncate text-xs text-muted-foreground sm:block">
             Modelo <b>{scene.label}</b> · o vídeo só é criado ao clicar em Gerar vídeo.
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex cursor-pointer select-none items-center gap-2 text-xs">
-            <input type="checkbox" checked={showSafeArea} onChange={(e) => setShowSafeArea(e.target.checked)} className="accent-primary" />
-            Área segura
+          <label className="flex cursor-pointer select-none items-center gap-2 text-xs" title="Mostrar a área segura">
+            <input type="checkbox" aria-label="Área segura" checked={showSafeArea} onChange={(e) => setShowSafeArea(e.target.checked)} className="accent-primary" />
+            <span className="hidden sm:inline">Área segura</span>
           </label>
           <Button onClick={handleApprove} disabled={approving || regenerating || !headline.trim()}>
             {approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
@@ -484,7 +485,7 @@ export function CampaignVideoEditor({
       </div>
 
       {/* Corpo: ferramentas · prévia · propriedades */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,44%)_minmax(0,1fr)] lg:grid-cols-[minmax(320px,1.15fr)_minmax(250px,0.9fr)_minmax(290px,1fr)] lg:grid-rows-1">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,50%)_minmax(0,1fr)] lg:grid-cols-[minmax(320px,1.15fr)_minmax(250px,0.9fr)_minmax(290px,1fr)] lg:grid-rows-1">
         <Tabs
           value={tool}
           onValueChange={(v) => setTool(v as Tool)}
@@ -549,8 +550,6 @@ export function CampaignVideoEditor({
                 onSelect={selectScene}
                 onMove={moveScene}
                 onRemove={removeScene}
-                framing={stageFraming}
-                onFraming={updateFraming}
               />
             </TabsContent>
             <TabsContent value="video" className="mt-0">

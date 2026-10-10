@@ -43,6 +43,9 @@ export {
   type ImageFraming,
 } from "../../../../../worker/render-engine/src/image-fit";
 
+export { BLUR } from "../../../../../worker/render-engine/src/image-prepare-params";
+export { SCENE_FORMATS, formatOf, sceneForFormat, type SceneFormat } from "../../../../../worker/render-engine/src/scenes";
+
 export { SCENES, SCENE_LIST };
 
 /** Cena do template; ids desconhecidos caem no template padrão. */

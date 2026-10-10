@@ -117,7 +117,7 @@ describe("estúdio do Vídeo IA", () => {
   it("fonte, alinhamento e posição editados chegam à prévia e ao render", async () => {
     const { user } = setup();
     const props = screen.getByRole("complementary", { name: "Propriedades" });
-    await user.selectOptions(within(props).getByLabelText("Fonte"), "bebas");
+    await user.click(within(within(props).getByRole("group", { name: "Fonte" })).getByRole("button", { name: "Bebas Neue" }));
     await user.click(within(within(props).getByRole("group", { name: "Alinhamento" })).getByRole("button", { name: "Centro" }));
     await user.click(within(within(props).getByRole("group", { name: "Posição vertical" })).getByRole("button", { name: "Topo" }));
     expect(previewSvg()).toContain('font-family="Bebas Neue"');
@@ -185,12 +185,14 @@ describe("estúdio do Vídeo IA", () => {
 
   it("enquadramento por cena: preencher, zoom e cor de fundo são pedidos à sequência", async () => {
     const { user, onImageSequenceChange } = setup();
-    await user.click(screen.getByRole("tab", { name: "Mídia" }));
-    await user.click(within(screen.getByRole("group", { name: "Enquadramento" })).getByRole("button", { name: "Preencher" }));
+    // O enquadramento é uma propriedade do elemento "Imagem".
+    const props = screen.getByRole("complementary", { name: "Propriedades" });
+    await user.click(within(within(props).getByRole("group", { name: "Elemento" })).getByRole("button", { name: "Imagem" }));
+    await user.click(within(within(props).getByRole("group", { name: "Enquadramento" })).getByRole("button", { name: "Preencher" }));
     expect(onImageSequenceChange.mock.calls.at(-1)![0][0].focalPoint).toMatchObject({ fit: "cover", zoom: 1 });
-    await user.click(within(screen.getByRole("group", { name: "Preenchimento" })).getByRole("button", { name: "Cor do modelo" }));
+    await user.click(within(within(props).getByRole("group", { name: "Preenchimento" })).getByRole("button", { name: "Cor do modelo" }));
     expect(onImageSequenceChange.mock.calls.at(-1)![0][0].focalPoint).toMatchObject({ fill: "color" });
-    await user.click(screen.getByRole("button", { name: "Voltar ao padrão do modelo" }));
+    await user.click(within(props).getByRole("button", { name: "Voltar ao padrão do modelo" }));
     expect(onImageSequenceChange.mock.calls.at(-1)![0][0].focalPoint).toBeNull();
   });
 
@@ -233,6 +235,28 @@ describe("estúdio do Vídeo IA", () => {
     expect((within(again).getByRole("button", { name: "Trocar logo" }) as HTMLButtonElement).disabled).toBe(true);
     expect((within(again).getByRole("button", { name: "Remover do cadastro" }) as HTMLButtonElement).disabled).toBe(true);
     expect(again.textContent).toContain("Só administradores");
+  });
+
+  it("a galeria mostra o nome completo de cada modelo e as miniaturas não exibem marcador de logo", () => {
+    brand.logoUrl = null;
+    setup();
+    const gallery = screen.getByRole("tabpanel", { name: "Modelos" });
+    for (const name of ["Oferta relâmpago", "Últimas unidades", "Faixa promocional", "Capa de revista", "Recorte lateral", "Gradiente vivo"]) {
+      const label = within(gallery).getByText(name);
+      // Sem reticências: o nome quebra em até duas linhas.
+      expect(label.className).toContain("line-clamp-2");
+      expect(label.className).not.toContain("truncate");
+    }
+    // Só a prévia principal oferece o marcador de logo; as miniaturas ficam limpas.
+    expect(gallery.textContent).not.toMatch(/Logo/i);
+  });
+
+  it("clicar na foto da prévia seleciona a imagem e abre o enquadramento", async () => {
+    const { user } = setup();
+    const framed = screen.getByTestId("video-studio").querySelector('.lg\\:order-2 [data-fit]') as HTMLElement;
+    await user.click(framed);
+    const props = screen.getByRole("complementary", { name: "Propriedades" });
+    expect(within(props).getByRole("group", { name: "Enquadramento" })).toBeTruthy();
   });
 
   it("não tem botão sem função: todo botão habilitado tem nome", () => {

@@ -58,22 +58,39 @@ export function StudioTimeline({
                 i === selectedIndex ? "ring-2 ring-inset ring-primary" : ""
               }`}
             >
-              {scene.url && <img src={scene.url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-80" loading="lazy" />}
-              <span className="absolute inset-x-0 bottom-0 flex justify-between bg-black/55 px-1.5 py-0.5 text-[10px] text-white">
-                <span>Cena {i + 1}</span>
-                <span>{per.toFixed(1)} s</span>
+              {/* Miniatura inteira (não um recorte) à esquerda; rótulo ao lado. */}
+              <span className="absolute inset-0 flex items-center gap-1.5 px-1">
+                {scene.url && (
+                  <img
+                    src={scene.url}
+                    alt=""
+                    loading="lazy"
+                    className="h-9 w-9 shrink-0 rounded-sm bg-black/30 object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.visibility = "hidden";
+                    }}
+                  />
+                )}
+                <span className="min-w-0 truncate text-[11px] leading-tight">
+                  <span className="font-medium">Cena {i + 1}</span>
+                  <span className="text-muted-foreground"> · {per.toFixed(1)} s</span>
+                </span>
               </span>
             </button>
           ))}
         </div>
         {outroSeconds > 0 && (
           <div
-            className="pointer-events-none absolute inset-y-0 right-0 flex items-start justify-end rounded-r-md border-l-2 border-dashed border-white/80 bg-black/35 px-1 pt-0.5 text-[10px] text-white"
-            style={{ width: `${Math.min(100, (outroSeconds / duration) * 100)}%` }}
+            className="pointer-events-none absolute inset-y-0 right-0 rounded-r-md border-l-2 border-dashed border-foreground/60"
+            style={{
+              width: `${Math.min(100, (outroSeconds / duration) * 100)}%`,
+              // Hachura: marca o trecho sem cobrir o rótulo da cena.
+              background: "repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, currentColor 22%, transparent) 5px 7px)",
+            }}
+            role="img"
+            aria-label={`Encerramento com a marca: últimos ${outroSeconds} segundos`}
             title="Nos segundos finais o vídeo mostra a tela de encerramento com a marca."
-          >
-            Marca
-          </div>
+          />
         )}
         <div
           className="pointer-events-none absolute inset-y-0 w-0.5 bg-primary"

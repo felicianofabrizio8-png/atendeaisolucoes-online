@@ -7,8 +7,15 @@ import { describe, expect, it } from "vitest";
 import {
   FONTS,
   FONT_IDS,
+  BLUR,
+  SCENE_FORMATS,
   SCENE_LIST,
   SCENE_PURPOSES,
+  formatOf,
+  isFullyVisible,
+  placeImage,
+  sceneForFormat,
+  type SceneFormat,
   TEMPLATE_IDS,
   TRANSITIONS,
   buildSceneOverlaySvgWithMeta,
@@ -107,6 +114,74 @@ describe("catálogo de modelos", () => {
       const fixed = JSON.stringify(scene.layers).match(/#[^"]*/g) ?? [];
       for (const value of fixed) expect(value).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }
+  });
+});
+
+describe("formatos 9:16, 4:5 e 1:1", () => {
+  const formats = Object.entries(SCENE_FORMATS) as Array<[SceneFormat, { width: number; height: number }]>;
+
+  it("reconhece o formato pelo tamanho do quadro e não altera o 9:16", () => {
+    expect(formatOf(1080, 1920)).toBe("story");
+    expect(formatOf(1080, 1350)).toBe("portrait");
+    expect(formatOf(1080, 1080)).toBe("square");
+    for (const scene of SCENE_LIST) expect(sceneForFormat(scene, "story")).toBe(scene);
+  });
+
+  it.each(SCENE_LIST.map((s) => s.id))("%s: texto cabe, imagem inteira e sem sobreposição nos três formatos", (id) => {
+    const scene = getScene(id);
+    for (const [, size] of formats) {
+      for (const anchor of scene.anchors) {
+        const layout = { ...scene.defaultLayout, title: { ...scene.defaultLayout.title, vAnchor: anchor } };
+        const built = buildSceneOverlaySvgWithMeta({ width: size.width, height: size.height, scene, layout, content: LONG });
+        expect(built.svg).not.toContain("NaN");
+        const frame = { width: size.width, height: size.height };
+        // Nenhuma palavra some, em nenhum formato.
+        const upper = built.svg.toUpperCase();
+        for (const word of LONG.headline.split(" ")) expect(upper).toContain(word.toUpperCase());
+        // O bloco de texto fica dentro do quadro.
+        const block = built.blockBox!;
+        expect(block.x).toBeGreaterThanOrEqual(-0.5);
+        expect(block.x + block.width).toBeLessThanOrEqual(frame.width + 0.5);
+        if (!scene.text.tilt) {
+          expect(block.y).toBeGreaterThanOrEqual(-0.5);
+          expect(block.y + block.height).toBeLessThanOrEqual(frame.height + 0.5);
+        }
+        // A área da imagem existe, cabe no quadro e tem tamanho útil.
+        const area = built.imageAreas.contain;
+        expect(isFullyVisible(area, frame)).toBe(true);
+        expect(area.width).toBeGreaterThan(frame.width * 0.3);
+        expect(area.height).toBeGreaterThan(frame.height * 0.17);
+        // Uma foto em pé e uma deitada aparecem inteiras.
+        for (const photo of [{ width: 900, height: 1900 }, { width: 3000, height: 2000 }]) {
+          expect(isFullyVisible(placeImage(photo, built.imageAreas, { x: 0.5, y: 0.5, zoom: 1, fit: "contain", fill: "blur" }), frame)).toBe(true);
+        }
+        // Com o texto numa borda, a imagem não fica atrás dele.
+        if (anchor !== "center") {
+          const overlap = Math.min(area.y + area.height, block.y + block.height) - Math.max(area.y, block.y);
+          expect(overlap).toBeLessThanOrEqual(frame.height * 0.045);
+        }
+      }
+    }
+  });
+
+  it("as formas presas ao painel têm a mesma geometria em todos os formatos", () => {
+    // O corte diagonal da oferta sobe os mesmos px acima do painel em 9:16 e 1:1.
+    const rise = (h: number) => {
+      const svg = buildSceneOverlaySvgWithMeta({ width: 1080, height: h, scene: getScene("oferta"), layout: getScene("oferta").defaultLayout, content: LONG }).svg;
+      const [p1, p2] = svg.match(/<polygon points="([^"]+)"/)![1].split(" ").map((p) => Number(p.split(",")[1]));
+      return p1 - p2;
+    };
+    expect(rise(1920)).toBeCloseTo(rise(1080), 1);
+    expect(rise(1920)).toBeCloseTo(rise(1350), 1);
+  });
+
+  it("o desfoque da prévia usa os mesmos números do worker", () => {
+    const framed = readFileSync(resolve(root, "src/components/marketing/campaign/FramedImage.tsx"), "utf8");
+    expect(framed).toContain("blur(${BLUR.sigma * 100}cqi) brightness(${BLUR.brightness}) saturate(${BLUR.saturation})");
+    expect(framed).toContain("scale(${BLUR.zoom})");
+    const worker = readFileSync(resolve(root, "worker/render-engine/src/image-prepare.ts"), "utf8");
+    for (const key of ["BLUR.zoom", "BLUR.sigma", "BLUR.brightness", "BLUR.saturation"]) expect(worker).toContain(key);
+    expect(BLUR).toEqual({ zoom: 1.14, sigma: 0.05, brightness: 0.9, saturation: 0.9 });
   });
 });
 

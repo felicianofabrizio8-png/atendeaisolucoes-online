@@ -15,9 +15,11 @@ import { memo, useId, useMemo, useRef, type CSSProperties, type PointerEvent as 
 import type { FocalPointInput } from "@/data/marketingRepo";
 import type { VideoLayout } from "@/lib/marketing/video-editor/layout.types";
 import {
+  SCENE_FORMATS,
   buildSceneOverlaySvgWithMeta,
   getScene,
   normalizeFraming,
+  type SceneFormat,
   type Box,
   type TextPart,
 } from "@/lib/marketing/video-editor/scenes/registry";
@@ -26,12 +28,7 @@ import { LogoSlot } from "./LogoSlot";
 import { FramedImage } from "../FramedImage";
 import "./video-fonts.css";
 
-/** Quadro de referência do composer — o mesmo do vídeo Story/Reels. */
-const W = 1080;
-const H = 1920;
-const FRAME = { width: W, height: H };
-
-export type ScenePart = TextPart | "logo";
+export type ScenePart = TextPart | "logo" | "image";
 
 /** Uma foto na pilha de fundo (a reprodução usa duas durante a transição). */
 export interface SceneImageLayer {
@@ -51,6 +48,8 @@ interface Props {
   subheadline: string | null;
   cta: string | null;
   layout: VideoLayout;
+  /** Formato do quadro. Padrão: Story/Reels 9:16 (o do vídeo). */
+  format?: SceneFormat;
   /** Se true, ocupa 100% do container (que define o tamanho). */
   fill?: boolean;
   /** Se true, desenha guias de safe area em cima. */
@@ -67,14 +66,6 @@ interface Props {
   onDragText?: (dxPct: number, dyPct: number, phase: "move" | "end") => void;
 }
 
-function pct(box: Box) {
-  return {
-    left: `${(box.x / W) * 100}%`,
-    top: `${(box.y / H) * 100}%`,
-    width: `${(box.width / W) * 100}%`,
-    height: `${(box.height / H) * 100}%`,
-  };
-}
 
 export const SceneRenderer = memo(function SceneRenderer({
   imageUrl,
@@ -85,6 +76,7 @@ export const SceneRenderer = memo(function SceneRenderer({
   subheadline,
   cta,
   layout,
+  format = "story",
   fill,
   showSafeArea,
   compact,
@@ -94,6 +86,13 @@ export const SceneRenderer = memo(function SceneRenderer({
   onDragText,
 }: Props) {
   const idPrefix = useId();
+  const { width: W, height: H } = SCENE_FORMATS[format];
+  const pct = (box: Box) => ({
+    left: `${(box.x / W) * 100}%`,
+    top: `${(box.y / H) * 100}%`,
+    width: `${(box.width / W) * 100}%`,
+    height: `${(box.height / H) * 100}%`,
+  });
   const frameRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
@@ -109,7 +108,7 @@ export const SceneRenderer = memo(function SceneRenderer({
         logo: logoUrl ? { dataUri: logoUrl } : null,
         idPrefix,
       }),
-    [scene, layout, headline, subheadline, cta, logoUrl, idPrefix],
+    [scene, layout, headline, subheadline, cta, logoUrl, idPrefix, W, H],
   );
 
   const interactive = !!onSelect;
@@ -180,7 +179,8 @@ export const SceneRenderer = memo(function SceneRenderer({
             ? "relative h-full w-full overflow-hidden rounded-xl border bg-black shadow-md"
             : "relative mx-auto w-full max-w-[420px] overflow-hidden rounded-xl border bg-black shadow-md"
       }
-      style={{ aspectRatio: "9 / 16", containerType: "inline-size" }}
+      style={{ aspectRatio: `${W} / ${H}`, containerType: "inline-size" }}
+      data-format={format}
     >
       {/* Foto(s) de fundo, enquadradas como no vídeo */}
       {layers.map((layer) =>
@@ -190,9 +190,10 @@ export const SceneRenderer = memo(function SceneRenderer({
             src={layer.url}
             framing={normalizeFraming(layer.focalPoint, { fit: "contain", fill: scene.image.fill })}
             areas={built.imageAreas}
-            frame={FRAME}
+            frame={{ width: W, height: H }}
             fillColor={scene.palette.background}
             style={{ zIndex: 0, ...layer.style }}
+            onClick={onSelect ? () => onSelect("image") : undefined}
           />
         ) : (
           <div key={layer.key} className="absolute inset-0 z-0 grid place-items-center text-xs text-white/60" style={layer.style}>
@@ -209,7 +210,8 @@ export const SceneRenderer = memo(function SceneRenderer({
       />
 
       {/* Sem logo cadastrada (e não ocultada): marcador / envio */}
-      {!logoUrl && built.layout.logo.visible !== false && (
+      {/* Nas miniaturas o marcador só poluiria a galeria. */}
+      {!logoUrl && !compact && built.layout.logo.visible !== false && (
         <LogoSlot logoUrl={null} layout={built.layout.logo} onUpload={onRequestLogoUpload} />
       )}
 

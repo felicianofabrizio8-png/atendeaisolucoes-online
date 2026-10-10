@@ -153,8 +153,10 @@ export interface VideoLayout {
 
 interface LayerBase {
   /**
-   * "box" = y relativo ao topo da caixa de texto (a camada acompanha o painel
-   * quando o usuário muda a posição). Padrão: coordenadas do quadro.
+   * "box" = y/h medidos a partir do topo da caixa de texto e em % da LARGURA
+   * do quadro. A camada acompanha o painel quando o usuário muda a posição e
+   * mantém a mesma geometria em 9:16, 4:5 e 1:1 (a largura é sempre a mesma).
+   * Padrão: coordenadas do quadro (y/h em % da altura).
    */
   space?: "box";
   /** Espelha verticalmente quando o bloco de textos está ancorado no topo. */
@@ -505,11 +507,11 @@ const OFERTA: SceneDefinition = {
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 0, y: 0, w: 100, h: 59 }, fill: "blur" },
   layers: [
-    { kind: "poly", flip: true, points: "0,63 100,55 100,58.4 0,66.4", fill: "accent" },
-    { kind: "poly", flip: true, points: "0,66.4 100,58.4 100,100 0,100", fill: "background" },
-    { kind: "dots", flip: true, x: 58, y: 86, w: 42, h: 14, fill: "accent", gap: 2.6, r: 0.42, opacity: 0.45 },
-    { kind: "burst", flip: true, cx: 84, cy: 60.5, r: 10.5, points: 16, inner: 0.8, fill: "accent", rotate: 8 },
-    { kind: "burst", flip: true, cx: 84, cy: 60.5, r: 7.8, points: 16, inner: 0.8, stroke: { color: "background", width: 0.35 }, rotate: 8 },
+    { kind: "poly", space: "box", flip: true, points: "0,-10.7 100,-24.9 100,-18.8 0,-4.6", fill: "accent" },
+    { kind: "poly", space: "box", flip: true, points: "0,-4.6 100,-18.8 100,240 0,240", fill: "background" },
+    { kind: "dots", space: "box", flip: true, x: 58, y: 30, w: 42, h: 30, fill: "accent", gap: 2.6, r: 0.42, opacity: 0.45 },
+    { kind: "burst", space: "box", flip: true, cx: 84, cy: -15.1, r: 10.5, points: 16, inner: 0.8, fill: "accent", rotate: 8 },
+    { kind: "burst", space: "box", flip: true, cx: 84, cy: -15.1, r: 7.8, points: 16, inner: 0.8, stroke: { color: "background", width: 0.35 }, rotate: 8 },
   ],
   text: {
     box: { x: 7, w: 86, top: 5, bottom: 4, h: 27 }, gap: 2,
@@ -544,8 +546,8 @@ const URGENTE: SceneDefinition = {
   image: { area: { x: 0, y: 3, w: 100, h: 58 }, fill: "blur" },
   layers: [
     { kind: "stripes", flip: true, x: 0, y: 0, w: 100, h: 2.6, a: "accent", b: "background", size: 3 },
-    { kind: "rect", space: "box", flip: true, x: 0, y: -2.6, w: 100, h: 160, fill: "background" },
-    { kind: "stripes", space: "box", flip: true, x: 0, y: -5.2, w: 100, h: 2.6, a: "accent", b: "background", size: 3 },
+    { kind: "rect", space: "box", flip: true, x: 0, y: -4.6, w: 100, h: 240, fill: "background" },
+    { kind: "stripes", space: "box", flip: true, x: 0, y: -9.2, w: 100, h: 4.6, a: "accent", b: "background", size: 3 },
   ],
   text: {
     box: { x: 8, w: 84, top: 5, bottom: 5, h: 31 }, gap: 2.2,
@@ -603,9 +605,9 @@ const BLOCO: SceneDefinition = {
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 0, y: 0, w: 100, h: 60 }, fill: "blur" },
   layers: [
-    { kind: "poly", flip: true, points: "0,60 100,68.5 100,100 0,100", fill: "accent", opacity: 0.92 },
-    { kind: "poly", flip: true, points: "0,62 100,70.5 100,100 0,100", fill: "background" },
-    { kind: "dots", flip: true, x: 64, y: 73, w: 36, h: 10, fill: "accent", gap: 2.4, r: 0.4, opacity: 0.5 },
+    { kind: "poly", space: "box", flip: true, points: "0,-19.6 100,-4.4 100,240 0,240", fill: "accent", opacity: 0.92 },
+    { kind: "poly", space: "box", flip: true, points: "0,-16 100,-0.9 100,240 0,240", fill: "background" },
+    { kind: "dots", space: "box", flip: true, x: 64, y: 3.6, w: 36, h: 17.8, fill: "accent", gap: 2.4, r: 0.4, opacity: 0.5 },
   ],
   text: {
     box: { x: 7, w: 86, top: 5, bottom: 4, h: 25 }, gap: 2,
@@ -623,8 +625,8 @@ const RECORTE: SceneDefinition = {
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 0, y: 0, w: 100, h: 62 }, fill: "blur" },
   layers: [
-    { kind: "poly", flip: true, points: "0,63 92,63 73,100 0,100", fill: "accent", opacity: 0.9 },
-    { kind: "poly", flip: true, points: "0,65 87,65 68,100 0,100", fill: "background" },
+    { kind: "poly", space: "box", flip: true, points: "0,-8.9 92,-8.9 43.2,160 0,160", fill: "accent", opacity: 0.9 },
+    { kind: "poly", space: "box", flip: true, points: "0,-5.3 87,-5.3 36.5,160 0,160", fill: "background" },
   ],
   text: {
     box: { x: 6, w: 63, top: 5, bottom: 4, h: 28 }, gap: 2,
@@ -639,14 +641,14 @@ const RECORTE: SceneDefinition = {
 
 const DUOTONE: SceneDefinition = {
   id: "duotone", label: "Pop", purposes: ["lancamento", "produto"],
-  description: "Produto num holofote redondo sobre cor chapada, título de cartaz.",
+  description: "Produto numa moldura de cantos arredondados sobre cor chapada, título de cartaz.",
   palette: palette({ background: "#5B21B6", overlay: "#5B21B6", accent: "#FDE047", cta: "#FDE047", ctaText: "#3B0764" }),
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 9, y: 8.5, w: 82, h: 46.125 }, window: true, fill: "blur" },
   layers: [
-    { kind: "cutout", flip: true, fill: "background", shape: "circle", stroke: { color: "accent", width: 0.9, gap: 2.2 } },
-    { kind: "dots", flip: true, x: 0, y: 0, w: 34, h: 12, fill: "accent", gap: 2.8, r: 0.45, opacity: 0.55 },
-    { kind: "burst", flip: true, cx: 86, cy: 52, r: 8, points: 12, inner: 0.72, fill: "accent", rotate: 10 },
+    { kind: "cutout", flip: true, fill: "background", shape: "rect", radius: 7, stroke: { color: "accent", width: 0.9, gap: 2.2 } },
+    { kind: "dots", flip: true, x: 0, y: 0, w: 30, h: 7, fill: "accent", gap: 2.8, r: 0.45, opacity: 0.55 },
+    { kind: "burst", space: "box", flip: true, cx: 87, cy: -16.9, r: 8, points: 12, inner: 0.72, fill: "accent", rotate: 10 },
   ],
   text: {
     box: { x: 7, w: 86, top: 4, bottom: 4.5, h: 34 }, gap: 2.4,
@@ -773,9 +775,9 @@ const SPLIT: SceneDefinition = {
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 0, y: 0, w: 100, h: 61 }, fill: "blur" },
   layers: [
-    { kind: "rect", space: "box", flip: true, x: 0, y: -3, w: 100, h: 160, fill: "background" },
-    { kind: "rect", space: "box", flip: true, x: 0, y: -3.9, w: 100, h: 0.9, fill: "accent" },
-    { kind: "rect", space: "box", flip: true, x: 7, y: -3.9, w: 22, h: 0.9, fill: "text" },
+    { kind: "rect", space: "box", flip: true, x: 0, y: -5.3, w: 100, h: 240, fill: "background" },
+    { kind: "rect", space: "box", flip: true, x: 0, y: -6.9, w: 100, h: 1.6, fill: "accent" },
+    { kind: "rect", space: "box", flip: true, x: 7, y: -6.9, w: 22, h: 1.6, fill: "text" },
   ],
   text: {
     box: { x: 7, w: 86, top: 0, bottom: 4, h: 34 }, gap: 2.2,
@@ -872,8 +874,8 @@ const ARCO: SceneDefinition = {
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 0, y: 0, w: 100, h: 63 }, fill: "blur" },
   layers: [
-    { kind: "circle", flip: true, cx: 50, cy: 109, r: 81, fill: "accent", opacity: 0.92 },
-    { kind: "circle", flip: true, cx: 50, cy: 110, r: 80, fill: "background" },
+    { kind: "circle", space: "box", flip: true, cx: 50, cy: 71.1, r: 81, fill: "accent", opacity: 0.92 },
+    { kind: "circle", space: "box", flip: true, cx: 50, cy: 72.9, r: 80, fill: "background" },
   ],
   text: {
     box: { x: 14, w: 72, top: 6, bottom: 5, h: 26 }, gap: 2.2,
@@ -988,8 +990,8 @@ const EDITORIAL: SceneDefinition = {
   textSurface: "background", anchors: EDGES,
   image: { area: { x: 0, y: 0, w: 100, h: 65 }, fill: "blur" },
   layers: [
-    { kind: "rect", space: "box", flip: true, x: 0, y: -3, w: 100, h: 160, fill: "background" },
-    { kind: "rect", space: "box", flip: true, x: 8, y: -0.4, w: 12, h: 0.4, fill: "accent" },
+    { kind: "rect", space: "box", flip: true, x: 0, y: -5.3, w: 100, h: 240, fill: "background" },
+    { kind: "rect", space: "box", flip: true, x: 8, y: -0.7, w: 12, h: 0.7, fill: "accent" },
   ],
   text: {
     box: { x: 8, w: 84, top: 0, bottom: 4, h: 30 }, gap: 2,
@@ -1021,6 +1023,86 @@ export const SCENES = {
 export function getSceneById(id: string | null | undefined): SceneDefinition | null {
   if (!id) return null;
   return Object.prototype.hasOwnProperty.call(SCENES, id) ? SCENES[id as TemplateId] : null;
+}
+
+// ------------------------------ Formatos -----------------------------------
+
+/** Formatos de saída do estúdio. A largura é sempre 1080. */
+export const SCENE_FORMATS = {
+  story: { label: "Story / Reels (9:16)", width: 1080, height: 1920 },
+  portrait: { label: "Feed (4:5)", width: 1080, height: 1350 },
+  square: { label: "Quadrado (1:1)", width: 1080, height: 1080 },
+} as const;
+export type SceneFormat = keyof typeof SCENE_FORMATS;
+
+/** Formato mais próximo de um quadro W×H. */
+export function formatOf(width: number, height: number): SceneFormat {
+  const ratio = height / width;
+  if (ratio >= 1.6) return "story";
+  if (ratio >= 1.12) return "portrait";
+  return "square";
+}
+
+/** Texto um pouco menor e painel proporcionalmente mais alto nos quadros curtos. */
+const FORMAT_RULES: Record<SceneFormat, { textScale: number; panelScale: number; maxPanel: number; marginScale: number }> = {
+  story: { textScale: 1, panelScale: 1, maxPanel: 100, marginScale: 1 },
+  // Nos quadros curtos o painel fica mais justo ao texto (que encolhe para
+  // caber, se preciso): sobra mais quadro para a imagem e menos área vazia.
+  portrait: { textScale: 0.94, panelScale: 0.8, maxPanel: 38, marginScale: 1.15 },
+  square: { textScale: 0.86, panelScale: 0.76, maxPanel: 40, marginScale: 1.3 },
+};
+
+const adapted = new Map<string, SceneDefinition>();
+
+/**
+ * Versão do modelo para o formato pedido. Os modelos são desenhados em 9:16;
+ * aqui o painel de texto mantém seu tamanho real (em px), as formas presas a
+ * ele acompanham, e a área/janela da imagem ocupa o espaço que sobra — sem
+ * esticar nem cortar. Para "story" devolve o próprio modelo.
+ */
+export function sceneForFormat(scene: SceneDefinition, format: SceneFormat): SceneDefinition {
+  if (format === "story") return scene;
+  const key = `${scene.id}:${format}:${JSON.stringify(scene.palette)}`;
+  const hit = adapted.get(key);
+  if (hit) return hit;
+
+  const story = SCENE_FORMATS.story;
+  const target = SCENE_FORMATS[format];
+  const rule = FORMAT_RULES[format];
+  const k = story.height / target.height;
+  const scaleText = <T extends TextStyle>(t: T): T => ({ ...t, size: t.size * rule.textScale });
+  const box = { ...scene.text.box };
+  let area = { ...scene.image.area };
+
+  if (typeof box.h === "number") {
+    // Painel: mesma altura em px (ajustada à escala do texto), limitada a uma
+    // fração do quadro para a imagem continuar protagonista.
+    const storyTop = 100 - box.bottom - box.h;
+    const gap = storyTop - (area.y + area.h); // distância imagem → painel, em % da altura 9:16
+    box.h = Math.min(box.h * k * rule.textScale * rule.panelScale, rule.maxPanel);
+    box.bottom = box.bottom * rule.marginScale;
+    box.top = box.top * rule.marginScale;
+    const top = 100 - box.bottom - box.h;
+    const bottom = top - gap * k;
+    area = { ...area, y: area.y * rule.marginScale, h: Math.max(18, bottom - area.y * rule.marginScale) };
+  } else {
+    box.top = box.top * rule.marginScale;
+    box.bottom = box.bottom * rule.marginScale;
+  }
+
+  // Janela em arco precisa de altura; em janela baixa vira cantos arredondados,
+  // senão a imagem inteira ficaria minúscula sob a curva.
+  const flat = (area.h / 100) * target.height < (area.w / 100) * target.width * 0.8;
+  const layers = scene.layers.map((l) => (l.kind === "cutout" && l.shape === "arch" && flat ? { ...l, shape: "rect" as const, radius: 6 } : l));
+
+  const out: SceneDefinition = {
+    ...scene,
+    layers,
+    image: { ...scene.image, area },
+    text: { ...scene.text, box, title: scaleText(scene.text.title), subtitle: scaleText(scene.text.subtitle), cta: scaleText(scene.text.cta) },
+  };
+  adapted.set(key, out);
+  return out;
 }
 
 // ------------------------------ Normalização do layout ----------------------

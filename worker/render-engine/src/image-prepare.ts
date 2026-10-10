@@ -13,6 +13,9 @@
 
 import { spawn } from "node:child_process";
 import type { ImageAreas, ImageFraming } from "./image-fit.js";
+import { BLUR } from "./image-prepare-params.js";
+
+export { BLUR };
 
 export interface PreparedFrameInput {
   inputPath: string;
@@ -26,6 +29,7 @@ export interface PreparedFrameInput {
 }
 
 const f = (v: number) => (Number.isFinite(v) ? v.toFixed(3) : "0");
+
 
 /** Argumentos do FFmpeg para gerar o quadro preparado. Puro (testável). */
 export function buildPreparedFrameArgs(input: PreparedFrameInput): string[] {
@@ -53,9 +57,12 @@ export function buildPreparedFrameArgs(input: PreparedFrameInput): string[] {
   const graph =
     framing.fill === "color"
       ? `color=c=0x${hex}:s=${W}x${H},format=rgb24[bg];[0:v]format=rgba,${scale}[fg];[bg][fg]${overlay}:shortest=1,format=rgb24[out]`
-      : // Desfoque barato e forte: reduz, borra e amplia de volta.
-        `[0:v]split=2[a][b];[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-        `scale=${Math.round(W / 12)}:${Math.round(H / 12)},boxblur=4:2,scale=${W}:${H}:flags=bicubic,eq=brightness=-0.06:saturation=1.08,format=rgb24[bg];` +
+      : // Desfoque: os MESMOS números da prévia (FramedImage.tsx) — ampliação
+        // de 1,14×, gaussiano de 5% da largura, brilho 0,90 e saturação 0,90.
+        // Borra em 1/8 do tamanho (mesmo resultado, fração do custo).
+        `[0:v]split=2[a][b];[a]scale=${Math.round(W * BLUR.zoom)}:${Math.round(H * BLUR.zoom)}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
+        `scale=${Math.round(W / 8)}:${Math.round(H / 8)},gblur=sigma=${f((W * BLUR.sigma) / 8)},scale=${W}:${H}:flags=bicubic,` +
+        `format=rgb24,lutrgb=r='val*${BLUR.brightness}':g='val*${BLUR.brightness}':b='val*${BLUR.brightness}',eq=saturation=${BLUR.saturation},format=rgb24[bg];` +
         `[b]format=rgba,${scale}[fg];[bg][fg]${overlay},format=rgb24[out]`;
 
   return ["-y", "-i", input.inputPath, "-filter_complex", graph, "-map", "[out]", "-frames:v", "1", input.outputPath];

@@ -35,6 +35,8 @@ import {
   type ScenePalette,
   type TextStyle,
   type VideoLayout,
+  formatOf,
+  sceneForFormat,
 } from "./scenes.js";
 
 export interface SceneComposerContent {
@@ -178,12 +180,14 @@ interface Ctx {
 
 /** Converte y/h (% da altura) da camada para px, aplicando espaço e espelho. */
 function spanY(layer: SceneLayer, y: number, h: number, ctx: Ctx): { y: number; h: number } {
-  const hp = (h / 100) * ctx.H;
   const flipped = !!layer.flip && ctx.anchor === "top";
   if (layer.space === "box") {
-    const rel = (y / 100) * ctx.H;
-    return { y: flipped ? ctx.boxTop + ctx.boxHeight - rel - hp : ctx.boxTop + rel, h: hp };
+    // Espaço da caixa: medidas em % da LARGURA (iguais em qualquer formato).
+    const rel = (y / 100) * ctx.W;
+    const hw = (h / 100) * ctx.W;
+    return { y: flipped ? ctx.boxTop + ctx.boxHeight - rel - hw : ctx.boxTop + rel, h: hw };
   }
+  const hp = (h / 100) * ctx.H;
   const abs = (y / 100) * ctx.H;
   return { y: flipped ? ctx.H - abs - hp : abs, h: hp };
 }
@@ -520,11 +524,34 @@ export function buildSceneOverlaySvg(input: SceneOverlaySvgInput): string {
 
 const MAX_LINES: Record<TextPart, number> = { title: 3, subtitle: 3, cta: 1 };
 
-/** Área da imagem do modelo em px, espelhada quando o texto vai para o topo. */
-export function sceneImageAreas(scene: SceneDefinition, anchor: Anchor, W: number, H: number): ImageAreas {
+/**
+ * Área da imagem do modelo em px, no formato do quadro W×H, espelhada quando
+ * o texto vai para o topo. Com `block` (retângulo real dos textos), os modelos
+ * de texto sobre a foto encolhem a área para a imagem nunca ficar atrás do
+ * texto — qualquer que seja o tamanho do título ou o formato.
+ */
+export function sceneImageAreas(base: SceneDefinition, anchor: Anchor, W: number, H: number, block?: Box | null): ImageAreas {
+  const scene = sceneForFormat(base, formatOf(W, H));
   const a = scene.image.area;
   const y = anchor === "top" ? 100 - a.y - a.h : a.y;
   const area: Rect = { x: (a.x / 100) * W, y: (y / 100) * H, width: (a.w / 100) * W, height: (a.h / 100) * H };
+  if (block && !scene.image.window && anchor !== "center") {
+    // Folga: respiro + a moldura do cartão que abraça o texto, se houver.
+    const card = scene.layers.reduce((m, l) => (l.kind === "textCard" && !l.fullBleed ? Math.max(m, l.padY) : m), 0);
+    const gap = H * 0.02 + (card / 100) * W;
+    const minHeight = H * 0.2;
+    if (anchor === "bottom") {
+      const limit = block.y - gap;
+      if (area.y + area.height > limit) area.height = Math.max(minHeight, limit - area.y);
+    } else {
+      const limit = block.y + block.height + gap;
+      if (area.y < limit) {
+        const bottom = area.y + area.height;
+        area.y = Math.min(limit, bottom - minHeight);
+        area.height = bottom - area.y;
+      }
+    }
+  }
   const cutout = scene.layers.find((l): l is CutoutLayer => l.kind === "cutout");
   let contain = area;
   if (cutout?.shape === "circle") {
@@ -542,7 +569,9 @@ export function sceneImageAreas(scene: SceneDefinition, anchor: Anchor, W: numbe
 }
 
 export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): SceneOverlaySvgResult {
-  const { width: W, height: H, scene, content, logo } = input;
+  const { width: W, height: H, content, logo } = input;
+  // O modelo é desenhado em 9:16; para 4:5 e 1:1 usa a versão adaptada.
+  const scene = sceneForFormat(input.scene, formatOf(W, H));
   const rawLayout = (input.layout && typeof input.layout === "object" ? input.layout : {}) as Record<string, unknown>;
   const layout = normalizeLayout(logo?.layout ? { ...rawLayout, logo: logo.layout } : rawLayout, scene);
   const palette = scene.palette;
@@ -566,20 +595,22 @@ export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): Scene
   }
   boxTop += offY;
 
-  // 2. Mede e monta cada texto presente.
-  const pieces: Piece[] = [];
+  // 2. Mede e monta cada texto presente. `shrink` reduz todos os tamanhos por
+  //    igual quando o bloco não cabe na altura disponível.
   const texts: Array<[TextPart, string | null]> = [
     ["title", content.headline],
     ["subtitle", content.supportingText],
     ["cta", content.ctaText],
   ];
+  const buildPieces = (shrink: number): Piece[] => {
+  const pieces: Piece[] = [];
   for (const [part, raw] of texts) {
     const value = (raw ?? "").replace(/\s+/g, " ").trim();
     if (!value) continue;
     const style = tb[part];
     const font = layout[part].font ?? style.font;
     const shown = style.uppercase ? value.toUpperCase() : value;
-    const baseSize = (style.size / 100) * W * layout[part].scale;
+    const baseSize = (style.size / 100) * W * layout[part].scale * shrink;
     const ls = style.letterSpacing ?? 0;
     const align = layout[part].align;
 
@@ -636,11 +667,24 @@ export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): Scene
     });
   }
 
-  // 3. Empilha título → subtítulo → CTA e posiciona pela âncora.
+  return pieces;
+  };
+
+  // 3. Empilha título → subtítulo → CTA e posiciona pela âncora. Se o bloco
+  //    passar da altura da caixa (painel curto, formato quadrado, texto longo),
+  //    encolhe tudo junto até caber — nunca corta nem invade a imagem.
   const gap = (tb.gap / 100) * W;
   const titleExtra = ((layout.title.spacing ?? 0) / 100) * W;
+  const room = boxHeight * (isPanel ? 0.92 : 1);
+  let pieces = buildPieces(1);
   const gapAfter = (i: number) => (i < pieces.length - 1 ? gap + (pieces[i].part === "title" ? titleExtra : 0) : 0);
-  const totalH = pieces.reduce((sum, p, i) => sum + p.height + gapAfter(i), 0);
+  const measure = () => pieces.reduce((sum, p, i) => sum + p.height + gapAfter(i), 0);
+  let totalH = measure();
+  for (let shrink = 1, i = 0; i < 12 && totalH > room && room > 0; i++) {
+    shrink *= Math.max(0.8, Math.min(0.96, room / totalH));
+    pieces = buildPieces(shrink);
+    totalH = measure();
+  }
   let cursor: number;
   if (isPanel || anchor === "center") cursor = boxTop + (boxHeight - totalH) / 2;
   else if (anchor === "top") cursor = boxTop;
@@ -668,7 +712,7 @@ export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): Scene
 
   // 4. Camadas. As presas ao texto (cartão, régua) já conhecem o bloco e
   //    entram no mesmo grupo dos textos — assim inclinam junto com ele.
-  const imageAreas = sceneImageAreas(scene, anchor, W, H);
+  const imageAreas = sceneImageAreas(input.scene, anchor, W, H, blockBox);
   const ctx: Ctx = {
     W, H, palette, anchor, boxTop, boxHeight, block: blockBox,
     blockAlign: layout.title.align,

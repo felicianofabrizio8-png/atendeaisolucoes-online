@@ -198,29 +198,43 @@ describe("telas que carregam imagens de campanha", () => {
 });
 
 describe("grade compacta de modelos", () => {
-  it("cabe os 25 modelos sem rolagem em painéis de desktop, com a maior miniatura possível", () => {
-    for (const [w, h] of [[580, 760], [420, 520], [330, 560]] as const) {
+  // Cada célula = miniatura 9:16 + 26 px de nome (duas linhas); mínimo de 62 px
+  // de largura para o nome mais longo caber sem corte.
+  const LABEL = 26;
+  const GAP = 6;
+  const MIN = 62;
+  const total = (cols: number, cell: number, count: number) => {
+    const rows = Math.ceil(count / cols);
+    return rows * ((cell * 16) / 9 + LABEL) + GAP * (rows - 1);
+  };
+
+  it("cabe os 25 modelos sem rolagem no painel do desktop, com a maior miniatura possível", () => {
+    for (const [w, h] of [[504, 600], [620, 800], [560, 640]] as const) {
       const g = fitTemplateGrid(w, h, SCENE_LIST.length);
       expect(g.fits).toBe(true);
-      const rows = Math.ceil(SCENE_LIST.length / g.columns);
-      expect(rows * ((g.cell * 16) / 9 + 15) + 6 * (rows - 1)).toBeLessThanOrEqual(h);
-      expect(g.columns * g.cell + 6 * (g.columns - 1)).toBeLessThanOrEqual(w);
-      expect(g.cell).toBeGreaterThanOrEqual(46);
+      expect(total(g.columns, g.cell, SCENE_LIST.length)).toBeLessThanOrEqual(h);
+      expect(g.columns * g.cell + GAP * (g.columns - 1)).toBeLessThanOrEqual(w);
+      expect(g.cell).toBeGreaterThanOrEqual(MIN);
       // Uma coluna a menos já não caberia: é a maior miniatura possível.
       if (g.columns > 1 && g.cell < 132) {
         const fewer = g.columns - 1;
-        const cell = Math.min(132, Math.floor((w - 6 * (fewer - 1)) / fewer));
-        const r = Math.ceil(SCENE_LIST.length / fewer);
-        expect(r * ((cell * 16) / 9 + 15) + 6 * (r - 1)).toBeGreaterThan(h);
+        const cell = Math.min(132, Math.floor((w - GAP * (fewer - 1)) / fewer));
+        expect(total(fewer, cell, SCENE_LIST.length)).toBeGreaterThan(h);
       }
     }
   });
 
-  it("com menos modelos (filtro) as miniaturas crescem; sem altura, a lista rola com tamanho legível", () => {
-    expect(fitTemplateGrid(420, 520, 6).cell).toBeGreaterThan(fitTemplateGrid(420, 520, 25).cell);
-    const short = fitTemplateGrid(340, 200, 25);
-    expect(short.fits).toBe(false);
-    expect(short.cell).toBeGreaterThanOrEqual(46);
+  it("nunca encolhe a ponto de cortar o nome: em painel pequeno a lista rola", () => {
+    for (const [w, h] of [[480, 470], [340, 200], [360, 420]] as const) {
+      const g = fitTemplateGrid(w, h, SCENE_LIST.length);
+      expect(g.fits).toBe(false);
+      expect(g.cell).toBeGreaterThanOrEqual(MIN);
+      expect(g.columns * g.cell + GAP * (g.columns - 1)).toBeLessThanOrEqual(w);
+    }
     expect(fitTemplateGrid(0, 0, 25).fits).toBe(false);
+  });
+
+  it("com menos modelos (filtro por finalidade) as miniaturas crescem", () => {
+    expect(fitTemplateGrid(504, 600, 6).cell).toBeGreaterThan(fitTemplateGrid(504, 600, 25).cell);
   });
 });

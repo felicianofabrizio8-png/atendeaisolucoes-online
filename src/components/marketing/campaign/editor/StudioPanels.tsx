@@ -44,14 +44,21 @@ export function Segmented<T extends string>({
   value,
   onChange,
   label,
+  scrollOnSmall,
 }: {
   options: ReadonlyArray<readonly [T, string]>;
   value: T;
   onChange: (v: T) => void;
   label: string;
+  /** Em telas estreitas fica em uma linha rolável, em vez de quebrar. */
+  scrollOnSmall?: boolean;
 }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap overflow-hidden rounded-md border">
+    <div
+      role="group"
+      aria-label={label}
+      className={`inline-flex max-w-full rounded-md border ${scrollOnSmall ? "overflow-x-auto max-lg:flex-nowrap lg:flex-wrap lg:overflow-hidden [&>button]:shrink-0" : "flex-wrap overflow-hidden"}`}
+    >
       {options.map(([id, text]) => (
         <button
           key={id}
@@ -122,8 +129,10 @@ interface TemplatePanelProps {
 }
 
 const GRID_GAP = 6;
-const GRID_LABEL_H = 15;
-const GRID_MIN_CELL = 46;
+/** Duas linhas: o nome completo do modelo sempre aparece. */
+const GRID_LABEL_H = 26;
+/** Largura mínima para o nome mais longo ("Institucional") caber sem corte. */
+const GRID_MIN_CELL = 62;
 const GRID_MAX_CELL = 132;
 const GRID_SCROLL_CELL = 64;
 
@@ -185,7 +194,7 @@ export const TemplatePanel = memo(function TemplatePanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="shrink-0 space-y-1.5">
-        <Segmented label="Finalidade do vídeo" options={categories} value={category} onChange={setCategory} />
+        <Segmented label="Finalidade do vídeo" options={categories} value={category} onChange={setCategory} scrollOnSmall />
         {current && (
           <p className="truncate text-xs text-muted-foreground">
             <b className="text-foreground">{current.label}</b> · {current.description}
@@ -226,7 +235,7 @@ export const TemplatePanel = memo(function TemplatePanel({
                   cta={cta}
                   layout={{ ...scene.defaultLayout, colors: paletteFor(scene) }}
                 />
-                <div className="truncate text-center text-[10px] font-medium" style={{ lineHeight: `${GRID_LABEL_H}px` }}>
+                <div className="line-clamp-2 overflow-hidden text-center text-[10px] font-medium leading-[13px]" style={{ height: GRID_LABEL_H }}>
                   {scene.label}
                 </div>
               </button>
@@ -341,29 +350,15 @@ interface MediaPanelProps {
   /** Sem isto, a sequência não é editável neste fluxo. */
   editable: boolean;
   secondsPerScene: number;
-  /** Enquadramento efetivo da cena selecionada (já com o padrão do modelo). */
-  framing: ImageFraming;
-  /** O modelo pinta a sobra com a cor dele (ex.: produto em fundo chapado). */
-  onFraming: (patch: Partial<ImageFraming> | null) => void;
   onSelect: (index: number) => void;
   onMove: (index: number, delta: -1 | 1) => void;
   onRemove: (index: number) => void;
 }
 
-const FITS = [
-  ["contain", "Imagem inteira"],
-  ["cover", "Preencher"],
-] as const;
-const FILLS = [
-  ["blur", "Desfoque da foto"],
-  ["color", "Cor do modelo"],
-] as const;
-
-export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, framing, onFraming, onSelect, onMove, onRemove }: MediaPanelProps) {
-  const pct = (v: number) => `${Math.round(v * 100)}%`;
+export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, onSelect, onMove, onRemove }: MediaPanelProps) {
   return (
     <div className="space-y-3">
-      <PanelTitle hint={`Cada imagem é uma cena. O tempo é dividido igualmente: ${secondsPerScene.toFixed(1)} s por cena.`}>
+      <PanelTitle hint={`Cada imagem é uma cena (${secondsPerScene.toFixed(1)} s cada). Para ajustar o enquadramento, toque na foto da prévia.`}>
         Cenas do vídeo
       </PanelTitle>
       <ul className="space-y-2">
@@ -403,29 +398,6 @@ export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, f
           </li>
         ))}
       </ul>
-
-      <div className="space-y-3 border-t pt-3">
-        <PanelTitle hint="Vale para a cena selecionada. O padrão mostra a imagem inteira, sem cortar o produto.">
-          Enquadramento da cena {selectedIndex + 1}
-        </PanelTitle>
-        {editable ? (
-          <>
-            <Segmented label="Enquadramento" options={FITS} value={framing.fit} onChange={(fit) => onFraming({ fit })} />
-            <SliderField label="Zoom" value={framing.zoom} min={1} max={3} step={0.05} format={(v) => `${v.toFixed(2)}x`} onChange={(zoom) => onFraming({ zoom })} />
-            <SliderField label="Posição horizontal" value={framing.x} min={0} max={1} step={0.01} format={pct} onChange={(x) => onFraming({ x })} />
-            <SliderField label="Posição vertical" value={framing.y} min={0} max={1} step={0.01} format={pct} onChange={(y) => onFraming({ y })} />
-            <div>
-              <Label className="mb-1 block">Área que a imagem não cobre</Label>
-              <Segmented label="Preenchimento" options={FILLS} value={framing.fill} onChange={(fill) => onFraming({ fill })} />
-            </div>
-            <Button size="sm" variant="ghost" onClick={() => onFraming(null)}>
-              <RotateCcw className="mr-1 h-3.5 w-3.5" /> Voltar ao padrão do modelo
-            </Button>
-          </>
-        ) : (
-          <p className="text-xs text-muted-foreground">Este vídeo usa a imagem escolhida na criação, inteira e centralizada na área do modelo.</p>
-        )}
-      </div>
 
       {editable && (
         <p className="text-xs text-muted-foreground">
@@ -485,7 +457,7 @@ export function VideoPanel({ duration, onDuration, transition, onTransition, sce
 
 // ------------------------------ Propriedades --------------------------------
 
-const PART_LABEL: Record<ScenePart, string> = { title: "Título", subtitle: "Subtítulo", cta: "Chamada", logo: "Logo" };
+const PART_LABEL: Record<ScenePart, string> = { title: "Título", subtitle: "Subtítulo", cta: "Chamada", logo: "Logo", image: "Imagem" };
 const ANCHOR_LABEL: Record<Anchor, string> = { top: "Topo", center: "Meio", bottom: "Base" };
 const ALIGNS: ReadonlyArray<readonly [Align, string]> = [
   ["left", "Esq."],
@@ -513,9 +485,21 @@ interface PropertiesPanelProps {
   onChange: (layout: VideoLayout) => void;
   onAnchor: (anchor: Anchor) => void;
   logo: LogoManager;
+  /** Enquadramento da cena em exibição. */
+  image: ImageProperties;
 }
 
-export function PropertiesPanel({ scene, layout, selected, onSelect, onChange, onAnchor, logo }: PropertiesPanelProps) {
+export interface ImageProperties {
+  sceneNumber: number;
+  /** A sequência de imagens pode ser alterada neste fluxo. */
+  editable: boolean;
+  /** Enquadramento efetivo (já com o padrão seguro do modelo). */
+  framing: ImageFraming;
+  /** null = voltar ao padrão do modelo. */
+  onFraming: (patch: Partial<ImageFraming> | null) => void;
+}
+
+export function PropertiesPanel({ scene, layout, selected, onSelect, onChange, onAnchor, logo, image }: PropertiesPanelProps) {
   const parts = (Object.entries(PART_LABEL) as Array<[ScenePart, string]>).map(([id, label]) => [id, label] as const);
   return (
     <div className="space-y-4">
@@ -523,6 +507,8 @@ export function PropertiesPanel({ scene, layout, selected, onSelect, onChange, o
 
       {selected === "logo" ? (
         <LogoProperties layout={layout} onChange={onChange} logo={logo} />
+      ) : selected === "image" ? (
+        <FramingProperties image={image} />
       ) : (
         <TextProperties
           key={selected}
@@ -533,7 +519,7 @@ export function PropertiesPanel({ scene, layout, selected, onSelect, onChange, o
         />
       )}
 
-      {selected !== "logo" && (
+      {selected !== "logo" && selected !== "image" && (
         <div className="space-y-3 border-t pt-3">
           <PanelTitle hint="Título, subtítulo e chamada andam juntos. Também dá para arrastar o texto na prévia.">
             Posição do texto
@@ -571,6 +557,45 @@ export function PropertiesPanel({ scene, layout, selected, onSelect, onChange, o
             <RotateCcw className="mr-1 h-3.5 w-3.5" /> Voltar à posição do modelo
           </Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+const FRAMING_FITS = [
+  ["contain", "Imagem inteira"],
+  ["cover", "Preencher"],
+] as const;
+const FRAMING_FILLS = [
+  ["blur", "Desfoque da foto"],
+  ["color", "Cor do modelo"],
+] as const;
+
+/** Enquadramento da foto da cena em exibição. */
+function FramingProperties({ image }: { image: ImageProperties }) {
+  const { framing, onFraming } = image;
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  return (
+    <div className="space-y-3">
+      <PanelTitle hint="O padrão mostra a imagem inteira, sem cortar o produto. Vale para a cena em exibição.">
+        Enquadramento da cena {image.sceneNumber}
+      </PanelTitle>
+      {image.editable ? (
+        <>
+          <Segmented label="Enquadramento" options={FRAMING_FITS} value={framing.fit} onChange={(fit) => onFraming({ fit })} />
+          <SliderField label="Zoom" value={framing.zoom} min={1} max={3} step={0.05} format={(v) => `${v.toFixed(2)}x`} onChange={(zoom) => onFraming({ zoom })} />
+          <SliderField label="Posição horizontal" value={framing.x} min={0} max={1} step={0.01} format={pct} onChange={(x) => onFraming({ x })} />
+          <SliderField label="Posição vertical" value={framing.y} min={0} max={1} step={0.01} format={pct} onChange={(y) => onFraming({ y })} />
+          <div>
+            <Label className="mb-1 block">Área que a imagem não cobre</Label>
+            <Segmented label="Preenchimento" options={FRAMING_FILLS} value={framing.fill} onChange={(fill) => onFraming({ fill })} />
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => onFraming(null)}>
+            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Voltar ao padrão do modelo
+          </Button>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground">Este vídeo usa a imagem escolhida na criação, inteira e centralizada na área do modelo.</p>
       )}
     </div>
   );
@@ -684,28 +709,33 @@ function TextProperties({
   return (
     <div className="space-y-3">
       <div>
-        <Label htmlFor="studio-font" className="mb-1 block">
-          Fonte
-        </Label>
-        <select
-          id="studio-font"
-          value={font}
-          onChange={(e) => {
-            const next = e.target.value as FontId;
-            // Voltar à fonte do modelo remove a troca, em vez de fixá-la.
-            const { font: _drop, ...rest } = value;
-            onChange(next === defaultFont ? rest : { ...rest, font: next });
-          }}
-          className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-          style={{ fontFamily: `"${FONTS[font].family}"`, fontWeight: FONTS[font].weight }}
-        >
+        <Label className="mb-1 block">Fonte</Label>
+        {/* Cada opção aparece na própria fonte, em tamanho legível. */}
+        <div role="group" aria-label="Fonte" className="grid grid-cols-3 gap-1.5">
           {FONT_IDS.map((id) => (
-            <option key={id} value={id}>
-              {FONTS[id].label}
-              {id === defaultFont ? " (do modelo)" : ""}
-            </option>
+            <button
+              key={id}
+              type="button"
+              aria-pressed={id === font}
+              aria-label={FONTS[id].label}
+              title={id === defaultFont ? `${FONTS[id].label} (do modelo)` : FONTS[id].label}
+              onClick={() => {
+                // Voltar à fonte do modelo remove a troca, em vez de fixá-la.
+                const { font: _drop, ...rest } = value;
+                onChange(id === defaultFont ? rest : { ...rest, font: id });
+              }}
+              className={`relative flex h-12 flex-col items-center justify-center rounded-md border px-1 ${
+                id === font ? "border-primary bg-primary/10" : "hover:border-primary/60"
+              }`}
+            >
+              <span className="text-lg leading-none" style={{ fontFamily: `"${FONTS[id].family}"`, fontWeight: FONTS[id].weight }}>
+                Aa
+              </span>
+              <span className="mt-0.5 w-full truncate text-center text-[10px] text-muted-foreground">{FONTS[id].label}</span>
+              {id === defaultFont && <span className="absolute right-1 top-0.5 text-[9px] text-muted-foreground">modelo</span>}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
       <SliderField label="Tamanho" value={value.scale} min={0.5} max={2} step={0.05} format={(v) => `${v.toFixed(2)}x`} onChange={(v) => patch({ scale: v })} />
       <div>

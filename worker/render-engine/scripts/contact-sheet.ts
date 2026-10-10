@@ -1,18 +1,20 @@
 // Folha de contato dos modelos, renderizada pelo MESMO rasterizador do vídeo.
-// Uso: npm run sheet -- saida.png [colunas] [de] [até] [âncora|-] [car|phone] [contain|cover]
+// Uso: npm run sheet -- saida.png [colunas] [de] [até] [âncora|-] [car|phone] [contain|cover] [story|portrait|square]
 // A foto é sintética (carro em paisagem ou celular em pé) só para conferir o
 // enquadramento; nenhum dado real é lido.
 import { Resvg } from "@resvg/resvg-js";
 import { readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { SCENE_LIST } from "../src/scenes.js";
+import { SCENE_FORMATS, SCENE_LIST } from "../src/scenes.js";
 import { buildSceneOverlaySvgWithMeta } from "../src/scene-composer.js";
 import { normalizeFraming, placeImage } from "../src/image-fit.js";
 
 const dir = path.resolve("assets/fonts");
 const fontFiles = readdirSync(dir).filter((f) => f.endsWith(".ttf")).map((f) => path.join(dir, f));
-const W = 1080, H = 1920, tw = 324, th = 576, pad = 14;
-const [out, colsArg, fromArg, toArg, anchorArg, shapeArg, fitArg] = process.argv.slice(2);
+const pad = 14;
+const [out, colsArg, fromArg, toArg, anchorArg, shapeArg, fitArg, formatArg] = process.argv.slice(2);
+const fmt = SCENE_FORMATS[(formatArg as keyof typeof SCENE_FORMATS) || "story"] ?? SCENE_FORMATS.story;
+const W = fmt.width, H = fmt.height, tw = 324, th = Math.round((324 * H) / W);
 const cols = Number(colsArg ?? 5), from = Number(fromArg ?? 0), to = Number(toArg ?? 99);
 
 // "Foto de produto" sintética: paisagem (carro) ou retrato (celular).
