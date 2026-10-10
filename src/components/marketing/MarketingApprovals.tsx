@@ -640,6 +640,11 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
               previewImageUrl={editorImageSequence[0]?.previewUrl ?? null}
               focalPoint={editorFocalPoint}
               companyId={companyId}
+              onCreateCarousel={(document) => {
+                // O vídeo fica como está; o carrossel é um conteúdo novo.
+                closeVideoEditor();
+                setStudioSession({ key: `from-video-${Date.now()}`, document });
+              }}
               imageSequence={editorImageSequence}
               onImageSequenceChange={setEditorImageSequence}
               onRetryImage={retryEditorImage}

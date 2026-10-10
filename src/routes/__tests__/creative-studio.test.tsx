@@ -177,7 +177,7 @@ describe("estúdio criativo: carrossel", () => {
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(lastSave().document.pages.map((p) => p.layout.template)).toEqual(["luxo", "oferta", "oferta"]);
 
-    await user.click(screen.getByRole("button", { name: "Aplicar a todas" }));
+    await user.click(screen.getByRole("button", { name: "Usar este modelo em todas" }));
     await user.click(screen.getByRole("tab", { name: "Cores" }));
     await user.click(screen.getByRole("button", { name: "Cores do modelo" }));
     await user.click(screen.getByRole("button", { name: "Salvar" }));
@@ -247,6 +247,35 @@ describe("estúdio criativo: carrossel", () => {
     await user.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(String(toast.error.mock.calls[0][0])).toContain("ainda não foi atualizado");
+  });
+});
+
+describe("estúdio criativo: sequência narrativa", () => {
+  it("aplica uma sequência pronta: cada página recebe o modelo do seu papel, sem mexer em texto e foto", async () => {
+    const { user } = setup();
+    await user.selectOptions(screen.getByLabelText("Sequência pronta"), "servico");
+    await user.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const doc = lastSave().document;
+    expect(doc.pages.map((p) => p.role)).toEqual(["impacto", "apresentacao", "cta"]);
+    expect(doc.pages.map((p) => p.layout.template)).toEqual(["bloco", "lateral", "glass"]);
+    expect(doc.pages.map((p) => p.text.headline)).toEqual(["Verão com desconto", "", ""]);
+    expect(doc.pages.every((p) => p.image)).toBe(true);
+  });
+
+  it("orienta o que escrever em cada papel sem preencher nada, e avisa que página sem texto mostra só a foto", async () => {
+    const { user } = setup();
+    await user.click(pages()[1]);
+    await user.click(screen.getByRole("tab", { name: "Texto" }));
+    const title = screen.getByLabelText("Título") as HTMLInputElement;
+    expect(title.value).toBe("");
+    expect(title.placeholder).toBe("O nome do produto ou serviço");
+    expect(screen.getByText(/Mostra o que é/)).toBeTruthy();
+    expect(screen.getByText(/mostra só a foto/)).toBeTruthy();
+    // Sem texto: a prévia não desenha o painel do modelo.
+    expect(previewSvg()).not.toMatch(/<(rect|polygon|path|text)\b/);
+    await user.click(within(screen.getByRole("group", { name: "Papel da página" })).getByRole("button", { name: "Benefício" }));
+    expect((screen.getByLabelText("Título") as HTMLInputElement).placeholder).toBe("Um benefício para o cliente");
   });
 });
 
@@ -341,7 +370,7 @@ describe("estúdio criativo: arte", () => {
     const { user } = setup(newDocument("art", "luxo", "square"));
     expect(screen.getByTestId("creative-studio").getAttribute("data-kind")).toBe("art");
     expect(screen.queryByTestId("page-strip")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Aplicar a todas" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Usar este modelo em todas" })).toBeNull();
     const formats = screen.getByRole("group", { name: "Formato" });
     await user.click(within(formats).getByRole("button", { name: "9:16" }));
     expect(screen.getByTestId("creative-studio").querySelectorAll('[data-format="story"]').length).toBeGreaterThan(1);

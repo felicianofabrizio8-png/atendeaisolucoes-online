@@ -25,6 +25,8 @@ interface Props {
   onRestore?: () => void;
   regenerating?: boolean;
   disabled?: boolean;
+  /** Dicas do que escrever em cada campo (ex.: pelo papel da página). */
+  placeholders?: { headline?: string; subheadline?: string; cta?: string };
 }
 
 export function TabTexto({
@@ -38,6 +40,7 @@ export function TabTexto({
   onRestore,
   regenerating,
   disabled,
+  placeholders,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -54,7 +57,7 @@ export function TabTexto({
           maxLength={HEADLINE_MAX}
           onChange={(e) => onHeadline(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Chegou a novidade"
+          placeholder={placeholders?.headline ?? "Ex.: Chegou a novidade"}
         />
       </div>
       <div>
@@ -71,7 +74,7 @@ export function TabTexto({
           rows={2}
           onChange={(e) => onSubheadline(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Qualidade que faz diferença"
+          placeholder={placeholders?.subheadline ?? "Ex.: Qualidade que faz diferença"}
         />
       </div>
       <div>
@@ -87,7 +90,7 @@ export function TabTexto({
           maxLength={CTA_MAX}
           onChange={(e) => onCta(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Fale conosco"
+          placeholder={placeholders?.cta ?? "Ex.: Fale conosco"}
         />
       </div>
       {onRegenerate && onRestore && (

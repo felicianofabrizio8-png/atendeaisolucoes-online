@@ -45,6 +45,7 @@ import {
   type StudioPage,
 } from "@/lib/marketing/studio/document";
 import { applyAnchor, applyColors, applyTemplate, dragOffset, paletteForScene, type ColorChoice } from "@/lib/marketing/studio/layout-ops";
+import { CAROUSEL_RECIPES, ROLE_HINTS, applyRecipe, getRecipe } from "@/lib/marketing/studio/carousel-recipes";
 import { useBrandLogo } from "@/hooks/useBrandLogo";
 import { SceneRenderer, type ScenePart } from "../campaign/editor/SceneRenderer";
 import { useImageLoadStatus } from "../campaign/editor/useImageLoadStatus";
@@ -107,7 +108,8 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
   const brandColors = brandLogo.brandColors;
 
   // Documento novo (sem cores definidas) abre com a identidade da empresa.
-  const colorsResolved = useRef(initial.pages.some((p) => !!p.layout.colors));
+  // "template" = ainda ninguém escolheu cores (documento novo).
+  const colorsResolved = useRef(initial.pages.some((p) => !!p.layout.colors && (p.layout.colorMode ?? "template") !== "template"));
   useEffect(() => {
     if (colorsResolved.current || !brandColors) return;
     colorsResolved.current = true;
@@ -181,6 +183,14 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
     },
     [changePage, brandColors],
   );
+  function recipeToAll(id: string) {
+    const recipe = getRecipe(id);
+    colorsResolved.current = true;
+    // Papéis ainda livres recebem a narrativa pela ordem; os já definidos ficam.
+    const assign = doc.pages.every((p) => p.role === "livre");
+    change((cur) => applyRecipe(cur, recipe, brandColors, assign));
+    toast.info(`Sequência “${recipe.label}” aplicada: cada página recebeu o modelo do seu papel.`);
+  }
   function templateToAll() {
     change((cur) => updateAllPages(cur, (p) => (p.id === page.id ? p : { ...p, layout: applyTemplate(p.layout, scene, brandColors) })));
     toast.info(`Modelo “${scene.label}” aplicado a todas as páginas.`);
@@ -432,11 +442,33 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2.5">
             <TabsContent value="templates" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
               {multi && (
-                <div className="flex shrink-0 items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>O modelo vale para a página {pageIndex + 1}.</span>
-                  <Button size="sm" variant="ghost" className="h-7" onClick={templateToAll}>
-                    Aplicar a todas
-                  </Button>
+                <div className="shrink-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="studio-recipe" className="shrink-0 text-xs">
+                      Sequência pronta
+                    </Label>
+                    <select
+                      id="studio-recipe"
+                      className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                      value=""
+                      onChange={(e) => e.target.value && recipeToAll(e.target.value)}
+                    >
+                      <option value="">Escolha para aplicar a todas as páginas…</option>
+                      {CAROUSEL_RECIPES.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label} — {r.description}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <span>
+                      Página {pageIndex + 1} · {PAGE_ROLES[page.role]}
+                    </span>
+                    <Button size="sm" variant="ghost" className="h-7" onClick={templateToAll}>
+                      Usar este modelo em todas
+                    </Button>
+                  </div>
                 </div>
               )}
               <div className="min-h-0 flex-1">
@@ -464,6 +496,7 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
                     value={page.role}
                     onChange={(role) => changePage((p) => ({ ...p, role }))}
                   />
+                  <p className="mt-1 text-xs text-muted-foreground">{ROLE_HINTS[page.role].purpose}</p>
                 </div>
               )}
               <TabTexto
@@ -473,7 +506,11 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
                 onHeadline={setText("headline")}
                 onSubheadline={setText("subheadline")}
                 onCta={setText("cta")}
+                placeholders={multi ? ROLE_HINTS[page.role] : undefined}
               />
+              {!page.text.headline && !page.text.subheadline && !page.text.cta && (
+                <p className="text-xs text-muted-foreground">Sem texto, esta página mostra só a foto, com a logo.</p>
+              )}
               <div className="border-t pt-3">
                 <div className="flex items-baseline justify-between">
                   <Label htmlFor="studio-caption">Legenda do post</Label>
@@ -555,6 +592,7 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
                 onSelect={handleSelect}
                 onDragText={handleDragText}
                 emptyLabel={null}
+                photoWhenEmpty
               />
               {!page.image && (
                 <div className="absolute inset-x-0 top-[30%] z-[28] flex justify-center px-3">

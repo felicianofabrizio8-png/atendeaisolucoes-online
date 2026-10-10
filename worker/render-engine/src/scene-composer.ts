@@ -63,6 +63,22 @@ export interface SceneOverlaySvgInput {
   logo?: SceneComposerLogo | null;
   /** Prefixo dos ids de gradiente (vários SVGs inline na mesma página). */
   idPrefix?: string;
+  /**
+   * Página sem nenhum texto vira "só a foto": sem painel nem formas, a foto
+   * usa o quadro inteiro e a logo permanece. Usado em páginas de carrossel;
+   * o vídeo não liga isto (o título é obrigatório).
+   */
+  photoWhenEmpty?: boolean;
+}
+
+/** O conteúdo não tem nenhum texto para desenhar? */
+export function hasNoText(content: SceneComposerContent): boolean {
+  return ![content.headline, content.supportingText, content.ctaText].some((t) => (t ?? "").trim().length > 0);
+}
+
+/** Versão "só a foto" de um modelo: mantém cores, fontes e a logo. */
+function photoOnlyScene(scene: SceneDefinition): SceneDefinition {
+  return { ...scene, layers: [], image: { ...scene.image, area: { x: 0, y: 0, w: 100, h: 100 }, window: false } };
 }
 
 export type Box = Rect;
@@ -571,7 +587,11 @@ export function sceneImageAreas(base: SceneDefinition, anchor: Anchor, W: number
 export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): SceneOverlaySvgResult {
   const { width: W, height: H, content, logo } = input;
   // O modelo é desenhado em 9:16; para 4:5 e 1:1 usa a versão adaptada.
-  const scene = sceneForFormat(input.scene, formatOf(W, H));
+  const photoOnly = !!input.photoWhenEmpty && hasNoText(content);
+  // A versão por formato é guardada em cache pelo id do modelo: o "só a foto"
+  // é aplicado DEPOIS, para nunca contaminar o modelo normal.
+  const formatted = sceneForFormat(input.scene, formatOf(W, H));
+  const scene = photoOnly ? photoOnlyScene(formatted) : formatted;
   const rawLayout = (input.layout && typeof input.layout === "object" ? input.layout : {}) as Record<string, unknown>;
   const layout = normalizeLayout(logo?.layout ? { ...rawLayout, logo: logo.layout } : rawLayout, scene);
   const palette = scene.palette;
@@ -712,7 +732,8 @@ export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): Scene
 
   // 4. Camadas. As presas ao texto (cartão, régua) já conhecem o bloco e
   //    entram no mesmo grupo dos textos — assim inclinam junto com ele.
-  const imageAreas = sceneImageAreas(input.scene, anchor, W, H, blockBox);
+  const frame: Rect = { x: 0, y: 0, width: W, height: H };
+  const imageAreas: ImageAreas = photoOnly ? { contain: frame, cover: frame } : sceneImageAreas(input.scene, anchor, W, H, blockBox);
   const ctx: Ctx = {
     W, H, palette, anchor, boxTop, boxHeight, block: blockBox,
     blockAlign: layout.title.align,

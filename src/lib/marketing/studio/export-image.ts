@@ -177,6 +177,8 @@ export async function renderPageImage(input: RenderPageInput): Promise<RenderedP
     content: { headline: page.text.headline || null, supportingText: page.text.subheadline || null, ctaText: page.text.cta || null },
     logo: logoDataUri ? { dataUri: logoDataUri } : null,
     idPrefix: "exp",
+    // Mesma regra da prévia do estúdio: página sem texto é só a foto.
+    photoWhenEmpty: true,
   });
 
   const base = (input.fontBaseUrl ?? "/fonts/video/").replace(/\/?$/, "/");

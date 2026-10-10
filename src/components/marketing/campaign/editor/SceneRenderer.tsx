@@ -62,6 +62,8 @@ interface Props {
   selected?: ScenePart | null;
   /** Torna textos e logo clicáveis na prévia. */
   onSelect?: (part: ScenePart) => void;
+  /** Página sem texto vira "só a foto" (carrossel e arte). */
+  photoWhenEmpty?: boolean;
   /** Aviso no quadro sem foto. null = só o fundo na cor do modelo (como na exportação). */
   emptyLabel?: string | null;
   /** Arrastar o bloco de textos: deslocamento total do gesto, em % do quadro. */
@@ -87,6 +89,7 @@ export const SceneRenderer = memo(function SceneRenderer({
   onSelect,
   onDragText,
   emptyLabel = "sem imagem",
+  photoWhenEmpty,
 }: Props) {
   const idPrefix = useId();
   const { width: W, height: H } = SCENE_FORMATS[format];
@@ -110,8 +113,9 @@ export const SceneRenderer = memo(function SceneRenderer({
         content: { headline: headline || null, supportingText: subheadline, ctaText: cta },
         logo: logoUrl ? { dataUri: logoUrl } : null,
         idPrefix,
+        photoWhenEmpty,
       }),
-    [scene, layout, headline, subheadline, cta, logoUrl, idPrefix, W, H],
+    [scene, layout, headline, subheadline, cta, logoUrl, idPrefix, W, H, photoWhenEmpty],
   );
 
   const interactive = !!onSelect;

@@ -29,6 +29,7 @@ export {
 } from "../../../../../worker/render-engine/src/scenes";
 export {
   buildSceneOverlaySvgWithMeta,
+  hasNoText,
   sceneImageAreas,
   type Box,
   type TextPart,

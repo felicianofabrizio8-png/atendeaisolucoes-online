@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Clapperboard, Images, LayoutTemplate, Loader2, Palette, RotateCcw, SlidersHorizontal, Type } from "lucide-react";
+import { CheckCircle2, Clapperboard, GalleryHorizontalEnd, Images, LayoutTemplate, Loader2, Palette, RotateCcw, SlidersHorizontal, Type } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiApproveCampaignAndRender,
@@ -43,7 +43,7 @@ import { brandPalette, fitPaletteToScene, themePalette, usedColorRoles } from "@
 import { useBrandLogo } from "@/hooks/useBrandLogo";
 import { MEDIA_ERROR_MESSAGE, resolveCampaignMedia, type MediaLoadError, type MediaResolverDeps } from "@/lib/marketing/campaign-media";
 import { MAX_CAMPAIGN_IMAGES } from "@/lib/render-engine/render.types";
-import { imageKey, type PageImageRef } from "@/lib/marketing/studio/document";
+import { documentFromVideo, imageKey, toCarousel, type PageImageRef, type StudioDocument } from "@/lib/marketing/studio/document";
 import { StudioMediaPicker } from "../../studio/StudioMediaPicker";
 import { useImageLoadStatus } from "./useImageLoadStatus";
 import { SceneRenderer, type SceneImageLayer, type ScenePart } from "./SceneRenderer";
@@ -83,6 +83,11 @@ interface Props {
   companyId?: string;
   /** Só para testes e para a página de validação visual. */
   mediaDeps?: MediaResolverDeps;
+  /**
+   * Abre um carrossel com as mesmas fotos, textos, modelo e cores deste vídeo.
+   * O vídeo não é alterado.
+   */
+  onCreateCarousel?: (document: StudioDocument) => void;
 }
 
 /** Tela final de marca que o worker aplica nos últimos segundos do vídeo. */
@@ -143,6 +148,7 @@ export function CampaignVideoEditor({
   onContentsUpdated,
   companyId,
   mediaDeps = campaignMediaDeps,
+  onCreateCarousel,
 }: Props) {
   const feedRow = useMemo(
     () => contents.find((c) => c.campaign_role === "feed") ?? contents[0] ?? null,
@@ -484,6 +490,24 @@ export function CampaignVideoEditor({
     }
   }
 
+  function handleCreateCarousel() {
+    if (!onCreateCarousel) return;
+    const video = documentFromVideo({
+      layout: { ...layout, colors: palette },
+      text: { headline: headline.trim(), subheadline: subheadline.trim(), cta: cta.trim() },
+      scenes: imageSequence.flatMap((item) => {
+        const image: PageImageRef | null =
+          item.origin === "marketing" && item.mediaId
+            ? { origin: "marketing", mediaId: item.mediaId }
+            : item.origin === "product" && item.productId && item.imagePath
+              ? { origin: "product", productId: item.productId, imagePath: item.imagePath }
+              : null;
+        return image ? [{ image, framing: item.focalPoint ? normalizeFraming(item.focalPoint, framingDefaults) : null }] : [];
+      }),
+    });
+    onCreateCarousel(toCarousel(video));
+  }
+
   // A logo é a do cadastro de marca da empresa: trocar/remover aqui altera o
   // cadastro (o servidor exige administrador), e é dele que o vídeo a lê.
   const logoManager: LogoManager = {
@@ -537,6 +561,12 @@ export function CampaignVideoEditor({
             <input type="checkbox" aria-label="Área segura" checked={showSafeArea} onChange={(e) => setShowSafeArea(e.target.checked)} className="accent-primary" />
             <span className="hidden sm:inline">Área segura</span>
           </label>
+          {onCreateCarousel && imageSequence.length > 0 && (
+            <Button variant="outline" onClick={handleCreateCarousel} disabled={approving} aria-label="Criar carrossel" title="Abre um carrossel com as mesmas fotos, textos e cores. O vídeo não muda.">
+              <GalleryHorizontalEnd className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Criar carrossel</span>
+            </Button>
+          )}
           <Button onClick={handleApprove} disabled={approving || regenerating || !headline.trim()}>
             {approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
             Gerar vídeo

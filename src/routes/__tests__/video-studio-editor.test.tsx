@@ -204,6 +204,30 @@ describe("estúdio do Vídeo IA", () => {
     expect(replaced.slice(1).map((i) => i.key)).toEqual(["b", "c"]);
   });
 
+  it("Criar carrossel entrega um documento com as fotos, os textos, o modelo e as cores do vídeo, sem gerar nada", async () => {
+    const onCreateCarousel = vi.fn();
+    const { user } = setup(vi.fn(), { onCreateCarousel });
+    const gallery = screen.getByRole("tabpanel", { name: "Modelos" });
+    await user.click(within(gallery).getByRole("button", { name: /Etiqueta/ }));
+    await user.click(screen.getByRole("button", { name: "Criar carrossel" }));
+    expect(onCreateCarousel).toHaveBeenCalledTimes(1);
+    expect(approve).not.toHaveBeenCalled();
+    const doc = onCreateCarousel.mock.calls[0][0] as { kind: string; format: string; pages: Array<{ role: string; image: { mediaId: string } | null; text: { headline: string; subheadline: string; cta: string }; layout: { template: string; colorMode: string } }> };
+    expect(doc.kind).toBe("carousel");
+    expect(doc.format).toBe("portrait");
+    expect(doc.pages.map((p) => p.image?.mediaId)).toEqual(IMAGES.map((i) => i.mediaId));
+    expect(doc.pages.map((p) => p.role)).toEqual(["impacto", "apresentacao", "cta"]);
+    expect(doc.pages[0].text).toEqual({ headline: "Verão com desconto", subheadline: "Entrega rápida", cta: "" });
+    expect(doc.pages[2].text.cta).toBe("Peça já");
+    expect(doc.pages.every((p) => p.layout.template === "etiqueta")).toBe(true);
+    expect(doc.pages.every((p) => p.layout.colorMode === "brand")).toBe(true);
+  });
+
+  it("sem o destino do carrossel, o botão não aparece", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "Criar carrossel" })).toBeNull();
+  });
+
   it("uma cena só não pode ser removida; sem empresa informada o acervo não é oferecido", async () => {
     const { user } = setup(vi.fn(), { imageSequence: IMAGES.slice(0, 1), companyId: undefined });
     await user.click(screen.getByRole("tab", { name: "Mídia" }));

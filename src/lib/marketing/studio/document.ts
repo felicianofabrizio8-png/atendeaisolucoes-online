@@ -271,7 +271,7 @@ export function toCarousel(doc: StudioDocument, format: SceneFormat = "portrait"
     const last = pages.length - 1;
     pages = pages.map((p, i) => ({
       ...p,
-      role: i === 0 ? "impacto" : i === last ? "cta" : "apresentacao",
+      role: i === 0 ? "impacto" : i === last ? "cta" : (["apresentacao", "beneficio", "diferencial"] as const)[(i - 1) % 3],
       text: {
         headline: i === 0 || last === 0 ? p.text.headline : "",
         subheadline: i === 0 ? p.text.subheadline : "",

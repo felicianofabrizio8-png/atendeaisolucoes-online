@@ -8,6 +8,8 @@ import { apiListContents } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { documentFromContentRow, studioKindOf } from "@/lib/marketing/studio/content-mapping";
 import { STUDIO_KINDS, newDocument, type StudioKind } from "@/lib/marketing/studio/document";
+import { CAROUSEL_RECIPES, buildCarousel, getRecipe } from "@/lib/marketing/studio/carousel-recipes";
+import { Chip, ChipRow } from "../ui/MarketingUi";
 import type { SceneFormat } from "@/lib/marketing/video-editor/scenes/registry";
 import { FORMAT_LABELS } from "./CreativeStudio";
 import { StudioDialog, type StudioSession } from "./StudioDialog";
@@ -27,6 +29,8 @@ export function StudioLauncher({ companyId }: Props) {
   const [session, setSession] = useState<StudioSession | null>(null);
   const [drafts, setDrafts] = useState<MarketingContentRow[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [recipeId, setRecipeId] = useState<string>(CAROUSEL_RECIPES[0].id);
+  const recipe = getRecipe(recipeId);
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -43,7 +47,8 @@ export function StudioLauncher({ companyId }: Props) {
   }, [load]);
 
   function start(kind: StudioKind, format: SceneFormat) {
-    setSession({ key: `new-${Date.now()}`, document: newDocument(kind, null, format) });
+    const document = kind === "carousel" ? buildCarousel({ recipe, format }) : newDocument(kind, recipe.steps[0].template, format);
+    setSession({ key: `new-${Date.now()}`, document });
   }
   function open(row: MarketingContentRow) {
     const document = documentFromContentRow(row);
@@ -55,6 +60,19 @@ export function StudioLauncher({ companyId }: Props) {
       <div>
         <h2 className="text-base font-semibold">Estúdio criativo</h2>
         <p className="text-sm text-muted-foreground">Monte carrosséis e artes com os mesmos modelos, cores e logo dos seus vídeos.</p>
+      </div>
+
+      <div className="space-y-1">
+        <ChipRow label="Finalidade">
+          {CAROUSEL_RECIPES.map((r) => (
+            <Chip key={r.id} active={r.id === recipeId} onClick={() => setRecipeId(r.id)}>
+              {r.label}
+            </Chip>
+          ))}
+        </ChipRow>
+        <p className="text-xs text-muted-foreground">
+          {recipe.description} O carrossel já nasce com cinco páginas: impacto, apresentação, benefício, diferencial e chamada.
+        </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
