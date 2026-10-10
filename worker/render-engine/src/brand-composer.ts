@@ -61,6 +61,12 @@ export interface BrandLayerPaths {
   /** Duração da tela final (segundos). */
   outroDurationSeconds: number;
   /**
+   * Entrada animada dos textos: PNG só com os textos (o `bottomPanelPath`
+   * fica então só com formas e logo). Null = sem animação.
+   */
+  textLayerPath: string | null;
+  textAnimation: "fade" | "rise" | null;
+  /**
    * Fase M4-render — quando true, o overlay `bottomPanelPath` já contém a
    * logo (renderizada dentro da cena, respeitando `overlayLayout.logo`).
    * O caller deve suprimir o watermark clássico para evitar duplicação.
@@ -178,6 +184,8 @@ export async function composeBrandLayers(
   let sceneLogoConfirmed = false;
   let sceneLogoReason: string | null = "scene_not_used";
   let sceneLogoHidden = false;
+  let textLayerPath: string | null = null;
+  let textAnimation: "fade" | "rise" | null = null;
   let sceneImage: BrandLayerPaths["sceneImage"] = null;
   if (hasBottomPanel) {
     // Fase M4-render — se o snapshot traz template + overlayLayout do editor,
@@ -252,6 +260,25 @@ export async function composeBrandLayers(
           },
           logo: sceneLogo,
         });
+        const animation = built.layout.animation === "fade" || built.layout.animation === "rise" ? built.layout.animation : null;
+        if (animation && built.blockBox) {
+          // Duas camadas: formas + logo (fixas) e os textos (que entram animados).
+          try {
+            const basePath = await rasterizeSvg({ svg: built.baseSvg, width, height, fontFiles, outPath: path.join(workDir, "brand-scene-base.png") });
+            const textPath = await rasterizeSvg({ svg: built.textSvg, width, height, fontFiles, outPath: path.join(workDir, "brand-scene-text.png") });
+            if (basePath && textPath) {
+              bottomPanelPath = basePath;
+              textLayerPath = textPath;
+              textAnimation = animation;
+            }
+          } catch (err) {
+            // A animação é um extra: se falhar, o vídeo sai com o texto fixo.
+            log.warn("brand_composer_text_animation_skipped", { job_id: jobId, message: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
+            textLayerPath = null;
+            textAnimation = null;
+          }
+        }
+        if (!textLayerPath) {
         bottomPanelPath = await rasterizeSvg({
           svg: built.svg,
           width,
@@ -259,6 +286,7 @@ export async function composeBrandLayers(
           fontFiles,
           outPath: path.join(workDir, "brand-scene-overlay.png"),
         });
+        }
         sceneImage = { areas: built.imageAreas, fillColor: scene.palette.background, defaultFill: scene.image.fill };
         sceneLogoHidden = built.logoSkipReason === "hidden_by_user";
         // Intenção declarada (havia logo disponível para a cena).
@@ -399,6 +427,8 @@ export async function composeBrandLayers(
     bottomPanelPath,
     outroCardPath,
     outroDurationSeconds,
+    textLayerPath,
+    textAnimation,
     sceneAppliesLogo,
     sceneLogoConfirmed,
     sceneLogoReason,

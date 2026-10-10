@@ -260,6 +260,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       let bottomPanelPath: string | null = null;
       let outroCardPath: string | null = null;
       let outroDurationSeconds = 0;
+      let textLayerPath: string | null = null;
+      let textAnimation: "fade" | "rise" | null = null;
       let sceneAppliesLogo = false;
       let sceneLogoConfirmed = false;
       let sceneLogoReason: string | null = "composer_not_run";
@@ -314,6 +316,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           bottomPanelPath = layers.bottomPanelPath;
           outroCardPath = layers.outroCardPath;
           outroDurationSeconds = layers.outroDurationSeconds;
+          textLayerPath = layers.textLayerPath;
+          textAnimation = layers.textAnimation;
           sceneAppliesLogo = layers.sceneAppliesLogo;
           sceneLogoConfirmed = layers.sceneLogoConfirmed;
           sceneLogoReason = layers.sceneLogoReason;
@@ -326,6 +330,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
             layers_count: layersCount,
             has_bottom_panel: !!bottomPanelPath,
             has_outro_card: !!outroCardPath,
+            text_animation: textAnimation,
             outro_duration_seconds: outroDurationSeconds,
             scene_applies_logo: sceneAppliesLogo,
             scene_logo_confirmed: sceneLogoConfirmed,
@@ -381,6 +386,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           bottomPanelPath,
           outroCardPath,
           outroDurationSeconds,
+          textLayerPath,
+          textAnimation,
         };
       }
     }

@@ -155,6 +155,33 @@ export interface VideoLayout {
    * número de imagens = tempo dividido igualmente.
    */
   sceneSeconds?: number[];
+  /** Entrada dos textos. Ausente = sem animação. */
+  animation?: TextAnimationId;
+}
+
+/** Entrada do bloco de textos no começo do vídeo. */
+export const TEXT_ANIMATIONS = {
+  none: "Sem animação",
+  fade: "Surgir",
+  rise: "Subir",
+} as const;
+export type TextAnimationId = keyof typeof TEXT_ANIMATIONS;
+/** Duração da entrada (s) e quanto o texto sobe em "rise" (fração da altura). */
+export const TEXT_ANIMATION = { seconds: 0.6, rise: 0.03 } as const;
+
+export function isTextAnimationId(value: unknown): value is TextAnimationId {
+  return typeof value === "string" && value in TEXT_ANIMATIONS;
+}
+
+/**
+ * Estado do bloco de textos no instante `t` (s): opacidade 0..1 e deslocamento
+ * vertical em fração da altura do quadro. A prévia aplica isto em CSS e o
+ * FFmpeg aplica a mesma curva (linear) no filtro — ver `ffmpeg.ts`.
+ */
+export function textAnimationAt(animation: TextAnimationId | null | undefined, t: number): { opacity: number; dy: number } {
+  if (!animation || animation === "none") return { opacity: 1, dy: 0 };
+  const p = Math.max(0, Math.min(1, t / TEXT_ANIMATION.seconds));
+  return { opacity: p, dy: animation === "rise" ? TEXT_ANIMATION.rise * (1 - p) : 0 };
 }
 
 export interface OutroLayout {
@@ -1217,6 +1244,7 @@ export function normalizeLayout(raw: unknown, scene: SceneDefinition): VideoLayo
     colorMode: oneOf(o.colorMode, ["brand", "template", "theme", "custom"] as const, "template"),
     transition: isTransitionId(o.transition) ? o.transition : DEFAULT_TRANSITION,
     // Só aparecem quando o editor os definiu: layouts antigos ficam iguais.
+    ...(isTextAnimationId(o.animation) && o.animation !== "none" ? { animation: o.animation } : {}),
     ...(o.outro && typeof o.outro === "object"
       ? {
           outro: {

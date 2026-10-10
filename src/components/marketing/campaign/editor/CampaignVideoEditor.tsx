@@ -46,6 +46,7 @@ import {
   normalizeLayout,
   outroSecondsOf,
   sceneDurations,
+  textAnimationAt,
   transitionSeconds,
   type ImageFraming,
 } from "@/lib/marketing/video-editor/scenes/registry";
@@ -702,6 +703,16 @@ export function CampaignVideoEditor({
                 transition={transition}
                 onTransition={(t) => setLayout((cur) => ({ ...cur, transition: t }))}
                 sceneCount={scenes.length}
+                animation={layout.animation ?? "none"}
+                onAnimation={(animation) => {
+                  setLayout((cur) => {
+                    const { animation: _drop, ...rest } = cur;
+                    return animation === "none" ? rest : { ...rest, animation };
+                  });
+                  // Mostra o efeito na hora: reproduz do início.
+                  setTime(0);
+                  setPlaying(animation !== "none");
+                }}
                 sceneSeconds={durations}
                 customTimes={customTimes}
                 onSceneSeconds={(index, seconds) => {
@@ -750,6 +761,7 @@ export function CampaignVideoEditor({
                 selected={selected}
                 onSelect={handleSelect}
                 onDragText={handleDragText}
+                textMotion={playing ? textAnimationAt(layout.animation, time) : null}
               />
               {!playing && (stageLoading || stageError) && (
                 <div

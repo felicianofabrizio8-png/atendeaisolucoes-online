@@ -9,9 +9,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@resvg/resvg-js", () => ({ Resvg: class {} }));
 
 import { resolveOutroOptions } from "../brand-composer";
-import { renderSlideshowWithAudio } from "../ffmpeg";
+import { renderSlideshowWithAudio, renderStaticImageVideo } from "../ffmpeg";
+import { buildSceneOverlaySvgWithMeta } from "../scene-composer";
 import { ffprobe } from "../ffprobe";
-import { SCENES, normalizeLayout, outroSecondsOf, sceneDurations, transitionSeconds } from "../scenes";
+import { SCENES, TEXT_ANIMATION, normalizeLayout, outroSecondsOf, sceneDurations, textAnimationAt, transitionSeconds } from "../scenes";
 
 const sum = (list: number[]) => list.reduce((a, b) => a + b, 0);
 
@@ -94,6 +95,104 @@ describe("tela final no worker", () => {
     // O editor não liga uma tela final que o snapshot não tem (sem marca).
     expect(resolveOutroOptions(brand({ outro: { enabled: true, seconds: 2 } }, false)).enabled).toBe(false);
   });
+});
+
+describe("entrada animada dos textos", () => {
+  const scene = SCENES.moderno;
+  const content = { headline: "Oferta da semana", supportingText: "Só até sábado", ctaText: "Peça já" };
+
+  it("a curva é a mesma para a prévia e o FFmpeg: linear em 0,6 s", () => {
+    expect(textAnimationAt("none", 0)).toEqual({ opacity: 1, dy: 0 });
+    expect(textAnimationAt(undefined, 0)).toEqual({ opacity: 1, dy: 0 });
+    expect(textAnimationAt("fade", 0)).toEqual({ opacity: 0, dy: 0 });
+    expect(textAnimationAt("fade", 0.3).opacity).toBeCloseTo(0.5, 6);
+    expect(textAnimationAt("fade", 5)).toEqual({ opacity: 1, dy: 0 });
+    expect(textAnimationAt("rise", 0)).toEqual({ opacity: 0, dy: TEXT_ANIMATION.rise });
+    expect(textAnimationAt("rise", 0.3).dy).toBeCloseTo(TEXT_ANIMATION.rise / 2, 6);
+    expect(textAnimationAt("rise", 0.6)).toEqual({ opacity: 1, dy: 0 });
+  });
+
+  it("o layout só guarda a animação quando existe; valor desconhecido é descartado", () => {
+    expect(normalizeLayout({ ...scene.defaultLayout, animation: "rise" }, scene).animation).toBe("rise");
+    for (const value of ["none", "girar", 3, null]) expect("animation" in normalizeLayout({ ...scene.defaultLayout, animation: value }, scene)).toBe(false);
+  });
+
+  it("formas + textos, em camadas separadas, somam exatamente o desenho único", () => {
+    for (const s of Object.values(SCENES)) {
+      const built = buildSceneOverlaySvgWithMeta({ width: 1080, height: 1920, scene: s, layout: s.defaultLayout, content, logo: { dataUri: "data:image/png;base64,AAAA" } });
+      const open = built.svg.slice(0, built.svg.indexOf(">") + 1);
+      const inner = (svg: string) => svg.slice(open.length, -"</svg>".length);
+      expect(built.baseSvg.startsWith(open)).toBe(true);
+      expect(built.textSvg.startsWith(open)).toBe(true);
+      expect(inner(built.baseSvg) + inner(built.textSvg)).toBe(inner(built.svg));
+      // Os textos ficam só na camada animada; a logo, só na fixa.
+      expect(built.baseSvg).not.toContain("<text");
+      expect(built.textSvg).toContain("<text");
+      expect(built.textSvg).not.toContain("<image");
+    }
+  });
+
+  it("FFmpeg real: sem animação o texto está no 1º quadro; com 'Surgir' ele aparece aos poucos; com 'Subir' ele também sobe", async () => {
+    function run(cmd: string, args: string[]): Buffer {
+      const r = spawnSync(cmd, args, { maxBuffer: 1024 * 1024 * 5 });
+      if (r.status !== 0) throw new Error(`${cmd} failed: ${String(r.stderr).slice(0, 400)}`);
+      return r.stdout as Buffer;
+    }
+    /** Brilho (0..255) do pixel (x, y) no instante t. */
+    const lumaAt = (file: string, t: number, x: number, y: number) =>
+      run("ffmpeg", ["-v", "error", "-ss", String(t), "-i", file, "-frames:v", "1", "-vf", `crop=2:2:${x}:${y},scale=1:1`, "-f", "rawvideo", "-pix_fmt", "gray", "-"])[0];
+
+    const dir = await mkdtemp(path.join(os.tmpdir(), "text-anim-"));
+    try {
+      const W = 200;
+      const H = 400;
+      const photo = path.join(dir, "photo.png");
+      const base = path.join(dir, "base.png");
+      const text = path.join(dir, "text.png");
+      const audio = path.join(dir, "a.wav");
+      run("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=black:s=${W}x${H}`, "-frames:v", "1", photo]);
+      // Camada fixa: transparente. Camada de texto: faixa branca entre y=200 e y=240.
+      run("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=black@0.0:s=${W}x${H},format=rgba`, "-frames:v", "1", base]);
+      run("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=black@0.0:s=${W}x${H},format=rgba,drawbox=x=0:y=200:w=${W}:h=40:color=white@1.0:t=fill:replace=1`, "-frames:v", "1", text]);
+      run("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=660:duration=4:sample_rate=48000", "-ac", "2", audio]);
+
+      const render = async (name: string, wm: Record<string, unknown>) => {
+        const out = path.join(dir, name);
+        await renderStaticImageVideo({
+          imageFilePath: photo, audioFilePath: audio, audioStartSecond: 0, durationSeconds: 3, width: W, height: H, outputFilePath: out, timeoutMs: 60_000,
+          watermark: { logoFilePath: null, position: "top-left", maxWidthRatio: 0.14, opacity: 1, safeMarginRatio: 0.04, ...wm } as never,
+        });
+        return out;
+      };
+
+      // Sem animação (como sempre): uma camada só, visível desde o início.
+      const still = await render("still.mp4", { bottomPanelPath: text });
+      expect(lumaAt(still, 0, 100, 220)).toBeGreaterThan(200);
+
+      const fade = await render("fade.mp4", { bottomPanelPath: base, textLayerPath: text, textAnimation: "fade" });
+      const f0 = lumaAt(fade, 0, 100, 220);
+      const f1 = lumaAt(fade, 0.3, 100, 220);
+      const f2 = lumaAt(fade, 1.5, 100, 220);
+      expect(f0).toBeLessThan(60);
+      expect(f1).toBeGreaterThan(70);
+      expect(f1).toBeLessThan(200);
+      expect(f2).toBeGreaterThan(200);
+      // O texto continua na tela depois que o trecho animado acaba.
+      expect(lumaAt(fade, 2.8, 100, 220)).toBeGreaterThan(200);
+      // Não se move: logo abaixo da faixa segue escuro.
+      expect(lumaAt(fade, 0.3, 100, 246)).toBeLessThan(40);
+
+      const rise = await render("rise.mp4", { bottomPanelPath: base, textLayerPath: text, textAnimation: "rise" });
+      // No meio da entrada a faixa está ~6 px abaixo (3% de 400 × 0,5): o pixel
+      // logo abaixo da posição final está aceso, e depois apaga.
+      expect(lumaAt(rise, 0.3, 100, 242)).toBeGreaterThan(50);
+      expect(lumaAt(rise, 1.5, 100, 246)).toBeLessThan(40);
+      expect(lumaAt(rise, 1.5, 100, 220)).toBeGreaterThan(200);
+      expect(lumaAt(rise, 0, 100, 220)).toBeLessThan(60);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe("tempos por cena no FFmpeg real", () => {

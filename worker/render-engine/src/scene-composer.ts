@@ -516,6 +516,12 @@ function textPiece(
  */
 export interface SceneOverlaySvgResult {
   svg: string;
+  /**
+   * O mesmo desenho em duas partes, para animar a entrada dos textos:
+   * `baseSvg` (formas e logo) + `textSvg` (só os textos) = `svg`.
+   */
+  baseSvg: string;
+  textSvg: string;
   /** Prova objetiva: a logo foi desenhada no SVG. */
   logoRendered: boolean;
   /** Motivo sanitizado quando a logo não foi desenhada. */
@@ -794,6 +800,9 @@ export function buildSceneOverlaySvgWithMeta(input: SceneOverlaySvgInput): Scene
     }
   }
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${layersSvg}${logoSvg}${textSvg}</svg>`;
-  return { svg, logoRendered, logoSkipReason, logoBox, logoSlot, textBoxes, blockBox, imageAreas, layout };
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  const svg = `${open}${layersSvg}${logoSvg}${textSvg}</svg>`;
+  const baseSvg = `${open}${layersSvg}${logoSvg}</svg>`;
+  const textOnlySvg = `${open}${textSvg}</svg>`;
+  return { svg, baseSvg, textSvg: textOnlySvg, logoRendered, logoSkipReason, logoBox, logoSlot, textBoxes, blockBox, imageAreas, layout };
 }

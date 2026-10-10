@@ -1,4 +1,4 @@
-import { DEFAULT_TRANSITION, isTransitionId, type TransitionId } from "./scenes.js";
+import { DEFAULT_TRANSITION, TEXT_ANIMATION, isTransitionId, type TransitionId } from "./scenes.js";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -53,6 +53,13 @@ export interface WatermarkInput {
   outroCardPath?: string | null;
   /** Duração da tela final (segundos). Ignorado se `outroCardPath` null. */
   outroDurationSeconds?: number;
+  /**
+   * Entrada animada dos textos: PNG full-frame RGBA só com os textos (o
+   * `bottomPanelPath` fica com formas e logo). Ausente = sem animação, e o
+   * comando do FFmpeg é exatamente o de sempre.
+   */
+  textLayerPath?: string | null;
+  textAnimation?: "fade" | "rise" | null;
 }
 
 
@@ -167,6 +174,7 @@ function extractBrandPaths(wm: WatermarkInput): string[] {
   if (wm.logoFilePath) out.push(wm.logoFilePath);
   if (wm.bottomPanelPath) out.push(wm.bottomPanelPath);
   if (wm.outroCardPath) out.push(wm.outroCardPath);
+  if (wm.textLayerPath) out.push(wm.textLayerPath);
   return out;
 }
 
@@ -242,10 +250,17 @@ export function buildBrandOverlayChain(params: {
   const { x: logoX, y: logoY } = posMap[wm.position];
 
   const inputArgs: string[] = [];
-  const layerIndex = { logo: -1, panel: -1, outro: -1 };
+  const layerIndex = { logo: -1, panel: -1, text: -1, outro: -1 };
   let cursor = firstBrandInputIdx;
   if (wm.logoFilePath) { inputArgs.push("-i", wm.logoFilePath); layerIndex.logo = cursor++; }
   if (wm.bottomPanelPath) { inputArgs.push("-i", wm.bottomPanelPath); layerIndex.panel = cursor++; }
+  const animateText = !!wm.textLayerPath && (wm.textAnimation === "fade" || wm.textAnimation === "rise") && durationSeconds > 0;
+  if (animateText) {
+    // Só o trecho da entrada vira vídeo (30 fps); depois o overlay repete o
+    // último quadro, já opaco — sem manter um fluxo RGBA pelo vídeo inteiro.
+    inputArgs.push("-loop", "1", "-framerate", "30", "-t", (TEXT_ANIMATION.seconds + 0.4).toFixed(3), "-i", wm.textLayerPath!);
+    layerIndex.text = cursor++;
+  }
   if (wm.outroCardPath) { inputArgs.push("-i", wm.outroCardPath); layerIndex.outro = cursor++; }
 
   const outroDur = wm.outroCardPath
@@ -262,7 +277,9 @@ export function buildBrandOverlayChain(params: {
   if (baseInputLabel) {
     prevLabel = baseInputLabel;
   } else {
-    parts.push(`[0:v]${baseVf}[vbase]`);
+    // A imagem única entra a 2 fps (economia de memória). Para a entrada dos
+    // textos ser fluida, a base sobe para 30 fps — só quando há animação.
+    parts.push(`[0:v]${baseVf}${animateText ? ",fps=30" : ""}[vbase]`);
     prevLabel = "vbase";
   }
   let step = 0;
@@ -282,6 +299,15 @@ export function buildBrandOverlayChain(params: {
     parts.push(`[${layerIndex.panel}:v]format=rgba[panel]`);
     const n = nextLbl();
     parts.push(`[${prevLabel}][panel]overlay=0:0:format=auto${enableMain}[${n}]`);
+    prevLabel = n;
+  }
+  if (layerIndex.text >= 0) {
+    // Mesma curva (linear) de `textAnimationAt`, usada pela prévia.
+    const d = TEXT_ANIMATION.seconds.toFixed(3);
+    parts.push(`[${layerIndex.text}:v]format=rgba,fade=t=in:st=0:d=${d}:alpha=1[txt]`);
+    const y = wm.textAnimation === "rise" ? `'if(lt(t\\,${d})\\,H*${TEXT_ANIMATION.rise}*(1-t/${d})\\,0)'` : "0";
+    const n = nextLbl();
+    parts.push(`[${prevLabel}][txt]overlay=x=0:y=${y}:format=auto${enableMain}[${n}]`);
     prevLabel = n;
   }
   if (layerIndex.outro >= 0) {

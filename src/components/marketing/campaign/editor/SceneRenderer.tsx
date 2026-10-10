@@ -62,6 +62,11 @@ interface Props {
   selected?: ScenePart | null;
   /** Torna textos e logo clicáveis na prévia. */
   onSelect?: (part: ScenePart) => void;
+  /**
+   * Estado da entrada animada dos textos durante a reprodução (opacidade e
+   * deslocamento em fração da altura). Ausente = textos no lugar.
+   */
+  textMotion?: { opacity: number; dy: number } | null;
   /** Página sem texto vira "só a foto" (carrossel e arte). */
   photoWhenEmpty?: boolean;
   /** Aviso no quadro sem foto. null = só o fundo na cor do modelo (como na exportação). */
@@ -90,6 +95,7 @@ export const SceneRenderer = memo(function SceneRenderer({
   onDragText,
   emptyLabel = "sem imagem",
   photoWhenEmpty,
+  textMotion,
 }: Props) {
   const idPrefix = useId();
   const { width: W, height: H } = SCENE_FORMATS[format];
@@ -214,11 +220,25 @@ export const SceneRenderer = memo(function SceneRenderer({
       )}
 
       {/* Cena: o mesmo SVG que o worker aplica no vídeo */}
-      <div
-        className="scene-overlay pointer-events-none absolute inset-0"
-        style={{ zIndex: 10 }}
-        dangerouslySetInnerHTML={{ __html: built.svg }}
-      />
+      {textMotion && (textMotion.opacity < 1 || textMotion.dy !== 0) ? (
+        // Entrada animada: formas e logo fixas, textos em camada própria —
+        // as mesmas duas camadas que o worker entrega ao FFmpeg.
+        <>
+          <div className="scene-overlay pointer-events-none absolute inset-0" style={{ zIndex: 10 }} dangerouslySetInnerHTML={{ __html: built.baseSvg }} />
+          <div
+            className="scene-overlay pointer-events-none absolute inset-0"
+            data-text-layer
+            style={{ zIndex: 11, opacity: textMotion.opacity, transform: `translateY(${(textMotion.dy * 100).toFixed(3)}%)` }}
+            dangerouslySetInnerHTML={{ __html: built.textSvg }}
+          />
+        </>
+      ) : (
+        <div
+          className="scene-overlay pointer-events-none absolute inset-0"
+          style={{ zIndex: 10 }}
+          dangerouslySetInnerHTML={{ __html: built.svg }}
+        />
+      )}
 
       {/* Sem logo cadastrada (e não ocultada): marcador / envio */}
       {/* Nas miniaturas o marcador só poluiria a galeria. */}

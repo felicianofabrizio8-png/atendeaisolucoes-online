@@ -28,6 +28,8 @@ import {
   MIN_SCENE_SECONDS,
   OUTRO_SECONDS,
   SCENE_FORMATS,
+  TEXT_ANIMATIONS,
+  type TextAnimationId,
   SCENE_PURPOSES,
   type ImageFraming,
   type SceneFormat,
@@ -454,6 +456,8 @@ interface VideoPanelProps {
   transition: TransitionId;
   onTransition: (t: TransitionId) => void;
   sceneCount: number;
+  animation: TextAnimationId;
+  onAnimation: (animation: TextAnimationId) => void;
   /** Segundos efetivos de cada cena (somam a duração do vídeo). */
   sceneSeconds: number[];
   /** O usuário definiu tempos próprios (senão: divididos igualmente). */
@@ -464,7 +468,7 @@ interface VideoPanelProps {
   onOutro: (patch: { enabled?: boolean; seconds?: number }) => void;
 }
 
-export function VideoPanel({ duration, onDuration, transition, onTransition, sceneCount, sceneSeconds, customTimes, onSceneSeconds, onEqualTimes, outro, onOutro }: VideoPanelProps) {
+export function VideoPanel({ duration, onDuration, transition, onTransition, sceneCount, animation, onAnimation, sceneSeconds, customTimes, onSceneSeconds, onEqualTimes, outro, onOutro }: VideoPanelProps) {
   const multi = sceneCount > 1;
   // Cada cena pode ir de 1 s até o que sobra deixando 1 s para cada uma das outras.
   const maxScene = Math.max(MIN_SCENE_SECONDS, duration - MIN_SCENE_SECONDS * (sceneCount - 1));
@@ -498,6 +502,16 @@ export function VideoPanel({ duration, onDuration, transition, onTransition, sce
             </Button>
           ))}
         </div>
+      </div>
+
+      <div>
+        <PanelTitle hint="Como o título, o subtítulo e a chamada entram no começo do vídeo. A prévia toca o efeito ao escolher.">Entrada dos textos</PanelTitle>
+        <Segmented
+          label="Entrada dos textos"
+          options={(Object.entries(TEXT_ANIMATIONS) as Array<[TextAnimationId, string]>).map(([id, label]) => [id, label] as const)}
+          value={animation}
+          onChange={onAnimation}
+        />
       </div>
 
       {multi && (

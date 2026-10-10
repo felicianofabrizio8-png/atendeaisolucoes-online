@@ -301,6 +301,34 @@ describe("estúdio do Vídeo IA", () => {
     Object.assign(brand, { brandColors: { primary: "#0B3D2E", secondary: "#F2E8CF", accent: "#C81E1E" } });
   });
 
+  it("entrada dos textos: a escolha vai para o render e a prévia toca o efeito em duas camadas", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("tab", { name: "Vídeo" }));
+    const group = screen.getByRole("group", { name: "Entrada dos textos" });
+    expect(within(group).getByRole("button", { name: "Sem animação" }).getAttribute("aria-pressed")).toBe("true");
+    const studio = screen.getByTestId("video-studio");
+    expect(studio.querySelector("[data-text-layer]")).toBeNull();
+
+    await user.click(within(group).getByRole("button", { name: "Subir" }));
+    // A reprodução começa do zero: os textos estão em camada própria, ainda invisíveis e deslocados.
+    expect(screen.getByRole("button", { name: "Pausar prévia" })).toBeTruthy();
+    const layer = studio.querySelector("[data-text-layer]") as HTMLElement;
+    expect(layer).toBeTruthy();
+    expect(layer.style.opacity).toBe("0");
+    expect(layer.style.transform).toBe("translateY(3.000%)");
+    expect(layer.innerHTML).toContain("<text");
+
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+    expect((lastPayload().layout as unknown as { animation: string }).animation).toBe("rise");
+
+    await user.click(within(screen.getByRole("group", { name: "Entrada dos textos" })).getByRole("button", { name: "Sem animação" }));
+    expect(studio.querySelector("[data-text-layer]")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(2));
+    expect("animation" in lastPayload().layout).toBe(false);
+  });
+
   it("retimeScene mantém a soma e não aceita tempos impossíveis", () => {
     expect(retimeScene([5, 5, 5], 0, 9, 15)).toEqual([9, 3, 3]);
     expect(retimeScene([2, 4, 6], 2, 3, 12)).toEqual([3, 6, 3]);

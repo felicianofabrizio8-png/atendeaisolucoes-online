@@ -45,6 +45,7 @@ export {
 } from "../../../../../worker/render-engine/src/image-fit";
 
 export { BLUR } from "../../../../../worker/render-engine/src/image-prepare-params";
+export { TEXT_ANIMATION, TEXT_ANIMATIONS, textAnimationAt, type TextAnimationId } from "../../../../../worker/render-engine/src/scenes";
 export { MIN_SCENE_SECONDS, OUTRO_SECONDS, outroSecondsOf, sceneDurations, transitionSeconds } from "../../../../../worker/render-engine/src/scenes";
 export { SCENE_FORMATS, formatOf, sceneForFormat, type SceneFormat } from "../../../../../worker/render-engine/src/scenes";
 
