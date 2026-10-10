@@ -16,7 +16,7 @@ const row = (channel = "instagram") => ({ id: "content-1", channel, status: "app
 const sched = (channel: string, status: string, at: string, content_id = "content-1") => ({ id: `${channel}-${at}`, content_id, channel, status, scheduled_at: at }) as unknown as MarketingScheduleRow;
 
 function setup(options: { deps?: Partial<PublishNowDeps>; channel?: string; blocked?: string | null } = {}) {
-  const schedule = vi.fn(async (_input: { content_id: string; channel: string; scheduled_at: string }) => ({}));
+  const schedule = vi.fn(async (_input: { content_id: string; channel: string; publish_now: true }) => ({}));
   const deps: PublishNowDeps = { schedule, listSchedule: async () => [], ...options.deps };
   const onClose = vi.fn();
   const onDone = vi.fn();
@@ -44,7 +44,8 @@ describe("escolha do destino", () => {
     await user.click(screen.getByRole("button", { name: "Publicar" }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(schedule).toHaveBeenCalledTimes(1);
-    expect(schedule.mock.calls[0][0]).toMatchObject({ content_id: "content-1", channel: "instagram" });
+    // O horário NÃO sai do navegador: o pedido só diz "agora" e o servidor decide.
+    expect(schedule.mock.calls[0][0]).toEqual({ content_id: "content-1", channel: "instagram", publish_now: true });
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 

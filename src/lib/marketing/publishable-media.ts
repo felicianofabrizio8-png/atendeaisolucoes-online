@@ -21,7 +21,18 @@ export interface PublishableContent {
   product_id?: string | null;
   feed_video_id?: string | null;
   story_video_id?: string | null;
+  /** Documento do Estúdio Criativo (carrossel ou arte), quando o conteúdo veio de lá. */
+  design?: unknown;
 }
+
+/** Conteúdo do Estúdio Criativo cuja imagem final é gerada no botão Concluir. */
+export function isStudioImageContent(content: PublishableContent): boolean {
+  const kind = content.design && typeof content.design === "object" ? (content.design as { kind?: unknown }).kind : null;
+  return kind === "art" || kind === "carousel";
+}
+
+export const STUDIO_EXPORT_NEEDED_MESSAGE =
+  "Esta peça ainda não tem a imagem final (ela foi criada ou alterada depois da última exportação). Abra o conteúdo em Editar no estúdio e clique em Concluir para gerar a imagem antes de publicar.";
 
 export type PublishableMediaSource = "rendered_video" | "marketing_media" | "product_media_refs" | "product";
 
@@ -47,6 +58,7 @@ export function publishableMediaSource(content: PublishableContent): Publishable
  * gerar o vídeo.
  */
 export function missingMediaMessage(content: PublishableContent, canal: string): string {
+  if (isStudioImageContent(content)) return STUDIO_EXPORT_NEEDED_MESSAGE;
   const isCampaignVideo = !!content.campaign_id && content.format !== "whatsapp_cta";
   return isCampaignVideo
     ? `O vídeo desta publicação ainda não foi gerado. Gere o vídeo antes de agendar para o ${canal}.`

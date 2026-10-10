@@ -93,7 +93,45 @@ describe("na fila (quando o agendamento vira publicação)", () => {
 describe("mensagens", () => {
   it("explicam o motivo e o que fazer", () => {
     expect(duplicateMessage("Facebook", { status: "queued" })).toContain("em andamento no Facebook");
+    // Cancelar o agendamento não cancela um envio já na fila: orientar a
+    // cancelar e publicar de novo poderia gerar dois posts.
+    for (const status of ["planned", "queued", "published"]) expect(duplicateMessage("Instagram", { status })).not.toMatch(/cancel/i);
+    expect(duplicateMessage("Instagram", { status: "planned" })).toContain("Aguarde a conclusão");
     expect(duplicateMessage("Instagram", { status: "published" })).toContain("acabou de ser publicado no Instagram");
+  });
+});
+
+describe("'Publicar agora' usa o horário do servidor", () => {
+  it("ignora qualquer horário enviado pelo navegador; 'Agendar' mantém o horário escolhido", async () => {
+    const { resolveScheduledAt } = await import("@/lib/marketing/marketing.functions");
+    const serverNow = new Date("2026-10-10T12:00:00.000Z");
+    // Relógio do aparelho 3 horas adiantado ou 1 dia atrasado: tanto faz.
+    for (const browser of ["2026-10-10T15:00:00.000Z", "2026-10-09T12:00:00.000Z", undefined]) {
+      expect(resolveScheduledAt({ publish_now: true, scheduled_at: browser }, serverNow)).toBe("2026-10-10T12:00:01.000Z");
+    }
+    expect(resolveScheduledAt({ scheduled_at: "2026-11-01T09:30:00.000Z" }, serverNow)).toBe("2026-11-01T09:30:00.000Z");
+    expect(resolveScheduledAt({ publish_now: false, scheduled_at: "2026-11-01T09:30:00.000Z" }, serverNow)).toBe("2026-11-01T09:30:00.000Z");
+  });
+
+  it("REGRESSÃO: dois aparelhos com relógios diferentes caem na mesma janela e o segundo é recusado", async () => {
+    const { resolveScheduledAt } = await import("@/lib/marketing/marketing.functions");
+    const first = resolveScheduledAt({ publish_now: true, scheduled_at: at(-3 * 3600) }, NOW);
+    const second = resolveScheduledAt({ publish_now: true, scheduled_at: at(3 * 3600) }, new Date(NOW.getTime() + 400));
+    expect(request({ scheduled_at: second }, [{ id: "a", status: "planned", scheduled_at: first, created_at: first }])?.id).toBe("a");
+  });
+
+  it("o servidor usa o horário resolvido na conferência e na gravação; o pedido sem horário só vale em 'publicar agora'", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/lib/marketing/marketing.functions.ts"), "utf8");
+    const fn = source.slice(source.indexOf("export const scheduleMarketingContent"), source.indexOf("export async function carouselScheduleProblem"));
+    expect(fn).toContain("const scheduledAt = resolveScheduledAt(data);");
+    expect(fn).toContain("scheduled_at: scheduledAt,");
+    expect(fn).not.toContain("data.scheduled_at");
+    expect(source).toContain('.refine((v) => v.publish_now === true || typeof v.scheduled_at === "string"');
+    const dialog = readFileSync(resolve(process.cwd(), "src/components/marketing/PublishNowDialog.tsx"), "utf8");
+    expect(dialog).not.toMatch(/Date\.now\(\)|scheduled_at:/);
+    // "Agendar" continua enviando o horário escolhido pelo usuário.
+    const approvals = readFileSync(resolve(process.cwd(), "src/components/marketing/MarketingApprovals.tsx"), "utf8");
+    expect(approvals).toContain("scheduled_at: result.iso,");
   });
 });
 
@@ -103,7 +141,7 @@ describe("ligação no servidor", () => {
 
   it("confere antes de gravar e de novo depois; quem perde cancela só o PRÓPRIO agendamento", () => {
     const order = [
-      'findDuplicateSchedule({ scheduled_at: data.scheduled_at }, await siblings(), { mode: "request" })',
+      'findDuplicateSchedule({ scheduled_at: scheduledAt }, await siblings(), { mode: "request" })',
       ".insert({",
       'findDuplicateSchedule({ id: row.id, scheduled_at: row.scheduled_at, created_at: row.created_at }, await siblings(), { mode: "request" })',
       '.update({ status: "cancelled" }).eq("id", row.id).eq("company_id", companyId).eq("status", "planned")',

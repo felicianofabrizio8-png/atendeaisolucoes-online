@@ -598,12 +598,26 @@ export const getFacebookPublishReadiness = createServerFn({ method: "GET" })
 // SCHEDULE — obrigatório: só conteúdo approved da MESMA empresa
 // ============================================================================
 
-const ScheduleSchema = z.object({
-  content_id: z.string().uuid(),
-  channel: z.enum(["instagram", "facebook", "whatsapp"]),
-  scheduled_at: z.string().datetime(),
-  notes: z.string().trim().max(500).optional().nullable(),
-});
+const ScheduleSchema = z
+  .object({
+    content_id: z.string().uuid(),
+    channel: z.enum(["instagram", "facebook", "whatsapp"]),
+    /** Horário escolhido pelo usuário ("Agendar"). Ignorado em `publish_now`. */
+    scheduled_at: z.string().datetime().optional(),
+    /**
+     * "Publicar agora": o horário é o do SERVIDOR. O relógio do navegador não
+     * entra — dois aparelhos com relógios diferentes caem na mesma janela da
+     * proteção contra pedido repetido.
+     */
+    publish_now: z.boolean().optional(),
+    notes: z.string().trim().max(500).optional().nullable(),
+  })
+  .refine((v) => v.publish_now === true || typeof v.scheduled_at === "string", { message: "scheduled_at é obrigatório.", path: ["scheduled_at"] });
+
+/** Horário gravado: o do servidor em "publicar agora"; o escolhido pelo usuário ao agendar. */
+export function resolveScheduledAt(input: { publish_now?: boolean; scheduled_at?: string }, now: Date = new Date()): string {
+  return input.publish_now === true ? new Date(now.getTime() + 1000).toISOString() : (input.scheduled_at as string);
+}
 
 /**
  * Guarda multi-tenant server-side: exige aprovação, mídia (IG/FB feed/reel/story)
@@ -615,6 +629,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => ScheduleSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, userId, supabase } = await loadCompany(context);
+    const scheduledAt = resolveScheduledAt(data);
     const { data: content, error: cErr } = await supabase
       .from("marketing_contents")
       .select("id, company_id, status, media_ids, ai_prompt, campaign_id, format, product_id, feed_video_id, story_video_id, design")
@@ -670,7 +685,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
       if (sErr) throw new Error(sErr.message);
       return (rows ?? []) as ScheduleSibling[];
     };
-    const before = findDuplicateSchedule({ scheduled_at: data.scheduled_at }, await siblings(), { mode: "request" });
+    const before = findDuplicateSchedule({ scheduled_at: scheduledAt }, await siblings(), { mode: "request" });
     if (before) throw new Error(duplicateMessage(canal, before));
 
     const { data: row, error } = await supabase
@@ -679,7 +694,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
         company_id: companyId,
         content_id: data.content_id,
         channel: data.channel,
-        scheduled_at: data.scheduled_at,
+        scheduled_at: scheduledAt,
         notes: data.notes ?? null,
         created_by: userId,
       })

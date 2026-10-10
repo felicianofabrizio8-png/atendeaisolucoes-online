@@ -233,7 +233,9 @@ export async function apiListPublishSchedule(): Promise<MarketingScheduleRow[]> 
 export async function apiScheduleContent(input: {
   content_id: string;
   channel: "instagram" | "facebook" | "whatsapp";
-  scheduled_at: string;
+  /** Horário escolhido ao agendar. Em `publish_now` o servidor define o horário. */
+  scheduled_at?: string;
+  publish_now?: boolean;
   notes?: string | null;
 }) {
   return scheduleMarketingContent({ data: input });

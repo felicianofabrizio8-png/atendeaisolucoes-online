@@ -41,6 +41,20 @@ describe("mídia publicável (mesma ordem do publicador)", () => {
     expect(missingMediaMessage({ campaign_id: "c1", format: "whatsapp_cta" }, "Instagram")).toContain("Selecione ao menos");
   });
 
+  it("arte ou carrossel do estúdio sem imagem final: a mensagem manda clicar em Concluir", () => {
+    for (const kind of ["art", "carousel"]) {
+      const content = { campaign_id: null, format: kind === "art" ? "feed" : "carousel", media_ids: [], design: { version: 1, kind, format: "portrait", pages: [] } };
+      expect(publishableMediaSource(content)).toBeNull();
+      const message = missingMediaMessage(content, "Instagram");
+      expect(message).toContain("clique em Concluir");
+      expect(message).toContain("Editar no estúdio");
+      expect(message).not.toContain("Selecione ao menos");
+    }
+    // Conteúdo comum e vídeo de campanha mantêm as mensagens de sempre.
+    expect(missingMediaMessage({ campaign_id: null, format: "feed", design: null }, "Instagram")).toContain("Selecione ao menos");
+    expect(missingMediaMessage({ campaign_id: "c1", format: "story", design: { kind: "video" } }, "Instagram")).toContain("ainda não foi gerado");
+  });
+
   it("o formulário de agendamento aceita o conteúdo com vídeo e repassa a mensagem específica", () => {
     const base = { scheduleFor: "id-1", scheduleAt: "2030-01-01T10:00", channel: "instagram" as const };
     expect(validateScheduleForm({ ...base, mediaCount: 1 }).ok).toBe(true);

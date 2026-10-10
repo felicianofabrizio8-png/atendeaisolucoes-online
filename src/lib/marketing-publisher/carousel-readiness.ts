@@ -33,7 +33,7 @@ export function carouselContentProblem(content: { media_ids: unknown; design?: u
   if (count === 0 || (isStudioCarousel && (design!.pages as unknown[]).length !== count)) {
     return {
       code: "carousel_export_outdated",
-      message: "As imagens do carrossel não correspondem às páginas atuais. Abra o conteúdo no estúdio e clique em Concluir para gerar as imagens de novo.",
+      message: "As imagens do carrossel não correspondem às páginas atuais (ele foi alterado depois da última exportação). Abra o conteúdo em Editar no estúdio e clique em Concluir para gerar as imagens de novo.",
     };
   }
   if (count < CAROUSEL_LIMITS.min) return { code: "carousel_too_few_images", message: `Um carrossel precisa de pelo menos ${CAROUSEL_LIMITS.min} imagens.` };

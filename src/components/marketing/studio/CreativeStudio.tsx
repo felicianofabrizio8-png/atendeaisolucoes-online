@@ -252,7 +252,7 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
       setContentId(row.id);
       setDirty(false);
       // Sem imagens exportadas (nunca concluído, ou a arte mudou depois).
-      toast.success((row.media_ids ?? []).length === 0 ? "Rascunho salvo. Clique em Concluir para gerar as imagens antes de publicar." : "Rascunho salvo.");
+      toast.success((row.media_ids ?? []).length === 0 ? "Rascunho salvo. Para publicar, clique em Concluir: é ele que gera a imagem final." : "Rascunho salvo.");
       onSaved?.(row);
       return row;
     } catch (e) {

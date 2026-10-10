@@ -73,5 +73,5 @@ export function findDuplicateSchedule(
 export function duplicateMessage(canal: string, sibling: Pick<ScheduleSibling, "status">): string {
   return sibling.status === "published"
     ? `Este conteúdo acabou de ser publicado no ${canal}. Para publicar de novo, aguarde alguns minutos e repita o pedido.`
-    : `Já existe uma publicação deste conteúdo em andamento no ${canal}. Aguarde a conclusão (ou cancele o envio na Agenda) antes de publicar de novo.`;
+    : `Já existe uma publicação deste conteúdo em andamento no ${canal}. Aguarde a conclusão e confira o resultado antes de publicar de novo.`;
 }

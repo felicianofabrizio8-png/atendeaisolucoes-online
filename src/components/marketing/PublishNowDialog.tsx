@@ -22,7 +22,8 @@ const SCHEDULE_STATUS_LABEL: Record<string, string> = {
 export type ChannelResult = { state: "sending" } | { state: "queued" } | { state: "error"; message: string };
 
 export interface PublishNowDeps {
-  schedule: (input: { content_id: string; channel: PublishChannel; scheduled_at: string }) => Promise<unknown>;
+  /** Sem horário: em "publicar agora" quem define o horário é o servidor. */
+  schedule: (input: { content_id: string; channel: PublishChannel; publish_now: true }) => Promise<unknown>;
   listSchedule: () => Promise<MarketingScheduleRow[]>;
 }
 const defaultDeps: PublishNowDeps = { schedule: apiScheduleContent, listSchedule: apiListPublishSchedule };
@@ -53,7 +54,7 @@ export async function publishToChannels(
     onUpdate?.(channel, { state: "sending" });
     let result: ChannelResult;
     try {
-      await schedule({ content_id: contentId, channel, scheduled_at: new Date(Date.now() + 1000).toISOString() });
+      await schedule({ content_id: contentId, channel, publish_now: true });
       result = { state: "queued" };
     } catch (e) {
       result = { state: "error", message: e instanceof Error && e.message ? e.message : "Falha ao enfileirar a publicação." };
