@@ -38,7 +38,17 @@ import type {
 } from "@/lib/marketing/video-editor/layout.types";
 import { DEFAULT_TEMPLATE } from "@/lib/marketing/video-editor/layout.types";
 import type { ColorRole, SceneDefinition } from "@/lib/marketing/video-editor/scene.types";
-import { DEFAULT_TRANSITION, getScene, normalizeFraming, normalizeLayout, type ImageFraming } from "@/lib/marketing/video-editor/scenes/registry";
+import {
+  DEFAULT_TRANSITION,
+  OUTRO_SECONDS,
+  getScene,
+  normalizeFraming,
+  normalizeLayout,
+  outroSecondsOf,
+  sceneDurations,
+  transitionSeconds,
+  type ImageFraming,
+} from "@/lib/marketing/video-editor/scenes/registry";
 import { brandPalette, fitPaletteToScene, themePalette, usedColorRoles } from "@/lib/marketing/video-editor/palette";
 import { useBrandLogo } from "@/hooks/useBrandLogo";
 import { MEDIA_ERROR_MESSAGE, resolveCampaignMedia, type MediaLoadError, type MediaResolverDeps } from "@/lib/marketing/campaign-media";
@@ -90,9 +100,15 @@ interface Props {
   onCreateCarousel?: (document: StudioDocument) => void;
 }
 
-/** Tela final de marca que o worker aplica nos últimos segundos do vídeo. */
-const OUTRO_SECONDS = 2;
 const DEFAULT_DURATION = 15;
+
+/** Reescala os tempos para que a cena `index` dure `seconds` e a soma continue `total`. */
+export function retimeScene(durations: number[], index: number, seconds: number, total: number): number[] {
+  const others = total - durations[index];
+  const room = total - seconds;
+  if (!(others > 0) || !(room > 0)) return durations;
+  return durations.map((d, i) => Math.round((i === index ? seconds : (d / others) * room) * 10) / 10);
+}
 
 type Tool = "templates" | "text" | "colors" | "media" | "video" | "props";
 
@@ -214,7 +230,28 @@ export function CampaignVideoEditor({
   );
   const sequenceEditable = imageSequence.length > 0 && !!onImageSequenceChange;
   const currentIndex = Math.min(sceneIndex, scenes.length - 1);
-  const perScene = duration / scenes.length;
+  // Tempo de cada cena: a mesma conta do worker (iguais, se nada foi definido).
+  const durations = useMemo(() => sceneDurations(duration, scenes.length, layout.sceneSeconds), [duration, scenes.length, layout.sceneSeconds]);
+  const starts = useMemo(() => durations.map((_, i) => durations.slice(0, i).reduce((a, b) => a + b, 0)), [durations]);
+  const customTimes = Array.isArray(layout.sceneSeconds) && layout.sceneSeconds.length === scenes.length;
+  const sceneAt = useCallback(
+    (t: number) => {
+      let index = 0;
+      for (let i = 0; i < starts.length; i++) if (t >= starts[i]) index = i;
+      return index;
+    },
+    [starts],
+  );
+  /** Aplica a mesma mudança da sequência de imagens aos tempos definidos. */
+  function editTimes(change: (seconds: number[]) => number[]) {
+    setLayout((cur) => {
+      if (!Array.isArray(cur.sceneSeconds) || cur.sceneSeconds.length !== imageSequence.length) {
+        const { sceneSeconds: _drop, ...rest } = cur;
+        return rest;
+      }
+      return { ...cur, sceneSeconds: change([...cur.sceneSeconds]) };
+    });
+  }
 
   // Situação da imagem em exibição: link ausente, carregando, erro ou pronta.
   const [imageAttempt, setImageAttempt] = useState(0);
@@ -248,12 +285,18 @@ export function CampaignVideoEditor({
     const next = [...imageSequence];
     [next[index], next[target]] = [next[target], next[index]];
     onImageSequenceChange?.(next);
+    // O tempo acompanha a cena.
+    editTimes((s) => {
+      [s[index], s[target]] = [s[target], s[index]];
+      return s;
+    });
     setSceneIndex(target);
   }
   function removeScene(index: number) {
     // O vídeo precisa de pelo menos uma imagem.
     if (imageSequence.length < 2) return;
     onImageSequenceChange?.(imageSequence.filter((_, i) => i !== index));
+    editTimes((s) => s.filter((_, i) => i !== index));
     setSceneIndex((cur) => Math.max(0, Math.min(cur, imageSequence.length - 2)));
   }
 
@@ -293,6 +336,8 @@ export function CampaignVideoEditor({
       if (target.mode === "add") {
         if (current.length >= MAX_CAMPAIGN_IMAGES) return;
         onImageSequenceChange([...current, item]);
+        // A cena nova entra com o tempo médio das que já existem.
+        editTimes((s) => [...s, Math.round((s.reduce((a, b) => a + b, 0) / s.length) * 10) / 10]);
         setPlaying(false);
         setSceneIndex(current.length);
       } else {
@@ -332,23 +377,23 @@ export function CampaignVideoEditor({
   function selectScene(index: number) {
     setPlaying(false);
     setSceneIndex(index);
-    setTime(index * perScene);
+    setTime(starts[index] ?? 0);
   }
 
   const transition = layout.transition ?? DEFAULT_TRANSITION;
   const imageLayers: SceneImageLayer[] = useMemo(() => {
-    // Mesma conta do worker: cada cena dura `perScene` e a transição ocupa o fim dela.
-    const xfade = scenes.length > 1 ? Math.min(0.6, perScene / 3) : 0;
-    const index = playing ? Math.min(scenes.length - 1, Math.floor(time / perScene)) : currentIndex;
+    // Mesma conta do worker: a transição ocupa o fim de cada cena.
+    const xfade = transitionSeconds(durations);
+    const index = playing ? sceneAt(time) : currentIndex;
     const next = playing && index + 1 < scenes.length ? scenes[index + 1] : null;
-    const start = perScene * (index + 1) - xfade;
+    const start = (starts[index + 1] ?? duration) - xfade;
     const progress = next && time >= start ? Math.min(1, (time - start) / xfade) : 0;
     const styles = transitionStyles(transition, progress);
     const layer = (sc: StudioScene, style: CSSProperties, key: string): SceneImageLayer => ({ key, url: sc.url, focalPoint: sc.focalPoint, style });
     const out = [layer(scenes[index], progress > 0 ? styles.out : {}, `out-${scenes[index].key}`)];
     if (next && progress > 0) out.push(layer(next, styles.into, `in-${next.key}`));
     return out;
-  }, [scenes, perScene, playing, time, currentIndex, transition]);
+  }, [scenes, durations, starts, duration, sceneAt, playing, time, currentIndex, transition]);
 
   // ------------------------------ Enquadramento -----------------------------
   // Sem nada salvo, vale o padrão seguro do modelo: imagem inteira ("conter").
@@ -636,7 +681,7 @@ export function CampaignVideoEditor({
                 scenes={scenes}
                 selectedIndex={currentIndex}
                 editable={sequenceEditable}
-                secondsPerScene={perScene}
+                secondsPerScene={customTimes ? null : duration / scenes.length}
                 onSelect={selectScene}
                 onMove={moveScene}
                 onRemove={removeScene}
@@ -657,6 +702,27 @@ export function CampaignVideoEditor({
                 transition={transition}
                 onTransition={(t) => setLayout((cur) => ({ ...cur, transition: t }))}
                 sceneCount={scenes.length}
+                sceneSeconds={durations}
+                customTimes={customTimes}
+                onSceneSeconds={(index, seconds) => {
+                  setPlaying(false);
+                  setLayout((cur) => ({ ...cur, sceneSeconds: retimeScene(sceneDurations(duration, scenes.length, cur.sceneSeconds), index, seconds, duration) }));
+                }}
+                onEqualTimes={() =>
+                  setLayout((cur) => {
+                    const { sceneSeconds: _drop, ...rest } = cur;
+                    return rest;
+                  })
+                }
+                outro={{
+                  // Sem marca publicada nem logo, o vídeo não tem tela final.
+                  available: !!(brandColors || effectiveLogoUrl),
+                  enabled: layout.outro?.enabled !== false,
+                  seconds: layout.outro?.seconds ?? OUTRO_SECONDS.default,
+                }}
+                onOutro={(patch) =>
+                  setLayout((cur) => ({ ...cur, outro: { enabled: cur.outro?.enabled !== false, seconds: cur.outro?.seconds ?? OUTRO_SECONDS.default, ...patch } }))
+                }
               />
             </TabsContent>
             <TabsContent value="props" className="mt-0 lg:hidden">
@@ -724,9 +790,10 @@ export function CampaignVideoEditor({
         duration={duration}
         time={time}
         playing={playing}
-        selectedIndex={playing ? Math.min(scenes.length - 1, Math.floor(time / perScene)) : currentIndex}
+        durations={durations}
+        selectedIndex={playing ? sceneAt(time) : currentIndex}
         transition={transition}
-        outroSeconds={brandColors || effectiveLogoUrl ? OUTRO_SECONDS : 0}
+        outroSeconds={brandColors || effectiveLogoUrl ? outroSecondsOf(layout) : 0}
         onTogglePlay={() => setPlaying((cur) => !cur)}
         onSelectScene={selectScene}
       />

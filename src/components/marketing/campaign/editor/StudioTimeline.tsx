@@ -1,5 +1,6 @@
-// Timeline compacta do estúdio: uma faixa por cena (tempo dividido igualmente,
-// como no render), agulha de reprodução e marcação do encerramento da marca.
+// Timeline compacta do estúdio: uma faixa por cena, com largura proporcional
+// ao tempo dela (o mesmo do render), agulha de reprodução e marcação do
+// encerramento da marca.
 
 import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,8 @@ import type { StudioScene } from "./StudioPanels";
 
 interface Props {
   scenes: StudioScene[];
+  /** Segundos de cada cena (mesma ordem de `scenes`). */
+  durations: number[];
   duration: number;
   time: number;
   playing: boolean;
@@ -27,6 +30,7 @@ function clock(seconds: number): string {
 
 export function StudioTimeline({
   scenes,
+  durations,
   duration,
   time,
   playing,
@@ -36,7 +40,7 @@ export function StudioTimeline({
   onTogglePlay,
   onSelectScene,
 }: Props) {
-  const per = duration / scenes.length;
+  const secondsOf = (i: number) => durations[i] ?? duration / scenes.length;
   return (
     <div className="flex shrink-0 items-center gap-3 border-t bg-muted/30 px-3 py-1.5">
       <Button size="icon" variant="outline" className="h-9 w-9 shrink-0 rounded-full" aria-label={playing ? "Pausar prévia" : "Reproduzir prévia"} onClick={onTogglePlay}>
@@ -52,11 +56,10 @@ export function StudioTimeline({
               key={scene.key}
               type="button"
               aria-pressed={i === selectedIndex}
-              aria-label={`Cena ${i + 1}, ${per.toFixed(1)} segundos`}
+              aria-label={`Cena ${i + 1}, ${secondsOf(i).toFixed(1)} segundos`}
               onClick={() => onSelectScene(i)}
-              className={`relative min-w-0 flex-1 overflow-hidden bg-muted text-left ${
-                i === selectedIndex ? "ring-2 ring-inset ring-primary" : ""
-              }`}
+              className={`relative min-w-0 overflow-hidden bg-muted text-left ${i === selectedIndex ? "ring-2 ring-inset ring-primary" : ""}`}
+              style={{ flex: `${secondsOf(i)} 1 0%` }}
             >
               {/* Miniatura inteira (não um recorte) à esquerda; rótulo ao lado. */}
               <span className="absolute inset-0 flex items-center gap-1.5 px-1">
@@ -73,7 +76,7 @@ export function StudioTimeline({
                 )}
                 <span className="min-w-0 truncate text-[11px] leading-tight">
                   <span className="font-medium">Cena {i + 1}</span>
-                  <span className="text-muted-foreground"> · {per.toFixed(1)} s</span>
+                  <span className="text-muted-foreground"> · {secondsOf(i).toFixed(1)} s</span>
                 </span>
               </span>
             </button>

@@ -325,6 +325,11 @@ export interface SlideshowInput {
   watermark?: WatermarkInput | null;
   /** Transição escolhida no editor. Valor fora da lista → "fade". */
   transition?: string | null;
+  /**
+   * Duração de cada cena (s), na ordem das imagens. Ausente ou com tamanho
+   * diferente = `durationSeconds` dividido igualmente (comportamento original).
+   */
+  sceneDurations?: number[] | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   debugLogDir?: string;
@@ -374,7 +379,17 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   }
 
   const perSlot = durationSeconds / n;
-  const xfadeDuration = Math.min(0.6, perSlot / 3); // ~0.5s ou menos
+  // Tempos por cena definidos no editor (validados: n valores positivos).
+  const custom =
+    Array.isArray(input.sceneDurations) &&
+    input.sceneDurations.length === n &&
+    input.sceneDurations.every((d) => Number.isFinite(d) && d > 0)
+      ? input.sceneDurations
+      : null;
+  const slot = (i: number) => (custom ? custom[i] : perSlot);
+  /** Instante em que a cena `i` começa. */
+  const startOf = (i: number) => (custom ? custom.slice(0, i).reduce((a, b) => a + b, 0) : perSlot * i);
+  const xfadeDuration = custom ? Math.min(0.6, Math.min(...custom) / 3) : Math.min(0.6, perSlot / 3); // ~0.5s ou menos
   const transition = resolveXfadeTransition(input.transition);
 
   // Cada input roda com -loop 1 -t perSlot (para não terminar antes da hora).
@@ -383,7 +398,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   // fps=30 antes do xfade para preservar o output final a 30fps.
   const args: string[] = ["-y"];
   for (let i = 0; i < n; i++) {
-    args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
+    args.push("-loop", "1", "-t", slot(i).toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
   }
   args.push("-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath);
 
@@ -415,7 +430,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   const finalXfadeLabel = brandChain ? "vxfaded" : "vout";
   let lastLabel = "v0";
   for (let i = 1; i < n; i++) {
-    const offset = perSlot * i - xfadeDuration;
+    const offset = startOf(i) - xfadeDuration;
     const nextLabel = i === n - 1 ? finalXfadeLabel : `vx${i}`;
     filterParts.push(
       `[${lastLabel}][v${i}]xfade=transition=${transition}:duration=${xfadeDuration.toFixed(3)}:` +

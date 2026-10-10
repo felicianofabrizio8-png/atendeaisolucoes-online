@@ -96,6 +96,28 @@ export interface ComposeBrandLayersInput {
 }
 
 /**
+ * Tela final: o que o snapshot permite, ajustado pelas escolhas do editor
+ * (layout) — ligada/desligada, duração, e a logo oculta "neste vídeo", que
+ * vale para o vídeo inteiro, inclusive o encerramento.
+ */
+export function resolveOutroOptions(videoBrand: {
+  outro?: { enabled?: boolean; durationSeconds?: number } | null;
+  content?: unknown;
+}): { enabled: boolean; seconds: number; showLogo: boolean } {
+  const layout =
+    ((videoBrand.content as { overlayLayout?: unknown } | null | undefined)?.overlayLayout as
+      | { outro?: { enabled?: unknown; seconds?: unknown } | null; logo?: { visible?: unknown } | null }
+      | null
+      | undefined) ?? null;
+  const chosen = Number(layout?.outro?.seconds);
+  return {
+    enabled: !!videoBrand.outro?.enabled && layout?.outro?.enabled !== false,
+    seconds: clamp(Number.isFinite(chosen) && chosen > 0 ? chosen : Number(videoBrand.outro?.durationSeconds ?? 2), 1, 4),
+    showLogo: layout?.logo?.visible !== false,
+  };
+}
+
+/**
  * Gera as camadas de marca como PNGs. Retorna paths (ou null quando a camada
  * não faz sentido — sem texto, sem logo, ou erro isolado de rasterização).
  */
@@ -134,8 +156,10 @@ export async function composeBrandLayers(
   });
 
   const hasBottomPanel = !!(content.headline || content.supportingText || content.ctaText);
-  const outroEnabled = !!videoBrand.outro?.enabled;
-  const outroDurationSeconds = clamp(Number(videoBrand.outro?.durationSeconds ?? 2), 1, 4);
+  const outroOptions = resolveOutroOptions(videoBrand);
+  const outroEnabled = outroOptions.enabled;
+  const outroDurationSeconds = outroOptions.seconds;
+  const logoHiddenByUser = !outroOptions.showLogo;
 
   let fontFiles: string[] = [];
   try {
@@ -333,7 +357,8 @@ export async function composeBrandLayers(
   if (outroEnabled) {
     try {
       let logoDataUri: string | null = null;
-      if (logoLocalPath && logoMimeType) {
+      // "Ocultar a logo neste vídeo" vale para o vídeo inteiro, inclusive aqui.
+      if (logoLocalPath && logoMimeType && !logoHiddenByUser) {
         try {
           const buf = await readFile(logoLocalPath);
           logoDataUri = `data:${logoMimeType};base64,${buf.toString("base64")}`;

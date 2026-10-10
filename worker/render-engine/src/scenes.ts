@@ -147,6 +147,62 @@ export interface VideoLayout {
   colorMode?: ColorMode;
   /** Transição entre as imagens quando o vídeo tem mais de uma. */
   transition?: TransitionId;
+  /** Tela final com a marca. Ausente = ligada, com a duração padrão. */
+  outro?: OutroLayout;
+  /**
+   * Peso (em segundos) de cada cena, na ordem das imagens. É proporcional: o
+   * total é sempre a duração do vídeo. Ausente ou com tamanho diferente do
+   * número de imagens = tempo dividido igualmente.
+   */
+  sceneSeconds?: number[];
+}
+
+export interface OutroLayout {
+  enabled: boolean;
+  seconds: number;
+}
+
+/** Limites da tela final (os mesmos que o FFmpeg aceita). */
+export const OUTRO_SECONDS = { min: 1, max: 4, default: 2 } as const;
+/** Nenhuma cena fica mais curta que isto (se a duração total permitir). */
+export const MIN_SCENE_SECONDS = 1;
+
+/**
+ * Duração de cada cena, em segundos, somando exatamente `total`. A MESMA conta
+ * vale para a prévia e para o FFmpeg. `weights` inválido = divisão igual.
+ */
+export function sceneDurations(total: number, count: number, weights?: unknown): number[] {
+  if (count <= 0 || !(total > 0)) return [];
+  const equal = Array.from({ length: count }, () => total / count);
+  if (!Array.isArray(weights) || weights.length !== count) return equal;
+  if (!weights.every((w) => typeof w === "number" && Number.isFinite(w) && w > 0)) return equal;
+  const min = Math.min(MIN_SCENE_SECONDS, total / count);
+  let durations = (weights as number[]).map((w) => w);
+  const fixed = new Array<boolean>(count).fill(false);
+  // Distribui proporcionalmente; quem ficaria abaixo do mínimo é fixado nele
+  // e o restante é redistribuído entre as outras cenas.
+  for (let pass = 0; pass < count; pass++) {
+    const free = durations.reduce((sum, d, i) => (fixed[i] ? sum : sum + d), 0);
+    const room = total - min * fixed.filter(Boolean).length;
+    const next = durations.map((d, i) => (fixed[i] ? min : (d / free) * room));
+    const low = next.findIndex((d, i) => !fixed[i] && d < min - 1e-9);
+    durations = next;
+    if (low < 0) break;
+    fixed[low] = true;
+  }
+  return durations;
+}
+
+/** Duração do "cross" entre cenas: curta o bastante para a menor cena. */
+export function transitionSeconds(durations: number[]): number {
+  return durations.length > 1 ? Math.min(0.6, Math.min(...durations) / 3) : 0;
+}
+
+/** Segundos da tela final para um layout (0 = desligada pelo usuário). */
+export function outroSecondsOf(layout: Pick<VideoLayout, "outro"> | null | undefined): number {
+  if (layout?.outro && layout.outro.enabled === false) return 0;
+  const s = Number(layout?.outro?.seconds ?? OUTRO_SECONDS.default);
+  return Number.isFinite(s) ? Math.max(OUTRO_SECONDS.min, Math.min(OUTRO_SECONDS.max, s)) : OUTRO_SECONDS.default;
 }
 
 // ------------------------------ Camadas -------------------------------------
@@ -1160,5 +1216,20 @@ export function normalizeLayout(raw: unknown, scene: SceneDefinition): VideoLayo
     colors: sanitizePalette(o.colors),
     colorMode: oneOf(o.colorMode, ["brand", "template", "theme", "custom"] as const, "template"),
     transition: isTransitionId(o.transition) ? o.transition : DEFAULT_TRANSITION,
+    // Só aparecem quando o editor os definiu: layouts antigos ficam iguais.
+    ...(o.outro && typeof o.outro === "object"
+      ? {
+          outro: {
+            enabled: (o.outro as { enabled?: unknown }).enabled !== false,
+            seconds: num((o.outro as { seconds?: unknown }).seconds, OUTRO_SECONDS.min, OUTRO_SECONDS.max, OUTRO_SECONDS.default),
+          },
+        }
+      : {}),
+    ...(Array.isArray(o.sceneSeconds) &&
+    o.sceneSeconds.length > 0 &&
+    o.sceneSeconds.length <= 8 &&
+    o.sceneSeconds.every((v) => typeof v === "number" && Number.isFinite(v) && v > 0)
+      ? { sceneSeconds: (o.sceneSeconds as number[]).map((v) => Math.round(Math.max(0.5, Math.min(60, v)) * 10) / 10) }
+      : {}),
   };
 }

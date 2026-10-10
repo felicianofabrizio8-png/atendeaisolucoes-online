@@ -31,6 +31,7 @@ try {
 import { log } from "./logger.js";
 import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint, type WatermarkInput, type WatermarkPosition } from "./ffmpeg.js";
 import { composeBrandLayers } from "./brand-composer.js";
+import { sceneDurations } from "./scenes.js";
 
 import { analyzeVolume, ffprobe, ffprobeInput } from "./ffprobe.js";
 import { validateRenderedMedia } from "./media-validation.js";
@@ -485,6 +486,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
 
     log.info("ffmpeg_pre_memory", { ...baseCtx, stage, ...memorySnapshot() });
 
+    const editorSceneSeconds = (brand?.content as { overlayLayout?: { sceneSeconds?: unknown } | null } | undefined)?.overlayLayout?.sceneSeconds;
     if (useSlideshow) {
       await renderSlideshowWithAudio({
         imageFilePaths: imageDownloads,
@@ -500,6 +502,11 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         transition:
           (brand?.content as { overlayLayout?: { transition?: unknown } | null } | undefined)
             ?.overlayLayout?.transition as string | undefined,
+        // Tempos por cena do editor (a mesma conta que a prévia usa). Sem
+        // eles o FFmpeg recebe exatamente os argumentos de sempre.
+        sceneDurations: Array.isArray(editorSceneSeconds)
+          ? sceneDurations(durationSeconds, imageDownloads.length, editorSceneSeconds)
+          : null,
         jobId: job.id,
         debugLogDir: workDir,
       });

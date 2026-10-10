@@ -25,6 +25,8 @@ import type { ColorRole, SceneDefinition, ScenePurpose } from "@/lib/marketing/v
 import {
   FONTS,
   FONT_IDS,
+  MIN_SCENE_SECONDS,
+  OUTRO_SECONDS,
   SCENE_FORMATS,
   SCENE_PURPOSES,
   type ImageFraming,
@@ -361,7 +363,8 @@ interface MediaPanelProps {
   selectedIndex: number;
   /** Sem isto, a sequência não é editável neste fluxo. */
   editable: boolean;
-  secondsPerScene: number;
+  /** null = cada cena tem o seu tempo (definido na aba Vídeo). */
+  secondsPerScene: number | null;
   onSelect: (index: number) => void;
   onMove: (index: number, delta: -1 | 1) => void;
   onRemove: (index: number) => void;
@@ -376,7 +379,9 @@ interface MediaPanelProps {
 export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, onSelect, onMove, onRemove, onAdd, onReplace, busy, maxScenes }: MediaPanelProps) {
   return (
     <div className="space-y-3">
-      <PanelTitle hint={`Cada imagem é uma cena (${secondsPerScene.toFixed(1)} s cada). Para ajustar o enquadramento, toque na foto da prévia.`}>
+      <PanelTitle
+        hint={`Cada imagem é uma cena (${secondsPerScene === null ? "tempos definidos na aba Vídeo" : `${secondsPerScene.toFixed(1)} s cada`}). Para ajustar o enquadramento, toque na foto da prévia.`}
+      >
         Cenas do vídeo
       </PanelTitle>
       <ul className="space-y-2">
@@ -449,10 +454,20 @@ interface VideoPanelProps {
   transition: TransitionId;
   onTransition: (t: TransitionId) => void;
   sceneCount: number;
+  /** Segundos efetivos de cada cena (somam a duração do vídeo). */
+  sceneSeconds: number[];
+  /** O usuário definiu tempos próprios (senão: divididos igualmente). */
+  customTimes: boolean;
+  onSceneSeconds: (index: number, seconds: number) => void;
+  onEqualTimes: () => void;
+  outro: { available: boolean; enabled: boolean; seconds: number };
+  onOutro: (patch: { enabled?: boolean; seconds?: number }) => void;
 }
 
-export function VideoPanel({ duration, onDuration, transition, onTransition, sceneCount }: VideoPanelProps) {
+export function VideoPanel({ duration, onDuration, transition, onTransition, sceneCount, sceneSeconds, customTimes, onSceneSeconds, onEqualTimes, outro, onOutro }: VideoPanelProps) {
   const multi = sceneCount > 1;
+  // Cada cena pode ir de 1 s até o que sobra deixando 1 s para cada uma das outras.
+  const maxScene = Math.max(MIN_SCENE_SECONDS, duration - MIN_SCENE_SECONDS * (sceneCount - 1));
   return (
     <div className="space-y-4">
       <div>
@@ -483,6 +498,55 @@ export function VideoPanel({ duration, onDuration, transition, onTransition, sce
             </Button>
           ))}
         </div>
+      </div>
+
+      {multi && (
+        <div>
+          <PanelTitle hint="Ao mudar uma cena, as outras se ajustam para o total continuar igual à duração do vídeo.">Tempo de cada cena</PanelTitle>
+          <div className="space-y-2" role="group" aria-label="Tempo de cada cena">
+            {sceneSeconds.map((seconds, i) => (
+              <SliderField
+                key={i}
+                label={`Cena ${i + 1}`}
+                value={Math.round(seconds * 10) / 10}
+                min={MIN_SCENE_SECONDS}
+                max={maxScene}
+                step={0.5}
+                format={(v) => `${v.toFixed(1)} s`}
+                onChange={(v) => onSceneSeconds(i, v)}
+              />
+            ))}
+          </div>
+          <Button size="sm" variant="ghost" className="mt-1" disabled={!customTimes} onClick={onEqualTimes}>
+            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Dividir igualmente
+          </Button>
+        </div>
+      )}
+
+      <div>
+        <PanelTitle hint="Nos segundos finais o vídeo mostra uma tela com a marca da empresa e a chamada.">Encerramento com a marca</PanelTitle>
+        {outro.available ? (
+          <div className="space-y-2">
+            <label className="flex cursor-pointer select-none items-center gap-2 text-sm">
+              <input type="checkbox" className="accent-primary" checked={outro.enabled} onChange={(e) => onOutro({ enabled: e.target.checked })} />
+              Mostrar a tela de encerramento
+            </label>
+            {outro.enabled && (
+              <SliderField
+                label="Duração do encerramento"
+                value={outro.seconds}
+                min={OUTRO_SECONDS.min}
+                max={OUTRO_SECONDS.max}
+                step={0.5}
+                format={(v) => `${v.toFixed(1)} s`}
+                onChange={(seconds) => onOutro({ seconds })}
+              />
+            )}
+            <p className="text-xs text-muted-foreground">Se a logo estiver oculta neste vídeo, ela também não aparece no encerramento.</p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Este vídeo não tem tela de encerramento: a empresa ainda não tem logo nem marca publicada.</p>
+        )}
       </div>
     </div>
   );

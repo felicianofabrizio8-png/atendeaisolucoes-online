@@ -41,7 +41,7 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import { CampaignVideoEditor, retimeScene, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 
 const CONTENT = {
@@ -221,6 +221,91 @@ describe("estúdio do Vídeo IA", () => {
     expect(doc.pages[2].text.cta).toBe("Peça já");
     expect(doc.pages.every((p) => p.layout.template === "etiqueta")).toBe(true);
     expect(doc.pages.every((p) => p.layout.colorMode === "brand")).toBe(true);
+  });
+
+  it("tempo por cena: mudar uma cena reajusta as outras, a soma continua a duração e vai para o render", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("tab", { name: "Vídeo" }));
+    const times = screen.getByRole("group", { name: "Tempo de cada cena" });
+    const sliders = within(times).getAllByRole("slider");
+    expect(sliders).toHaveLength(3);
+    expect((screen.getByRole("button", { name: "Dividir igualmente" }) as HTMLButtonElement).disabled).toBe(true);
+    // A timeline começa com as três cenas iguais.
+    expect(screen.getByRole("button", { name: "Cena 1, 5.0 segundos" })).toBeTruthy();
+
+    sliders[0].focus();
+    fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
+    fireEvent.keyDown(sliders[0], { key: "ArrowRight" });
+    // 5,0 → 6,0 s na primeira; as outras duas dividem os 9 s restantes.
+    expect(screen.getByRole("button", { name: "Cena 1, 6.0 segundos" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cena 2, 4.5 segundos" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+    const seconds = (lastPayload().layout as unknown as { sceneSeconds: number[] }).sceneSeconds;
+    expect(seconds).toEqual([6, 4.5, 4.5]);
+    expect(seconds.reduce((a, b) => a + b, 0)).toBeCloseTo(15, 5);
+
+    await user.click(screen.getByRole("button", { name: "Dividir igualmente" }));
+    expect(screen.getByRole("button", { name: "Cena 1, 5.0 segundos" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(2));
+    expect("sceneSeconds" in lastPayload().layout).toBe(false);
+  });
+
+  it("o tempo acompanha a cena ao reordenar e some quando a lista deixa de corresponder", async () => {
+    const onChange = vi.fn();
+    const { user } = setup(onChange);
+    await user.click(screen.getByRole("tab", { name: "Vídeo" }));
+    const slider = within(screen.getByRole("group", { name: "Tempo de cada cena" })).getAllByRole("slider")[0];
+    slider.focus();
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    await user.click(screen.getByRole("tab", { name: "Mídia" }));
+    await user.click(screen.getByRole("button", { name: "Mover cena 1 para depois" }));
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+    // A sequência de imagens é do componente pai (aqui, fixa); os tempos seguiram a troca.
+    expect((lastPayload().layout as unknown as { sceneSeconds: number[] }).sceneSeconds).toEqual([4.5, 6, 4.5]);
+  });
+
+  it("encerramento: pode ser desligado ou ter a duração alterada; sem marca não é oferecido", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("tab", { name: "Vídeo" }));
+    expect(screen.getByRole("img", { name: "Encerramento com a marca: últimos 2 segundos" })).toBeTruthy();
+    const panel = screen.getByRole("tabpanel", { name: "Vídeo" });
+    // Três controles de cena + o do encerramento (o último).
+    expect(within(panel).getAllByRole("slider")).toHaveLength(4);
+    const length = within(panel).getAllByRole("slider")[3];
+    length.focus();
+    fireEvent.keyDown(length, { key: "ArrowRight" });
+    fireEvent.keyDown(length, { key: "ArrowRight" });
+    expect(screen.getByRole("img", { name: "Encerramento com a marca: últimos 3 segundos" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+    expect((lastPayload().layout as unknown as { outro: unknown }).outro).toEqual({ enabled: true, seconds: 3 });
+
+    await user.click(screen.getByRole("checkbox", { name: "Mostrar a tela de encerramento" }));
+    expect(screen.queryByRole("img", { name: /Encerramento com a marca/ })).toBeNull();
+    expect(within(panel).getAllByRole("slider")).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: "Gerar vídeo" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(2));
+    expect((lastPayload().layout as unknown as { outro: { enabled: boolean } }).outro.enabled).toBe(false);
+    cleanup();
+
+    Object.assign(brand, { logoUrl: null, brandColors: null });
+    const bare = setup();
+    await bare.user.click(screen.getByRole("tab", { name: "Vídeo" }));
+    expect(screen.queryByRole("checkbox", { name: "Mostrar a tela de encerramento" })).toBeNull();
+    expect(screen.getByText(/não tem tela de encerramento/)).toBeTruthy();
+    Object.assign(brand, { brandColors: { primary: "#0B3D2E", secondary: "#F2E8CF", accent: "#C81E1E" } });
+  });
+
+  it("retimeScene mantém a soma e não aceita tempos impossíveis", () => {
+    expect(retimeScene([5, 5, 5], 0, 9, 15)).toEqual([9, 3, 3]);
+    expect(retimeScene([2, 4, 6], 2, 3, 12)).toEqual([3, 6, 3]);
+    expect(retimeScene([15], 0, 5, 15)).toEqual([15]);
+    expect(retimeScene([5, 5, 5], 1, 15, 15)).toEqual([5, 5, 5]);
   });
 
   it("sem o destino do carrossel, o botão não aparece", () => {
