@@ -960,7 +960,23 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       }
       const first = edited[0]?.ref;
       const primaryMatches = first && ((first.source === "marketing_media" && baseRow.primary_image_media_id === first.image_id) || (first.source === "product_image" && baseRow.primary_image_product_ref?.product_id === first.product_id && baseRow.primary_image_product_ref?.image_path === first.product_image_path));
-      if (!primaryMatches) throw new Error("campaign_image_sequence_invalid:primary_mismatch");
+      // Capa trocada no editor: a nova primeira imagem (já validada como da
+      // empresa) passa a ser a imagem principal da campanha — é ela que as
+      // listas mostram e que abre o vídeo.
+      if (!primaryMatches) {
+        if (!first) throw new Error("campaign_image_sequence_invalid:primary_mismatch");
+        const primaryPatch =
+          first.source === "marketing_media"
+            ? { primary_image_media_id: first.image_id, primary_image_product_ref: null }
+            : { primary_image_media_id: null, primary_image_product_ref: { product_id: first.product_id, image_path: first.product_image_path } };
+        for (const row of [feedRow, storyRow].filter(Boolean) as MarketingContentRow[]) {
+          const result = await supabase.from("marketing_contents").update(primaryPatch as never).eq("id", row.id).eq("company_id", companyId);
+          if (result.error) throw new Error("campaign_image_sequence_persist_failed");
+        }
+        Object.assign(baseRow, primaryPatch);
+        // eslint-disable-next-line no-console
+        console.info(JSON.stringify({ ts: new Date().toISOString(), level: "info", event: "campaign_cover_changed", campaign_id: data.campaign_id, company_id: companyId, source: first.source }));
+      }
       const persistedSequence = sequenceToStore(edited.map((item) => item.sequenceItem));
       for (const row of [feedRow, storyRow].filter(Boolean) as MarketingContentRow[]) {
         const currentPrompt = row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt) ? row.ai_prompt as Record<string, unknown> : {};

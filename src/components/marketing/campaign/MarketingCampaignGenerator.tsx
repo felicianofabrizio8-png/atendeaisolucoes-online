@@ -223,7 +223,16 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
       const byKey = new Map(cur.map((s) => [selectionKey(s.selection), s]));
       return next.flatMap((item) => {
         const slot = byKey.get(item.key);
-        return slot ? [{ ...slot, focal: item.focalPoint }] : [];
+        if (slot) return [{ ...slot, focal: item.focalPoint }];
+        // Imagem adicionada ou trocada dentro do estúdio.
+        const selection: MediaSelection | null =
+          item.origin === "marketing" && item.mediaId
+            ? { origin: "marketing", id: item.mediaId, mediaType: "image" }
+            : item.origin === "product" && item.productId && item.imagePath
+              ? { origin: "product", productId: item.productId, productName: "", imagePath: item.imagePath }
+              : null;
+        if (!selection || byKey.has(selectionKey(selection))) return [];
+        return [{ ...newSlot(selection), previewUrl: item.previewUrl, error: item.loadError ?? null, focal: item.focalPoint }];
       });
     });
   }, []);
@@ -384,6 +393,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
             contents={pendingReview.contents}
             previewImageUrl={primarySlot?.previewUrl ?? null}
             focalPoint={primarySlot?.focal ?? null}
+            companyId={companyId}
             imageSequence={editorImages}
             onImageSequenceChange={applyEditorImages}
             onRetryImage={retryPreviewByKey}

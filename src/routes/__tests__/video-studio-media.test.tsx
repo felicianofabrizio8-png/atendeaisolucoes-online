@@ -10,7 +10,17 @@ const approve = vi.fn(async (_input: Record<string, unknown>) => ({ job_id: "job
 vi.mock("@/data/marketingRepo", () => ({
   apiApproveCampaignAndRender: (input: Record<string, unknown>) => approve(input),
   apiRegenerateCampaignTexts: vi.fn(async () => ({ contents: [] })),
+  campaignMediaDeps: {},
 }));
+// O seletor real é o Acervo da empresa; aqui basta um botão que devolve uma imagem.
+vi.mock("@/components/marketing/MarketingLibrary", () => ({
+  MarketingLibrary: ({ onToggleSelect }: { onToggleSelect: (sel: unknown) => void }) => (
+    <button type="button" onClick={() => onToggleSelect({ origin: "marketing", id: "99999999-9999-4999-8999-999999999999", mediaType: "image" })}>
+      Imagem do acervo
+    </button>
+  ),
+}));
+
 vi.mock("@/hooks/useBrandLogo", () => ({
   useBrandLogo: () => ({ logoUrl: null, loading: false, isPlaceholder: true, brandColors: null, brandPublished: false, canManage: false, saving: false, error: null, saveLogo: vi.fn(), removeLogo: vi.fn() }),
 }));

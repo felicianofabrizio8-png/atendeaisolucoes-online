@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import {
   apiApproveCampaignAndRender,
   apiRegenerateCampaignTexts,
+  campaignMediaDeps,
   type FocalPointInput,
 } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
@@ -40,7 +41,10 @@ import type { ColorRole, SceneDefinition } from "@/lib/marketing/video-editor/sc
 import { DEFAULT_TRANSITION, getScene, normalizeFraming, normalizeLayout, type ImageFraming } from "@/lib/marketing/video-editor/scenes/registry";
 import { brandPalette, fitPaletteToScene, themePalette, usedColorRoles } from "@/lib/marketing/video-editor/palette";
 import { useBrandLogo } from "@/hooks/useBrandLogo";
-import { MEDIA_ERROR_MESSAGE, type MediaLoadError } from "@/lib/marketing/campaign-media";
+import { MEDIA_ERROR_MESSAGE, resolveCampaignMedia, type MediaLoadError, type MediaResolverDeps } from "@/lib/marketing/campaign-media";
+import { MAX_CAMPAIGN_IMAGES } from "@/lib/render-engine/render.types";
+import { imageKey, type PageImageRef } from "@/lib/marketing/studio/document";
+import { StudioMediaPicker } from "../../studio/StudioMediaPicker";
 import { useImageLoadStatus } from "./useImageLoadStatus";
 import { SceneRenderer, type SceneImageLayer, type ScenePart } from "./SceneRenderer";
 import { TabTexto } from "./tabs/TabTexto";
@@ -72,6 +76,13 @@ interface Props {
   onRetryImage?: (key: string) => Promise<void> | void;
   onApproved: (jobId: string) => void;
   onContentsUpdated?: (contents: MarketingContentRow[]) => void;
+  /**
+   * Empresa logada. Com ela (e uma sequência editável) o estúdio permite
+   * adicionar e trocar imagens pelo acervo, sem recriar a publicação.
+   */
+  companyId?: string;
+  /** Só para testes e para a página de validação visual. */
+  mediaDeps?: MediaResolverDeps;
 }
 
 /** Tela final de marca que o worker aplica nos últimos segundos do vídeo. */
@@ -130,6 +141,8 @@ export function CampaignVideoEditor({
   onRetryImage,
   onApproved,
   onContentsUpdated,
+  companyId,
+  mediaDeps = campaignMediaDeps,
 }: Props) {
   const feedRow = useMemo(
     () => contents.find((c) => c.campaign_role === "feed") ?? contents[0] ?? null,
@@ -222,19 +235,66 @@ export function CampaignVideoEditor({
     }
   }
 
+  // A primeira cena é a capa; mover outra para o início troca a capa.
   function moveScene(index: number, delta: -1 | 1) {
     const target = index + delta;
-    // A posição 0 é a capa da campanha (o servidor recusa trocá-la).
-    if (index < 1 || target < 1 || target >= imageSequence.length) return;
+    if (index < 0 || target < 0 || target >= imageSequence.length) return;
     const next = [...imageSequence];
     [next[index], next[target]] = [next[target], next[index]];
     onImageSequenceChange?.(next);
     setSceneIndex(target);
   }
   function removeScene(index: number) {
-    if (index < 1) return;
+    // O vídeo precisa de pelo menos uma imagem.
+    if (imageSequence.length < 2) return;
     onImageSequenceChange?.(imageSequence.filter((_, i) => i !== index));
     setSceneIndex((cur) => Math.max(0, Math.min(cur, imageSequence.length - 2)));
+  }
+
+  // Adicionar / trocar imagem pelo acervo da empresa.
+  const canPickMedia = sequenceEditable && !!companyId;
+  const canAddScene = canPickMedia && imageSequence.length < MAX_CAMPAIGN_IMAGES;
+  const [picking, setPicking] = useState<{ mode: "add" } | { mode: "replace"; index: number } | null>(null);
+  const [pickBusy, setPickBusy] = useState(false);
+  const latestSequence = useRef(imageSequence);
+  latestSequence.current = imageSequence;
+
+  async function handlePick(image: PageImageRef) {
+    const target = picking;
+    setPicking(null);
+    if (!target || !onImageSequenceChange) return;
+    setPickBusy(true);
+    try {
+      // A mesma imagem pode aparecer em duas cenas: a chave precisa ser única.
+      const base = imageKey(image);
+      const taken = new Set(latestSequence.current.map((item) => item.key));
+      let key = base;
+      for (let n = 2; taken.has(key); n++) key = `${base}#${n}`;
+      const resolved = await resolveCampaignMedia(
+        [image.origin === "marketing" ? { key, origin: image.origin, mediaId: image.mediaId } : { key, origin: image.origin, imagePath: image.imagePath }],
+        mediaDeps,
+      );
+      const item: CampaignEditorImage = {
+        key,
+        origin: image.origin,
+        ...(image.origin === "marketing" ? { mediaId: image.mediaId } : { productId: image.productId, imagePath: image.imagePath }),
+        previewUrl: resolved[key]?.previewUrl ?? null,
+        loadError: resolved[key]?.error ?? null,
+        // Imagem nova começa no enquadramento padrão (inteira).
+        focalPoint: null,
+      };
+      const current = latestSequence.current;
+      if (target.mode === "add") {
+        if (current.length >= MAX_CAMPAIGN_IMAGES) return;
+        onImageSequenceChange([...current, item]);
+        setPlaying(false);
+        setSceneIndex(current.length);
+      } else {
+        onImageSequenceChange(current.map((existing, i) => (i === target.index ? item : existing)));
+      }
+    } finally {
+      setPickBusy(false);
+    }
   }
 
   // ------------------------------ Reprodução --------------------------------
@@ -550,6 +610,10 @@ export function CampaignVideoEditor({
                 onSelect={selectScene}
                 onMove={moveScene}
                 onRemove={removeScene}
+                onAdd={canAddScene ? () => setPicking({ mode: "add" }) : undefined}
+                onReplace={canPickMedia ? (index) => setPicking({ mode: "replace", index }) : undefined}
+                busy={pickBusy}
+                maxScenes={MAX_CAMPAIGN_IMAGES}
               />
             </TabsContent>
             <TabsContent value="video" className="mt-0">
@@ -636,6 +700,16 @@ export function CampaignVideoEditor({
         onTogglePlay={() => setPlaying((cur) => !cur)}
         onSelectScene={selectScene}
       />
+
+      {canPickMedia && (
+        <StudioMediaPicker
+          open={!!picking}
+          companyId={companyId!}
+          title={picking?.mode === "replace" ? `Trocar a imagem da cena ${picking.index + 1}` : "Adicionar uma cena"}
+          onClose={() => setPicking(null)}
+          onPick={(image) => void handlePick(image)}
+        />
+      )}
     </div>
   );
 }

@@ -251,6 +251,17 @@ describe("contrato do servidor do estúdio", () => {
     expect(source).toContain('status: "draft"');
   });
 
+  it("trocar a capa do vídeo atualiza a imagem principal da campanha, restrita à empresa", () => {
+    const approve = readFileSync(resolve(root, "src/lib/marketing/marketing-campaign.functions.ts"), "utf8");
+    const block = approve.slice(approve.indexOf("// Capa trocada no editor"), approve.indexOf("const persistedSequence"));
+    // A nova capa passou por validateOneImage (posse por empresa) antes de chegar aqui.
+    expect(approve.indexOf("await validateOneImage(supabase, companyId, data.images[i], i, i === 0)")).toBeLessThan(approve.indexOf("// Capa trocada no editor"));
+    expect(block).toContain("primary_image_media_id: first.image_id, primary_image_product_ref: null");
+    expect(block).toContain('.eq("id", row.id).eq("company_id", companyId)');
+    expect(block).toContain("Object.assign(baseRow, primaryPatch)");
+    expect(block).not.toContain('throw new Error("campaign_image_sequence_invalid:primary_mismatch");\n      }\n      const');
+  });
+
   it("a migração é aditiva e mantém conteúdos antigos válidos", () => {
     const sql = readFileSync(resolve(root, "supabase/migrations/20261010120000_marketing_content_design.sql"), "utf8");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS design jsonb");

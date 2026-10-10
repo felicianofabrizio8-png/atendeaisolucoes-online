@@ -7,7 +7,17 @@ const approve = vi.fn(async (_input: Record<string, unknown>) => ({ job_id: "job
 vi.mock("@/data/marketingRepo", () => ({
   apiApproveCampaignAndRender: (input: Record<string, unknown>) => approve(input),
   apiRegenerateCampaignTexts: vi.fn(async () => ({ contents: [] })),
+  campaignMediaDeps: {},
 }));
+// O seletor real é o Acervo da empresa; aqui basta um botão que devolve uma imagem.
+vi.mock("@/components/marketing/MarketingLibrary", () => ({
+  MarketingLibrary: ({ onToggleSelect }: { onToggleSelect: (sel: unknown) => void }) => (
+    <button type="button" onClick={() => onToggleSelect({ origin: "marketing", id: "99999999-9999-4999-8999-999999999999", mediaType: "image" })}>
+      Imagem do acervo
+    </button>
+  ),
+}));
+
 // Estado da marca controlável por teste (admin ou não, com ou sem logo).
 const brand = {
   logoUrl: "https://cdn.test/logo.png" as string | null,
@@ -52,7 +62,13 @@ const IMAGES: CampaignEditorImage[] = [
   { key: "c", origin: "marketing", mediaId: "33333333-3333-4333-8333-333333333333", previewUrl: "https://cdn.test/c.jpg", focalPoint: null },
 ];
 
-function setup(onImageSequenceChange = vi.fn()) {
+const mediaDeps = {
+  mediaPaths: async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `co/${id}.jpg`])),
+  signMarketing: async (path: string) => `https://cdn.test/${path}`,
+  signProduct: async (path: string) => `https://cdn.test/${path}`,
+};
+
+function setup(onImageSequenceChange = vi.fn(), props: Partial<Parameters<typeof CampaignVideoEditor>[0]> = {}) {
   render(
     <CampaignVideoEditor
       campaignId="camp-1"
@@ -61,6 +77,9 @@ function setup(onImageSequenceChange = vi.fn()) {
       imageSequence={IMAGES}
       onImageSequenceChange={onImageSequenceChange}
       onApproved={vi.fn()}
+      companyId="co"
+      mediaDeps={mediaDeps}
+      {...props}
     />,
   );
   return { user: userEvent.setup(), onImageSequenceChange };
@@ -146,15 +165,59 @@ describe("estúdio do Vídeo IA", () => {
     expect(payload.duration_seconds).toBe(30);
   });
 
-  it("reordena e remove cenas, mantendo a capa em primeiro", async () => {
+  it("reordena e remove cenas; mover outra cena para o início troca a capa", async () => {
     const { user, onImageSequenceChange } = setup();
     await user.click(screen.getByRole("tab", { name: "Mídia" }));
-    expect((screen.getByRole("button", { name: "Remover cena 1" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Mover cena 2 para antes" }) as HTMLButtonElement).disabled).toBe(true);
+    const keys = () => onImageSequenceChange.mock.calls.at(-1)![0].map((i: CampaignEditorImage) => i.key);
+    expect((screen.getByRole("button", { name: "Mover cena 1 para antes" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Mover cena 3 para depois" }) as HTMLButtonElement).disabled).toBe(true);
     await user.click(screen.getByRole("button", { name: "Mover cena 2 para depois" }));
-    expect(onImageSequenceChange.mock.calls.at(-1)![0].map((i: CampaignEditorImage) => i.key)).toEqual(["a", "c", "b"]);
-    await user.click(screen.getByRole("button", { name: "Remover cena 3" }));
-    expect(onImageSequenceChange.mock.calls.at(-1)![0].map((i: CampaignEditorImage) => i.key)).toEqual(["a", "b"]);
+    expect(keys()).toEqual(["a", "c", "b"]);
+    // A capa deixou de ser fixa.
+    await user.click(screen.getByRole("button", { name: "Mover cena 2 para antes" }));
+    expect(keys()).toEqual(["b", "a", "c"]);
+    await user.click(screen.getByRole("button", { name: "Remover cena 1" }));
+    expect(keys()).toEqual(["b", "c"]);
+  });
+
+  it("adiciona e troca imagens pelo acervo da empresa, sem recriar a publicação", async () => {
+    const { user, onImageSequenceChange } = setup();
+    await user.click(screen.getByRole("tab", { name: "Mídia" }));
+    await user.click(screen.getByRole("button", { name: "Adicionar imagem" }));
+    await user.click(await screen.findByRole("button", { name: "Imagem do acervo" }));
+    await waitFor(() => expect(onImageSequenceChange).toHaveBeenCalledTimes(1));
+    const added = onImageSequenceChange.mock.calls[0][0] as CampaignEditorImage[];
+    expect(added).toHaveLength(4);
+    expect(added[3]).toMatchObject({
+      origin: "marketing",
+      mediaId: "99999999-9999-4999-8999-999999999999",
+      previewUrl: "https://cdn.test/co/99999999-9999-4999-8999-999999999999.jpg",
+      focalPoint: null,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Trocar a imagem da cena 1" }));
+    await user.click(await screen.findByRole("button", { name: "Imagem do acervo" }));
+    await waitFor(() => expect(onImageSequenceChange).toHaveBeenCalledTimes(2));
+    const replaced = onImageSequenceChange.mock.calls[1][0] as CampaignEditorImage[];
+    expect(replaced).toHaveLength(3);
+    expect(replaced[0].mediaId).toBe("99999999-9999-4999-8999-999999999999");
+    expect(replaced.slice(1).map((i) => i.key)).toEqual(["b", "c"]);
+  });
+
+  it("uma cena só não pode ser removida; sem empresa informada o acervo não é oferecido", async () => {
+    const { user } = setup(vi.fn(), { imageSequence: IMAGES.slice(0, 1), companyId: undefined });
+    await user.click(screen.getByRole("tab", { name: "Mídia" }));
+    expect((screen.getByRole("button", { name: "Remover cena 1" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Adicionar imagem" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Trocar a imagem/ })).toBeNull();
+  });
+
+  it("respeita o limite de 8 imagens", async () => {
+    const eight = Array.from({ length: 8 }, (_, i) => ({ ...IMAGES[0], key: `k${i}` }));
+    const { user } = setup(vi.fn(), { imageSequence: eight });
+    await user.click(screen.getByRole("tab", { name: "Mídia" }));
+    expect(screen.queryByRole("button", { name: "Adicionar imagem" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Trocar a imagem da cena/ })).toHaveLength(8);
   });
 
   it("organiza os modelos por finalidade comercial", async () => {

@@ -6,7 +6,7 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { validateLogoFile } from "@/lib/brand-center/brand-logo-upload";
-import { ArrowDown, ArrowUp, Check, ImageIcon, Loader2, RotateCcw, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ImageIcon, ImagePlus, Loader2, RefreshCw, RotateCcw, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -365,9 +365,15 @@ interface MediaPanelProps {
   onSelect: (index: number) => void;
   onMove: (index: number, delta: -1 | 1) => void;
   onRemove: (index: number) => void;
+  /** Ausentes = este fluxo não permite escolher imagens no acervo. */
+  onAdd?: () => void;
+  onReplace?: (index: number) => void;
+  /** Uma imagem escolhida está sendo preparada. */
+  busy?: boolean;
+  maxScenes?: number;
 }
 
-export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, onSelect, onMove, onRemove }: MediaPanelProps) {
+export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, onSelect, onMove, onRemove, onAdd, onReplace, busy, maxScenes }: MediaPanelProps) {
   return (
     <div className="space-y-3">
       <PanelTitle hint={`Cada imagem é uma cena (${secondsPerScene.toFixed(1)} s cada). Para ajustar o enquadramento, toque na foto da prévia.`}>
@@ -389,20 +395,25 @@ export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, o
               )}
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">Cena {i + 1}</span>
-                {i === 0 && <span className="block text-[11px] text-muted-foreground">Capa da campanha</span>}
+                {i === 0 && <span className="block text-[11px] text-muted-foreground">Capa</span>}
                 {!scene.url && <span className="block text-[11px] text-destructive">Imagem não carregada</span>}
               </span>
             </button>
             {editable && (
               <div className="flex shrink-0 items-center">
-                {/* A primeira imagem é a capa da campanha e fica fixa na posição 1. */}
-                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Mover cena ${i + 1} para antes`} disabled={i <= 1} onClick={() => onMove(i, -1)}>
+                {onReplace && (
+                  <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Trocar a imagem da cena ${i + 1}`} title="Trocar imagem" disabled={busy} onClick={() => onReplace(i)}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {/* A primeira cena é a capa: mover outra para o início troca a capa. */}
+                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Mover cena ${i + 1} para antes`} disabled={i === 0} onClick={() => onMove(i, -1)}>
                   <ArrowUp className="h-3.5 w-3.5" />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Mover cena ${i + 1} para depois`} disabled={i === 0 || i === scenes.length - 1} onClick={() => onMove(i, 1)}>
+                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Mover cena ${i + 1} para depois`} disabled={i === scenes.length - 1} onClick={() => onMove(i, 1)}>
                   <ArrowDown className="h-3.5 w-3.5" />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Remover cena ${i + 1}`} disabled={i === 0} onClick={() => onRemove(i)}>
+                <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Remover cena ${i + 1}`} disabled={scenes.length < 2} onClick={() => onRemove(i)}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -411,9 +422,19 @@ export function MediaPanel({ scenes, selectedIndex, editable, secondsPerScene, o
         ))}
       </ul>
 
+      {editable && onAdd && (
+        <Button size="sm" variant="outline" className="w-full" onClick={onAdd} disabled={busy}>
+          {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-1 h-4 w-4" />} Adicionar imagem
+        </Button>
+      )}
       {editable && (
         <p className="text-xs text-muted-foreground">
-          A capa fica sempre em primeiro. Para incluir outras imagens, crie a publicação novamente escolhendo as fotos.
+          A primeira cena é a capa do vídeo.
+          {onAdd || onReplace
+            ? ` Você pode usar até ${maxScenes ?? 8} imagens do acervo ou dos produtos da empresa.`
+            : maxScenes && scenes.length >= maxScenes
+              ? ` Limite de ${maxScenes} imagens atingido.`
+              : ""}
         </p>
       )}
     </div>

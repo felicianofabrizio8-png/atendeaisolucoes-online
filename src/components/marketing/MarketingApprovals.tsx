@@ -627,6 +627,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
               contents={editorContents}
               previewImageUrl={editorImageSequence[0]?.previewUrl ?? null}
               focalPoint={editorFocalPoint}
+              companyId={companyId}
               imageSequence={editorImageSequence}
               onImageSequenceChange={setEditorImageSequence}
               onRetryImage={retryEditorImage}
