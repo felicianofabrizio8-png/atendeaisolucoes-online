@@ -12,6 +12,12 @@ export interface StudioImages {
   /** true enquanto o link desta imagem está sendo obtido. */
   loading: (image: PageImageRef | null | undefined) => boolean;
   retry: (image: PageImageRef) => Promise<void>;
+  /**
+   * Pede links NOVOS para estas imagens e devolve por chave. Links assinados
+   * expiram em minutos; a prévia continua mostrando a foto já carregada, mas
+   * quem precisa baixar o arquivo de novo (exportação) tem de renovar antes.
+   */
+  refresh: (images: PageImageRef[]) => Promise<Record<string, string | null>>;
   /** Registra um link já conhecido (ex.: imagem recém-escolhida no acervo). */
   prime: (image: PageImageRef, url: string) => void;
 }
@@ -23,8 +29,8 @@ export function useStudioImages(images: PageImageRef[], deps: MediaResolverDeps)
   const keys = useMemo(() => images.map(imageKey).join("|"), [images]);
 
   const resolve = useCallback(
-    async (refs: PageImageRef[], fresh: boolean) => {
-      if (refs.length === 0) return;
+    async (refs: PageImageRef[], fresh: boolean): Promise<Record<string, ResolvedMedia>> => {
+      if (refs.length === 0) return {};
       for (const ref of refs) pending.current.add(imageKey(ref));
       bump((n) => n + 1);
       const out = await resolveCampaignMedia(
@@ -34,6 +40,7 @@ export function useStudioImages(images: PageImageRef[], deps: MediaResolverDeps)
       );
       for (const ref of refs) pending.current.delete(imageKey(ref));
       setResolved((cur) => ({ ...cur, ...out }));
+      return out;
     },
     [deps],
   );
@@ -49,7 +56,13 @@ export function useStudioImages(images: PageImageRef[], deps: MediaResolverDeps)
     () => ({
       get: (image) => (image ? resolved[imageKey(image)] ?? null : null),
       loading: (image) => !!image && !resolved[imageKey(image)],
-      retry: (image) => resolve([image], true),
+      retry: async (image) => {
+        await resolve([image], true);
+      },
+      refresh: async (list) => {
+        const out = await resolve(list, true);
+        return Object.fromEntries(list.map((image) => [imageKey(image), out[imageKey(image)]?.previewUrl ?? null]));
+      },
       prime: (image, url) => setResolved((cur) => ({ ...cur, [imageKey(image)]: { previewUrl: url, error: null } })),
     }),
     [resolved, resolve],

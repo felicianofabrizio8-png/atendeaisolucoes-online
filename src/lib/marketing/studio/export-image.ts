@@ -60,6 +60,22 @@ export function exportFileName(kind: "carousel" | "art" | "video", index: number
 
 // ------------------------------ Navegador -----------------------------------
 
+/**
+ * Falha de exportação. `message` é o código estável (mapeado para o texto que
+ * o usuário lê); `detail` diz o que aconteceu de fato — "http_400" (link
+ * expirado ou sem permissão), "network" (rede ou CORS) ou "decode" (o
+ * navegador não conseguiu abrir o arquivo) — para diagnóstico.
+ */
+export class ExportError extends Error {
+  constructor(
+    code: string,
+    readonly detail: string,
+  ) {
+    super(code);
+    this.name = "ExportError";
+  }
+}
+
 const dataUriCache = new Map<string, Promise<string>>();
 
 function blobToDataUri(blob: Blob): Promise<string> {
@@ -74,11 +90,13 @@ function blobToDataUri(blob: Blob): Promise<string> {
 async function fetchBlob(url: string, what: "image" | "font" | "logo"): Promise<Blob> {
   let res: Response;
   try {
-    res = await fetch(url);
+    // Foto e logo vêm do armazenamento com link assinado: sempre da rede,
+    // nunca de uma resposta em cache guardada pela prévia (<img>, sem CORS).
+    res = await fetch(url, what === "font" ? undefined : { cache: "no-store" });
   } catch {
-    throw new Error(`export_${what}_failed`);
+    throw new ExportError(`export_${what}_failed`, "network");
   }
-  if (!res.ok) throw new Error(`export_${what}_failed`);
+  if (!res.ok) throw new ExportError(`export_${what}_failed`, `http_${res.status}`);
   return res.blob();
 }
 
@@ -98,7 +116,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     const img = new Image();
     img.decoding = "sync";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("export_image_failed"));
+    img.onerror = () => reject(new ExportError("export_image_failed", "decode"));
     img.src = src;
   });
 }
@@ -238,6 +256,22 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Texto para o usuário, com o detalhe técnico ao final quando existe. */
+export function exportErrorMessage(e: unknown): string {
+  const code = e instanceof Error ? e.message : "";
+  const base = EXPORT_ERROR_MESSAGE[code] ?? "Não foi possível exportar. Tente novamente.";
+  const detail = e instanceof ExportError ? e.detail : "";
+  if (!detail) return base;
+  const why = /^http_(400|401|403)$/.test(detail)
+    ? "o link de acesso ao arquivo expirou ou foi recusado"
+    : /^http_/.test(detail)
+      ? "o armazenamento respondeu com erro"
+      : detail === "network"
+        ? "falha de rede ou bloqueio do navegador ao baixar o arquivo"
+        : "o arquivo não pôde ser lido como imagem";
+  return `${base} Motivo: ${why} (${detail}).`;
 }
 
 export const EXPORT_ERROR_MESSAGE: Record<string, string> = {

@@ -33,6 +33,11 @@ export interface UseBrandLogoResult {
   saveLogo: (file: File) => Promise<boolean>;
   /** Remove a logo do cadastro da empresa. */
   removeLogo: () => Promise<boolean>;
+  /**
+   * Novo link de acesso à logo (o atual expira em minutos). Usado por quem
+   * precisa baixar o arquivo de novo, como a exportação de imagem.
+   */
+  freshLogoUrl?: () => Promise<string | null>;
 }
 
 export function useBrandLogo(): UseBrandLogoResult {
@@ -127,5 +132,16 @@ export function useBrandLogo(): UseBrandLogoResult {
     }
   }, [assetId, deactivateFn]);
 
-  return { logoUrl, loading, isPlaceholder: !logoUrl, brandColors, brandPublished, canManage, saving, error, saveLogo, removeLogo };
+  const freshLogoUrl = useCallback(async () => {
+    if (!assetId) return null;
+    try {
+      const access = await accessFn({ data: { assetId } });
+      setLogoUrl(access.signedUrl);
+      return access.signedUrl;
+    } catch {
+      return null;
+    }
+  }, [assetId, accessFn]);
+
+  return { logoUrl, loading, isPlaceholder: !logoUrl, brandColors, brandPublished, canManage, saving, error, saveLogo, removeLogo, freshLogoUrl };
 }

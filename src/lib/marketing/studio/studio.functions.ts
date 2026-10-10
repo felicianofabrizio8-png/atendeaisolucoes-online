@@ -31,10 +31,14 @@ async function companyOf(supabase: SB, userId: string): Promise<string> {
 
 function mapWriteError(error: { code?: string; message?: string }): Error {
   // Coluna `design` ou valor `carousel` ainda não existem neste banco.
-  if (error.code === "42703" || error.code === "PGRST204" || error.code === "22P02" || /design|carousel/.test(error.message ?? "")) {
-    return new Error(STUDIO_MIGRATION_PENDING);
-  }
-  return new Error(error.message ?? "studio_save_failed");
+  // (coluna inexistente no banco / no cache do PostgREST / valor de enum inválido)
+  const message = error.message ?? "";
+  const missingColumn = (error.code === "42703" || error.code === "PGRST204") && /design/.test(message);
+  const missingEnumValue = error.code === "22P02" && /carousel/.test(message);
+  if (missingColumn || missingEnumValue) return new Error(STUDIO_MIGRATION_PENDING);
+  // Documento recusado pelo CHECK do banco: é um erro de conteúdo, não de migração.
+  if (error.code === "23514" && /marketing_contents_design_shape/.test(message)) return new Error("studio_document_invalid");
+  return new Error(message || "studio_save_failed");
 }
 
 /** Toda imagem do documento precisa ser da empresa da sessão. */

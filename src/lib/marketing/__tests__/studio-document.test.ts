@@ -316,6 +316,15 @@ describe("contrato do servidor do estúdio", () => {
     expect(block).not.toContain('throw new Error("campaign_image_sequence_invalid:primary_mismatch");\n      }\n      const');
   });
 
+  it("só chama de 'banco desatualizado' o que é mesmo falta de migração", () => {
+    const fn = source.slice(source.indexOf("function mapWriteError"), source.indexOf("/** Toda imagem do documento"));
+    // Antes, qualquer erro cuja mensagem citasse "design" ou "carousel" virava aviso de migração.
+    expect(fn).not.toContain("|| /design|carousel/.test(");
+    expect(fn).toContain('(error.code === "42703" || error.code === "PGRST204") && /design/.test(message)');
+    expect(fn).toContain('error.code === "22P02" && /carousel/.test(message)');
+    expect(fn).toContain('error.code === "23514" && /marketing_contents_design_shape/.test(message)');
+  });
+
   it("a migração é aditiva e mantém conteúdos antigos válidos", () => {
     const sql = readFileSync(resolve(root, "supabase/migrations/20261010120000_marketing_content_design.sql"), "utf8");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS design jsonb");

@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, Download, ImagePlus, Images, LayoutTemplate, Loader2, Palette, RotateCcw, Save, SlidersHorizontal, Trash2, Type } from "lucide-react";
 import { toast } from "sonner";
 import { apiRegisterMedia, apiSaveStudioContent, campaignMediaDeps, uploadMarketingFile } from "@/data/marketingRepo";
-import { EXPORT_ERROR_MESSAGE, downloadBlob, exportFileName, renderPageImage, type RenderPageInput, type RenderedPage } from "@/lib/marketing/studio/export-image";
+import { downloadBlob, exportErrorMessage, exportFileName, renderPageImage, type RenderPageInput, type RenderedPage } from "@/lib/marketing/studio/export-image";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 import type { Anchor, TemplateId, VideoLayout } from "@/lib/marketing/video-editor/layout.types";
 import type { ColorRole, SceneDefinition } from "@/lib/marketing/video-editor/scene.types";
@@ -33,6 +33,7 @@ import {
   canAddPage,
   canRemovePage,
   documentImages,
+  imageKey,
   duplicatePage,
   movePage,
   removePage,
@@ -270,8 +271,9 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
 
   // ------------------------------ Exportar ----------------------------------
   function exportError(e: unknown) {
-    const code = e instanceof Error ? e.message : "";
-    toast.error(EXPORT_ERROR_MESSAGE[code] ?? "Não foi possível exportar. Tente novamente.");
+    // eslint-disable-next-line no-console
+    console.error("[estudio] exportação falhou", e instanceof Error ? { code: e.message, detail: (e as { detail?: string }).detail ?? null } : e);
+    toast.error(exportErrorMessage(e));
   }
 
   /** Páginas que ainda esperam o link da foto não podem ser exportadas. */
@@ -288,8 +290,26 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
     const out: RenderedPage[] = [];
     setExporting({ mode, done: 0, total: list.length });
     try {
+      // Links assinados expiram em minutos e a prévia não os renova: a
+      // exportação baixa os arquivos de novo, então pede links novos antes.
+      const fresh = await images.refresh(list.flatMap((p) => (p.image ? [p.image] : [])));
+      const expired = list.flatMap((p) => (p.image && !fresh[imageKey(p.image)] ? [doc.pages.indexOf(p) + 1] : []));
+      if (expired.length > 0) {
+        toast.error(`Não foi possível obter o acesso à imagem da página ${expired.join(", ")}. Troque a imagem ou tente novamente.`);
+        return null;
+      }
+      const wantsLogo = list.some((p) => p.layout.logo.visible !== false);
+      const exportLogo = logoUrlOverride !== undefined || !logoUrl || !wantsLogo ? logoUrl : ((await brandLogo.freshLogoUrl?.()) ?? logoUrl);
       for (const [i, p] of list.entries()) {
-        out.push(await renderPage({ page: p, format: doc.format, imageUrl: urlFor(p), logoUrl: p.layout.logo.visible === false ? null : logoUrl, type }));
+        out.push(
+          await renderPage({
+            page: p,
+            format: doc.format,
+            imageUrl: p.image ? fresh[imageKey(p.image)] : null,
+            logoUrl: p.layout.logo.visible === false ? null : exportLogo,
+            type,
+          }),
+        );
         setExporting({ mode, done: i + 1, total: list.length });
       }
       return out;
