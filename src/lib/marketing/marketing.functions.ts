@@ -14,6 +14,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { missingMediaMessage, publishableMediaSource } from "./publishable-media";
 import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "@/lib/marketing-publisher/carousel-flag";
 import { duplicateMessage, findDuplicateSchedule, type ScheduleSibling } from "@/lib/marketing-publisher/publish-dedupe";
+import { formatChannelProblem } from "@/lib/marketing-publisher/publish-compat";
 import {
   carouselContentProblem,
   carouselImagesProblem,
@@ -644,6 +645,11 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
         "Apenas conteúdos aprovados podem ser agendados. Aprove antes de programar.",
       );
     }
+    // Formato × canal: a fila só publica Feed, Story, Reel e Carrossel no
+    // Instagram e no Facebook. Sem isto, um conteúdo de WhatsApp era aceito
+    // e falhava em silêncio na fila, sem nunca virar publicação.
+    const incompatible = formatChannelProblem(content.format, data.channel);
+    if (incompatible) throw new Error(incompatible);
     // Carrossel: a publicação automática fica desligada até ser liberada
     // (sem isto o agendamento seria aceito e falharia na hora de publicar).
     if (content.format === "carousel" && !isCarouselPublishEnabled(companyId)) {

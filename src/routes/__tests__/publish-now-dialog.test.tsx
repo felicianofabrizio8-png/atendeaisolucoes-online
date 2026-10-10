@@ -12,15 +12,15 @@ vi.mock("@/data/marketingRepo", () => ({ apiScheduleContent: vi.fn(), apiListPub
 import { PublishNowDialog, latestByChannel, publishToChannels, type PublishNowDeps } from "@/components/marketing/PublishNowDialog";
 import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
 
-const row = (channel = "instagram") => ({ id: "content-1", channel, status: "approved", format: "feed" }) as unknown as MarketingContentRow;
+const row = (channel = "instagram", format = "feed") => ({ id: "content-1", channel, status: "approved", format }) as unknown as MarketingContentRow;
 const sched = (channel: string, status: string, at: string, content_id = "content-1") => ({ id: `${channel}-${at}`, content_id, channel, status, scheduled_at: at }) as unknown as MarketingScheduleRow;
 
-function setup(options: { deps?: Partial<PublishNowDeps>; channel?: string; blocked?: string | null } = {}) {
+function setup(options: { deps?: Partial<PublishNowDeps>; channel?: string; format?: string; blocked?: string | null } = {}) {
   const schedule = vi.fn(async (_input: { content_id: string; channel: string; publish_now: true }) => ({}));
   const deps: PublishNowDeps = { schedule, listSchedule: async () => [], ...options.deps };
   const onClose = vi.fn();
   const onDone = vi.fn();
-  render(<PublishNowDialog row={row(options.channel)} facebookBlockedReason={options.blocked} onClose={onClose} onDone={onDone} deps={deps} />);
+  render(<PublishNowDialog row={row(options.channel, options.format)} facebookBlockedReason={options.blocked} onClose={onClose} onDone={onDone} deps={deps} />);
   return { user: userEvent.setup(), schedule: deps.schedule as typeof schedule, onClose, onDone };
 }
 const box = (channel: string) => within(screen.getByTestId(`publish-channel-${channel}`));
@@ -93,6 +93,26 @@ describe("escolha do destino", () => {
     expect(check("Facebook").disabled).toBe(true);
     expect(check("Facebook").checked).toBe(false);
     expect(box("facebook").getByText("Permissão para publicar no Facebook não concedida.")).toBeTruthy();
+  });
+});
+
+describe("destinos compatíveis com o formato", () => {
+  it("Feed, Story, Reel e Carrossel oferecem Instagram e Facebook", () => {
+    for (const format of ["feed", "story", "reel", "carousel"]) {
+      setup({ format });
+      expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+      cleanup();
+    }
+  });
+
+  it("REGRESSÃO: conteúdo de WhatsApp não oferece nenhum destino, explica o motivo e não envia nada", async () => {
+    const { schedule } = setup({ channel: "whatsapp", format: "whatsapp_cta" });
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.getByRole("alert").textContent).toContain("mensagem para WhatsApp");
+    const button = screen.getByRole("button", { name: "Publicar" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    button.click();
+    expect(schedule).not.toHaveBeenCalled();
   });
 });
 

@@ -7,8 +7,9 @@ import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiListPublishSchedule, apiScheduleContent } from "@/data/marketingRepo";
 import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
+import { formatChannelProblem, publishChannelsFor, type PublishChannel } from "@/lib/marketing-publisher/publish-compat";
 
-export type PublishChannel = "instagram" | "facebook";
+export type { PublishChannel };
 export const PUBLISH_CHANNELS: PublishChannel[] = ["instagram", "facebook"];
 const CHANNEL_LABEL: Record<PublishChannel, string> = { instagram: "Instagram", facebook: "Facebook" };
 const SCHEDULE_STATUS_LABEL: Record<string, string> = {
@@ -80,9 +81,11 @@ export function PublishNowDialog({
   onDone?: () => void;
   deps?: PublishNowDeps;
 }) {
+  // Só os destinos compatíveis com o formato do conteúdo são oferecidos.
+  const available = publishChannelsFor(row.format);
   const [selected, setSelected] = useState<Record<PublishChannel, boolean>>({
-    instagram: row.channel !== "facebook",
-    facebook: row.channel === "facebook" && !facebookBlockedReason,
+    instagram: available.includes("instagram") && row.channel !== "facebook",
+    facebook: available.includes("facebook") && row.channel === "facebook" && !facebookBlockedReason,
   });
   const [results, setResults] = useState<Partial<Record<PublishChannel, ChannelResult>>>({});
   const [history, setHistory] = useState<Partial<Record<PublishChannel, MarketingScheduleRow>>>({});
@@ -102,7 +105,7 @@ export function PublishNowDialog({
     };
   }, [deps, row.id]);
 
-  const chosen = PUBLISH_CHANNELS.filter((c) => selected[c] && results[c]?.state !== "queued");
+  const chosen = available.filter((c) => selected[c] && results[c]?.state !== "queued");
 
   async function confirm() {
     if (chosen.length === 0 || sending.current) return;
@@ -124,9 +127,15 @@ export function PublishNowDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Publicar agora">
       <div className="w-full max-w-md space-y-3 rounded-lg border bg-card p-4">
         <div className="font-semibold">Publicar agora</div>
-        <p className="text-xs text-muted-foreground">Escolha onde publicar. Cada canal é enviado e acompanhado separadamente.</p>
+        {available.length === 0 ? (
+          <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">
+            {formatChannelProblem(row.format, "instagram")}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Escolha onde publicar. Cada canal é enviado e acompanhado separadamente.</p>
+        )}
         <div className="space-y-2">
-          {PUBLISH_CHANNELS.map((channel) => {
+          {available.map((channel) => {
             const blocked = channel === "facebook" ? (facebookBlockedReason ?? null) : null;
             const result = results[channel];
             const last = history[channel];

@@ -6,6 +6,7 @@ import { PublisherRepository } from "./PublisherRepository.server";
 import type { PublicationChannel, PublicationFormat } from "./types";
 import { isCarouselPublishEnabled } from "./carousel-flag";
 import { findDuplicateSchedule, type ScheduleSibling } from "./publish-dedupe";
+import { scheduleRejectionReason } from "./publish-compat";
 import {
   resolveCampaignFormats,
   roleFromContentFormat,
@@ -85,6 +86,15 @@ export class PublisherPlanner {
         // continua responsável). Marca como failed apenas se o motivo é
         // "canal não suportado" — assim o usuário vê no calendário.
         if (channelOk && contentOk && !mappedFormat) {
+          // Sem publicação criada não há onde gravar o erro: o motivo fica no log.
+          console.warn("[marketing-publisher] schedule_rejected", {
+            schedule_id: s.id,
+            company_id: s.company_id,
+            content_id: s.content_id,
+            channel: s.channel,
+            format: s.marketing_contents?.format ?? null,
+            reason: scheduleRejectionReason(s.marketing_contents?.format),
+          });
           await admin
             .from("marketing_schedule")
             .update({ status: "failed" })

@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Film,
   Images,
+  Copy,
   Play,
   MoreHorizontal,
 } from "lucide-react";
@@ -49,6 +50,7 @@ import { missingMediaMessage, publishableMediaSource, renderedVideoIdFor } from 
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
 import { MediaThumb, type MediaPreview } from "./ui/MarketingUi";
 import { PublishNowDialog } from "./PublishNowDialog";
+import { formatChannelProblem, noPublishTargetHint, publishChannelsFor } from "@/lib/marketing-publisher/publish-compat";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -332,6 +334,10 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
       toast.error("Aprove o conteúdo antes de publicar.");
       return;
     }
+    if (publishChannelsFor(row.format).length === 0) {
+      toast.error(formatChannelProblem(row.format, "instagram") ?? "Este conteúdo não pode ser publicado.");
+      return;
+    }
     // O destino (Instagram, Facebook ou os dois) é escolhido no diálogo.
     setPublishFor(row);
   }
@@ -360,10 +366,15 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
       toast.error("Apenas conteúdos aprovados podem ser agendados.");
       return;
     }
+    const targets = publishChannelsFor(row.format);
+    if (targets.length === 0) {
+      toast.error(formatChannelProblem(row.format, "instagram") ?? "Este conteúdo não pode ser agendado.");
+      return;
+    }
     // Sempre resetar estado ao abrir para evitar `busy` preso de operação anterior.
     setBusy(false);
     setScheduleFor(row.id);
-    setScheduleChannel(row.channel === "facebook" ? "facebook" : "instagram");
+    setScheduleChannel(row.channel === "facebook" && targets.includes("facebook") ? "facebook" : targets[0]);
     setScheduleAt("");
     setScheduleAtError(null);
   }
@@ -556,8 +567,11 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
                 value={scheduleChannel}
                 onChange={(e) => setScheduleChannel(e.target.value as typeof scheduleChannel)}
               >
-                <option value="instagram">Instagram</option>
-                <option value="facebook">Facebook</option>
+                {publishChannelsFor(rows.find((r) => r.id === scheduleFor)?.format).map((channel) => (
+                  <option key={channel} value={channel}>
+                    {channel === "instagram" ? "Instagram" : "Facebook"}
+                  </option>
+                ))}
 
               </select>
             </div>
@@ -834,10 +848,31 @@ function ContentCard({
             </div>
           )}
 
+          {row.status === "approved" && publishChannelsFor(row.format).length === 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="no-publish-target">
+              {noPublishTargetHint(row.format)}
+            </p>
+          )}
+
           <div className="flex items-center justify-end gap-2" data-testid="card-actions">
             {isVideo && !videoReady ? (
               <Button size="sm" className="rounded-full" onClick={onOpenVideoEditor} disabled={isRendering} title={isRendering ? "Aguarde a renderização terminar" : undefined}>
                 <Film className="h-4 w-4 mr-1" /> Editar vídeo
+              </Button>
+            ) : row.status === "approved" && publishChannelsFor(row.format).length === 0 ? (
+              // Sem destino de publicação automática (ex.: mensagem de WhatsApp).
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full"
+                onClick={() => {
+                  void navigator.clipboard
+                    ?.writeText(row.body ?? "")
+                    .then(() => toast.success("Texto copiado."))
+                    .catch(() => toast.error("Não foi possível copiar o texto."));
+                }}
+              >
+                <Copy className="h-4 w-4 mr-1" /> Copiar texto
               </Button>
             ) : row.status === "approved" ? (
               <>
