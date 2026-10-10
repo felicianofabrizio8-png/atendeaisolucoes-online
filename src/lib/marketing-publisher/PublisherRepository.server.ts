@@ -372,8 +372,10 @@ export class PublisherRepository {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
       .from("marketing_publications")
-      .select("status")
-      .eq("company_id", companyId);
+      .select("status, marketing_contents!inner(hidden_from_publish)")
+      .eq("company_id", companyId)
+      .eq("marketing_contents.hidden_from_publish", false);
+    if (r.error) throw new Error(r.error.message);
     const rows = (r.data ?? []) as { status: string }[];
     const acc: PublisherStats = {
       scheduled: 0,

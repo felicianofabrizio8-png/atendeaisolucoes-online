@@ -1,221 +1,82 @@
 // ============================================================================
-// SceneRenderer — desenha uma SceneDefinition + VideoLayout do usuário
-// dentro de um container 9:16 (ou qualquer aspect ratio via CSS externo).
+// SceneRenderer — prévia 9:16 de uma cena (também usada nas miniaturas).
 //
-// Cada tipo de camada em `SceneLayer` tem seu próprio render. Adicionar um
-// novo tipo = adicionar um case aqui.
+// Tudo que aparece aqui sai do MESMO código que o worker usa no vídeo:
+//   - a cena (camadas, logo e textos) é o SVG do `scene-composer`;
+//   - a foto é posicionada por `placeImage`, a conta que o worker traduz para
+//     o FFmpeg — incluindo o modo "conter", que mostra o produto inteiro na
+//     área livre do modelo.
+// Não existe uma segunda implementação em CSS do layout.
 //
 // Não faz chamadas de rede. Recebe `imageUrl` e `logoUrl` prontos.
-//
-// Fase futura (Onda 3 / canvas): esta mesma árvore pode ser envolvida por um
-// wrapper com drag/resize sem alterar a cena.
 // ============================================================================
 
-import type { CSSProperties, ReactNode } from "react";
+import { memo, useId, useMemo, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type { FocalPointInput } from "@/data/marketingRepo";
 import type { VideoLayout } from "@/lib/marketing/video-editor/layout.types";
-import type {
-  SceneDefinition,
-  SceneLayer,
-  TextStyle,
-} from "@/lib/marketing/video-editor/scene.types";
-import { getScene } from "@/lib/marketing/video-editor/scenes/registry";
+import {
+  buildSceneOverlaySvgWithMeta,
+  getScene,
+  normalizeFraming,
+  type Box,
+  type TextPart,
+} from "@/lib/marketing/video-editor/scenes/registry";
+import { sceneWithPalette } from "@/lib/marketing/video-editor/palette";
 import { LogoSlot } from "./LogoSlot";
-import { STORY_FRAME } from "@/lib/render-engine/focal-geometry";
-import { FocalImage } from "../FocalImage";
+import { FramedImage } from "../FramedImage";
+import "./video-fonts.css";
+
+/** Quadro de referência do composer — o mesmo do vídeo Story/Reels. */
+const W = 1080;
+const H = 1920;
+const FRAME = { width: W, height: H };
+
+export type ScenePart = TextPart | "logo";
+
+/** Uma foto na pilha de fundo (a reprodução usa duas durante a transição). */
+export interface SceneImageLayer {
+  key: string;
+  url: string | null;
+  focalPoint: FocalPointInput | null;
+  style?: CSSProperties;
+}
 
 interface Props {
   imageUrl: string | null;
   logoUrl: string | null;
   onRequestLogoUpload?: (file: File) => void;
+  /** Enquadramento salvo; null = padrão seguro do modelo ("conter"). */
   focalPoint?: FocalPointInput | null;
   headline: string;
   subheadline: string | null;
   cta: string | null;
   layout: VideoLayout;
-  /** Se true, ocupa 100% do container. */
+  /** Se true, ocupa 100% do container (que define o tamanho). */
   fill?: boolean;
   /** Se true, desenha guias de safe area em cima. */
   showSafeArea?: boolean;
+  /** Miniatura: cantos e sombra discretos. */
+  compact?: boolean;
+  /** Substitui a foto única por uma pilha (animação entre cenas). */
+  imageLayers?: SceneImageLayer[];
+  /** Elemento selecionado no editor (ganha contorno). */
+  selected?: ScenePart | null;
+  /** Torna textos e logo clicáveis na prévia. */
+  onSelect?: (part: ScenePart) => void;
+  /** Arrastar o bloco de textos: deslocamento total do gesto, em % do quadro. */
+  onDragText?: (dxPct: number, dyPct: number, phase: "move" | "end") => void;
 }
 
-function alignToCss(a: "left" | "center" | "right"): CSSProperties["textAlign"] {
-  return a;
-}
-function vAnchorToJustify(a: "top" | "center" | "bottom"): CSSProperties["justifyContent"] {
-  if (a === "top") return "flex-start";
-  if (a === "center") return "center";
-  return "flex-end";
-}
-
-function LayerNode({ layer, index }: { layer: SceneLayer; index: number }) {
-  const zIndex = 1 + index;
-  switch (layer.kind) {
-    case "gradient": {
-      const gradient = `linear-gradient(${layer.direction}, ${layer.stops
-        .map((s) => `${s.color}${typeof s.at === "number" ? ` ${s.at}%` : ""}`)
-        .join(", ")})`;
-      const style: CSSProperties = {
-        position: "absolute",
-        left: 0,
-        right: 0,
-        background: gradient,
-        opacity: layer.opacity ?? 1,
-        pointerEvents: "none",
-        zIndex,
-      };
-      if (layer.y === "top") {
-        style.top = 0;
-        style.height = `${layer.height ?? 35}%`;
-      } else if (layer.y === "bottom") {
-        style.bottom = 0;
-        style.height = `${layer.height ?? 45}%`;
-      } else {
-        style.top = 0;
-        style.bottom = 0;
-      }
-      return <div style={style} />;
-    }
-    case "solid": {
-      const style: CSSProperties = {
-        position: "absolute",
-        left: 0,
-        right: 0,
-        background: layer.color,
-        opacity: layer.opacity ?? 1,
-        pointerEvents: "none",
-        zIndex,
-      };
-      if (layer.y === "top") {
-        style.top = 0;
-        style.height = `${layer.height ?? 30}%`;
-      } else if (layer.y === "bottom") {
-        style.bottom = 0;
-        style.height = `${layer.height ?? 30}%`;
-      } else {
-        style.top = 0;
-        style.bottom = 0;
-      }
-      return <div style={style} />;
-    }
-    case "angular": {
-      return (
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-            zIndex,
-          }}
-        >
-          <polygon points={layer.points} fill={layer.color} opacity={layer.opacity ?? 1} />
-        </svg>
-      );
-    }
-    case "frame": {
-      const inset = layer.inset ?? 2;
-      const width = layer.width;
-      const radius = layer.radius ?? 0;
-      return (
-        <div
-          style={{
-            position: "absolute",
-            top: `${inset}%`,
-            left: `${inset}%`,
-            right: `${inset}%`,
-            bottom: `${inset}%`,
-            border: `${width}cqi solid ${layer.color}`,
-            borderRadius: `${radius}cqi`,
-            opacity: layer.opacity ?? 1,
-            pointerEvents: "none",
-            zIndex,
-          }}
-        />
-      );
-    }
-    case "vignette": {
-      return (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,${layer.intensity}) 100%)`,
-            pointerEvents: "none",
-            zIndex,
-          }}
-        />
-      );
-    }
-    case "element": {
-      // Placeholder — biblioteca de elementos gráficos (Onda 2+).
-      return null;
-    }
-    default: {
-      const _exhaustive: never = layer;
-      return _exhaustive;
-    }
-  }
-}
-
-function renderTextNode(
-  content: string | null,
-  style: TextStyle,
-  sizeCqi: number,
-  align: "left" | "center" | "right",
-  placeholder?: ReactNode,
-): ReactNode {
-  if (!content && !placeholder) return null;
-  const base: CSSProperties = {
-    fontFamily: style.fontFamily,
-    fontWeight: style.weight,
-    color: style.color ?? "#fff",
-    fontSize: `${sizeCqi}cqi`,
-    lineHeight: style.lineHeight ?? 1.2,
-    letterSpacing: style.letterSpacing,
-    textTransform: style.transform,
-    textShadow: style.textShadow,
-    textAlign: alignToCss(align),
+function pct(box: Box) {
+  return {
+    left: `${(box.x / W) * 100}%`,
+    top: `${(box.y / H) * 100}%`,
+    width: `${(box.width / W) * 100}%`,
+    height: `${(box.height / H) * 100}%`,
   };
-  if (style.pill) {
-    return (
-      <div style={{ textAlign: alignToCss(align) }}>
-        <span
-          style={{
-            ...base,
-            display: "inline-block",
-            background: style.pill.background,
-            color: style.pill.foreground,
-            borderRadius: style.pill.radius,
-            padding: style.pill.padding,
-          }}
-        >
-          {content ?? placeholder}
-        </span>
-      </div>
-    );
-  }
-  if (style.underline) {
-    return (
-      <div
-        style={{
-          ...base,
-          borderBottom: `${style.underline.thickness} solid ${style.underline.color}`,
-          paddingBottom: style.underline.offset,
-          display: "inline-block",
-        }}
-      >
-        {content ?? placeholder}
-      </div>
-    );
-  }
-  return <div style={base}>{content ?? placeholder}</div>;
 }
 
-export function SceneRenderer({
+export const SceneRenderer = memo(function SceneRenderer({
   imageUrl,
   logoUrl,
   onRequestLogoUpload,
@@ -226,82 +87,144 @@ export function SceneRenderer({
   layout,
   fill,
   showSafeArea,
+  compact,
+  imageLayers,
+  selected,
+  onSelect,
+  onDragText,
 }: Props) {
-  const scene: SceneDefinition = getScene(layout.template);
-  // Escala tipográfica base (cqi = % da largura do container).
-  const titleSize = 7.2 * layout.title.scale;
-  const subSize = 3.6 * layout.subtitle.scale;
-  const ctaSize = 2.6 * layout.cta.scale;
+  const idPrefix = useId();
+  const frameRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+
+  const scene = useMemo(() => sceneWithPalette(getScene(layout.template), layout.colors), [layout.template, layout.colors]);
+  const built = useMemo(
+    () =>
+      buildSceneOverlaySvgWithMeta({
+        width: W,
+        height: H,
+        scene,
+        layout,
+        content: { headline: headline || null, supportingText: subheadline, ctaText: cta },
+        logo: logoUrl ? { dataUri: logoUrl } : null,
+        idPrefix,
+      }),
+    [scene, layout, headline, subheadline, cta, logoUrl, idPrefix],
+  );
+
+  const interactive = !!onSelect;
+  const layers: SceneImageLayer[] = imageLayers ?? [{ key: "single", url: imageUrl, focalPoint: focalPoint ?? null }];
+
+  function dragDelta(e: ReactPointerEvent) {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect || !drag.current) return null;
+    return {
+      dx: ((e.clientX - drag.current.x) / rect.width) * 100,
+      dy: ((e.clientY - drag.current.y) / rect.height) * 100,
+    };
+  }
+
+  const hit = (part: ScenePart, box: Box, label: string) => {
+    const isText = part !== "logo";
+    return (
+      <button
+        key={part}
+        type="button"
+        aria-label={label}
+        aria-pressed={selected === part}
+        onClick={() => onSelect?.(part)}
+        onPointerDown={
+          isText && onDragText
+            ? (e) => {
+                drag.current = { x: e.clientX, y: e.clientY, moved: false };
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }
+            : undefined
+        }
+        onPointerMove={
+          isText && onDragText
+            ? (e) => {
+                const d = dragDelta(e);
+                if (!d || (!drag.current!.moved && Math.abs(d.dx) + Math.abs(d.dy) < 0.6)) return;
+                drag.current!.moved = true;
+                onDragText(d.dx, d.dy, "move");
+              }
+            : undefined
+        }
+        onPointerUp={
+          isText && onDragText
+            ? (e) => {
+                const d = dragDelta(e);
+                if (d && drag.current?.moved) onDragText(d.dx, d.dy, "end");
+                drag.current = null;
+              }
+            : undefined
+        }
+        className={`absolute rounded-[3px] outline-offset-2 transition-[outline-color] ${
+          selected === part
+            ? "outline outline-2 outline-sky-400"
+            : "outline outline-1 outline-transparent hover:outline-white/70"
+        } ${isText && onDragText ? "cursor-move touch-none" : "cursor-pointer"}`}
+        style={{ ...pct(box), zIndex: 25 }}
+      />
+    );
+  };
 
   return (
     <div
+      ref={frameRef}
       className={
-        fill
-          ? "relative w-full h-full overflow-hidden rounded-xl border bg-black shadow-md"
-          : "relative w-full max-w-[420px] mx-auto overflow-hidden rounded-xl border bg-black shadow-md"
+        compact
+          ? "relative w-full overflow-hidden rounded-[5px] bg-black"
+          : fill
+            ? "relative h-full w-full overflow-hidden rounded-xl border bg-black shadow-md"
+            : "relative mx-auto w-full max-w-[420px] overflow-hidden rounded-xl border bg-black shadow-md"
       }
       style={{ aspectRatio: "9 / 16", containerType: "inline-size" }}
     >
-      {/* Imagem base */}
-      {imageUrl ? (
-        <FocalImage
-          src={imageUrl}
-          alt=""
-          frame={STORY_FRAME}
-          focalPoint={focalPoint}
-          style={{ zIndex: 0 }}
-        />
-      ) : (
-        <div className="absolute inset-0 grid place-items-center text-xs text-white/60 z-0">
-          sem imagem
-        </div>
+      {/* Foto(s) de fundo, enquadradas como no vídeo */}
+      {layers.map((layer) =>
+        layer.url ? (
+          <FramedImage
+            key={layer.key}
+            src={layer.url}
+            framing={normalizeFraming(layer.focalPoint, { fit: "contain", fill: scene.image.fill })}
+            areas={built.imageAreas}
+            frame={FRAME}
+            fillColor={scene.palette.background}
+            style={{ zIndex: 0, ...layer.style }}
+          />
+        ) : (
+          <div key={layer.key} className="absolute inset-0 z-0 grid place-items-center text-xs text-white/60" style={layer.style}>
+            sem imagem
+          </div>
+        ),
       )}
 
-      {/* Camadas da cena — ordem de pintura preservada */}
-      {scene.layers.map((layer, i) => (
-        <LayerNode key={i} layer={layer} index={i} />
-      ))}
-
-      {/* Logo (Brand Center) */}
-      <LogoSlot
-        logoUrl={logoUrl}
-        layout={layout.logo}
-        onUpload={onRequestLogoUpload}
+      {/* Cena: o mesmo SVG que o worker aplica no vídeo */}
+      <div
+        className="scene-overlay pointer-events-none absolute inset-0"
+        style={{ zIndex: 10 }}
+        dangerouslySetInnerHTML={{ __html: built.svg }}
       />
 
-      {/* Bloco de textos — ordem visual: título → subtítulo → CTA.
-          A ordem é sequencial (sem flexbox `order`) para bater 1:1 com o
-          worker (`scene-composer.ts`). */}
-      <div
-        className="absolute inset-0 flex flex-col text-white pointer-events-none"
-        style={{
-          padding: scene.text.padding,
-          justifyContent: vAnchorToJustify(layout.title.vAnchor),
-          gap: `${scene.text.gap}cqi`,
-          zIndex: 20,
-        }}
-      >
-        <div>
-          {renderTextNode(
-            headline || null,
-            scene.text.title,
-            titleSize,
-            layout.title.align,
-            <span className="text-white/40">Título do vídeo</span>,
-          )}
-        </div>
-        {subheadline
-          ? renderTextNode(subheadline, scene.text.subtitle, subSize, layout.subtitle.align)
-          : null}
-        {cta ? renderTextNode(cta, scene.text.cta, ctaSize, layout.cta.align) : null}
-      </div>
+      {/* Sem logo cadastrada (e não ocultada): marcador / envio */}
+      {!logoUrl && built.layout.logo.visible !== false && (
+        <LogoSlot logoUrl={null} layout={built.layout.logo} onUpload={onRequestLogoUpload} />
+      )}
+
+      {interactive && (
+        <>
+          {built.textBoxes.title && hit("title", built.textBoxes.title, "Selecionar título")}
+          {built.textBoxes.subtitle && hit("subtitle", built.textBoxes.subtitle, "Selecionar subtítulo")}
+          {built.textBoxes.cta && hit("cta", built.textBoxes.cta, "Selecionar chamada")}
+          {logoUrl && built.logoRendered && hit("logo", built.logoSlot, "Selecionar logo")}
+        </>
+      )}
 
       {/* Guias de safe area (opcional) */}
       {showSafeArea && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: 30 }}
-        >
+        <div className="pointer-events-none absolute inset-0" style={{ zIndex: 30 }}>
           <div
             className="absolute"
             style={{
@@ -317,4 +240,4 @@ export function SceneRenderer({
       )}
     </div>
   );
-}
+});

@@ -21,6 +21,14 @@ const TABS: Array<[Kind, string]> = [
 
 export function MarketingLibraryHub({ companyId, onUseMedia }: Props) {
   const [kind, setKind] = useState<Kind>("photos");
+  const [visitedKinds, setVisitedKinds] = useState<Set<Kind>>(() => new Set(["photos"]));
+  function selectKind(next: Kind) {
+    setKind(next);
+    setVisitedKinds((current) => {
+      if (current.has(next)) return current;
+      return new Set([...current, next]);
+    });
+  }
   return (
     <div className="space-y-4">
       <div>
@@ -29,15 +37,31 @@ export function MarketingLibraryHub({ companyId, onUseMedia }: Props) {
       </div>
       <ChipRow label="Tipo de mídia">
         {TABS.map(([id, label]) => (
-          <Chip key={id} active={kind === id} onClick={() => setKind(id)}>
+          <Chip key={id} active={kind === id} onClick={() => selectKind(id)}>
             {label}
           </Chip>
         ))}
       </ChipRow>
-      {kind === "photos" && <MarketingLibrary key="photos" companyId={companyId} mediaKind="image" onUse={onUseMedia} />}
-      {kind === "videos" && <MarketingLibrary key="videos" companyId={companyId} mediaKind="video" marketingOnly onUse={onUseMedia} />}
-      {kind === "audio" && <AudioLibrary companyId={companyId} />}
-      {kind === "generated" && <VideoLibraryGrid companyId={companyId} />}
+      {visitedKinds.has("photos") && (
+        <div hidden={kind !== "photos"}>
+          <MarketingLibrary key="photos" companyId={companyId} mediaKind="image" onUse={onUseMedia} />
+        </div>
+      )}
+      {visitedKinds.has("videos") && (
+        <div hidden={kind !== "videos"}>
+          <MarketingLibrary key="videos" companyId={companyId} mediaKind="video" marketingOnly onUse={onUseMedia} />
+        </div>
+      )}
+      {visitedKinds.has("audio") && (
+        <div hidden={kind !== "audio"}>
+          <AudioLibrary companyId={companyId} />
+        </div>
+      )}
+      {visitedKinds.has("generated") && (
+        <div hidden={kind !== "generated"}>
+          <VideoLibraryGrid companyId={companyId} />
+        </div>
+      )}
     </div>
   );
 }

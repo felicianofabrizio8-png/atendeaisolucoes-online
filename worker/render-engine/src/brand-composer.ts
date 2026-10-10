@@ -24,7 +24,8 @@ import { Resvg } from "@resvg/resvg-js";
 import { log } from "./logger.js";
 import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard.js";
 import type { VideoBrandDto } from "./api-client.js";
-import { getSceneById, type VideoLayout } from "./scenes.js";
+import { FONTS, getSceneById } from "./scenes.js";
+import type { ImageAreas, ImageFill } from "./image-fit.js";
 import { buildSceneOverlaySvg, buildSceneOverlaySvgWithMeta } from "./scene-composer.js";
 import { applyThemeToScene, sanitizeThemeSnapshot } from "./theme.js";
 
@@ -33,10 +34,8 @@ const __dirname = path.dirname(__filename);
 // dist/brand-composer.js → dist/../assets/fonts
 const FONTS_DIR = path.resolve(__dirname, "..", "assets", "fonts");
 
-const FONT_FILES = {
-  interRegular: "Inter-Regular.ttf",
-  playfairBold: "PlayfairDisplay-Bold.ttf",
-} as const;
+// Todas as fontes do registro de cenas — a mesma lista que a prévia carrega.
+const FONT_FILES = Array.from(new Set(Object.values(FONTS).map((f) => f.file)));
 
 let fontFilesCache: string[] | null = null;
 
@@ -47,7 +46,7 @@ let fontFilesCache: string[] | null = null;
  */
 async function loadFontFiles(): Promise<string[]> {
   if (fontFilesCache) return fontFilesCache;
-  const paths = Object.values(FONT_FILES).map((f) => path.join(FONTS_DIR, f));
+  const paths = FONT_FILES.map((f) => path.join(FONTS_DIR, f));
   // Valida existência — falha cedo com mensagem clara se o COPY do Dockerfile falhar.
   await Promise.all(paths.map((p) => access(p)));
   fontFilesCache = paths;
@@ -76,6 +75,13 @@ export interface BrandLayerPaths {
   sceneLogoConfirmed: boolean;
   /** Motivo sanitizado quando a logo não foi confirmada na cena. */
   sceneLogoReason: string | null;
+  /** O usuário desligou a logo neste vídeo: não aplicar nem a marca d'água. */
+  sceneLogoHidden: boolean;
+  /**
+   * Enquadramento da foto pedido pelo modelo (área livre, preenchimento).
+   * Null quando o vídeo não usa cena (painel legado).
+   */
+  sceneImage: { areas: ImageAreas; fillColor: string; defaultFill: ImageFill } | null;
 }
 
 export interface ComposeBrandLayersInput {
@@ -147,6 +153,8 @@ export async function composeBrandLayers(
   let sceneAppliesLogo = false;
   let sceneLogoConfirmed = false;
   let sceneLogoReason: string | null = "scene_not_used";
+  let sceneLogoHidden = false;
+  let sceneImage: BrandLayerPaths["sceneImage"] = null;
   if (hasBottomPanel) {
     // Fase M4-render — se o snapshot traz template + overlayLayout do editor,
     // renderiza a CENA completa (full-frame RGBA). Caso contrário, cai no
@@ -212,7 +220,7 @@ export async function composeBrandLayers(
           width,
           height,
           scene,
-          layout: overlayLayout as unknown as VideoLayout,
+          layout: overlayLayout,
           content: {
             headline: content.headline,
             supportingText: content.supportingText,
@@ -227,6 +235,8 @@ export async function composeBrandLayers(
           fontFiles,
           outPath: path.join(workDir, "brand-scene-overlay.png"),
         });
+        sceneImage = { areas: built.imageAreas, fillColor: scene.palette.background, defaultFill: scene.image.fill };
+        sceneLogoHidden = built.logoSkipReason === "hidden_by_user";
         // Intenção declarada (havia logo disponível para a cena).
         sceneAppliesLogo = !!sceneLogo;
         // Confirmação real: logo emitida no SVG + overlay rasterizado.
@@ -257,7 +267,7 @@ export async function composeBrandLayers(
         try {
           const built = buildSceneOverlaySvg({
             width, height, scene,
-            layout: overlayLayout as unknown as VideoLayout,
+            layout: overlayLayout,
             content: {
               headline: content.headline,
               supportingText: content.supportingText,
@@ -367,6 +377,8 @@ export async function composeBrandLayers(
     sceneAppliesLogo,
     sceneLogoConfirmed,
     sceneLogoReason,
+    sceneLogoHidden,
+    sceneImage,
   };
 }
 

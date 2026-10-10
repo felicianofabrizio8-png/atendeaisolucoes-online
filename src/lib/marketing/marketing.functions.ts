@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
+import { missingMediaMessage, publishableMediaSource } from "./publishable-media";
 
 type SB = SupabaseClient<Database>;
 
@@ -145,6 +146,25 @@ export const listMarketingMedia = createServerFn({ method: "GET" })
       .range(offset, offset + limit - 1);
     if (error) throw new Error(error.message);
     return { media: rows ?? [] };
+  });
+
+/**
+ * Caminho no storage de mídias específicas do acervo (para abrir a prévia de
+ * uma campanha). Só devolve mídias da empresa autenticada e não removidas.
+ */
+export const getMarketingMediaPaths = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ ids: z.array(z.string().uuid()).min(1).max(16) }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { companyId, supabase } = await loadCompany(context);
+    const { data: rows, error } = await supabase
+      .from("marketing_media")
+      .select("id, storage_path")
+      .eq("company_id", companyId)
+      .is("deleted_at", null)
+      .in("id", data.ids);
+    if (error) throw new Error(error.message);
+    return { paths: Object.fromEntries((rows ?? []).map((r) => [r.id, r.storage_path])) as Record<string, string> };
   });
 
 const UpdateMediaSchema = z.object({
@@ -326,12 +346,140 @@ export const listMarketingContents = createServerFn({ method: "GET" })
       .from("marketing_contents")
       .select("*")
       .eq("company_id", companyId)
+
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
     return { contents: data ?? [] };
   });
 
+
+function visibilityColumnError(error: { code?: string; message?: string } | null | undefined): Error | null {
+  if (error?.code === "42703" || error?.message?.includes("hidden_from_publish")) {
+    return new Error("A coluna de visibilidade do Marketing IA ainda não existe. Aplique a migração de publish visibility antes de usar esta função.");
+  }
+  return null;
+}
+
+async function assertMarketingAdmin(ctx: { supabase: SB; userId: string }, companyId: string) {
+  const sb = ctx.supabase as unknown as {
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: boolean | null; error: { message?: string } | null }>;
+  };
+  const { data: isAdmin, error } = await sb.rpc("has_role", {
+    _user_id: ctx.userId,
+    _company_id: companyId,
+    _role: "admin",
+  });
+  if (error) throw new Error(`Falha ao validar a permissão de administrador: ${error.message ?? "erro desconhecido"}`);
+  if (!isAdmin) throw new Error("Apenas administradores da empresa podem ocultar publicações antigas.");
+}
+
+export const listMarketingPublishContents = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { companyId, supabase } = await loadCompany(context);
+    const { data, error } = await supabase
+      .from("marketing_contents")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("hidden_from_publish", false)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const missingColumn = visibilityColumnError(error);
+    if (missingColumn) throw missingColumn;
+    if (error) throw new Error(error.message);
+    return { contents: data ?? [] };
+  });
+
+const CleanupSchema = z.object({
+  statuses: z.array(z.enum(["draft", "pending", "approved", "rejected", "archived"])).min(1).max(5),
+  before: z.string().datetime(),
+  ids: z.array(z.string().uuid()).max(500).optional(),
+});
+
+const CLEANUP_BATCH = 500;
+const ACTIVE_SCHEDULE_STATUSES = ["planned", "queued", "publishing"];
+
+type CleanupCandidate = {
+  id: string;
+  status: string;
+  created_at: string;
+  campaign_id: string | null;
+  hidden_from_publish: boolean;
+};
+
+type CleanupPreview = {
+  eligibleCount: number;
+  protectedCount: number;
+  protectedByReason: { schedule: number; publication: number; alreadyHidden: number };
+  activeScheduleCount: number;
+  linkedCampaignCount: number;
+  campaignStatusCounts: Record<string, number>;
+  campaignQueryError: string | null;
+  ignoredStatusCount: number;
+  scannedCount: number;
+  truncated: boolean;
+  ids: string[];
+};
+
+async function findMarketingCleanupCandidates(sb: SB, companyId: string, input: z.infer<typeof CleanupSchema>): Promise<CleanupPreview> {
+  // Só entram na varredura os conteúdos ainda visíveis nos status escolhidos: assim cada confirmação avança para os próximos 500 em vez de reler os já ocultos.
+  const { data, error } = await sb.from("marketing_contents").select("id,status,created_at,campaign_id,hidden_from_publish").eq("company_id", companyId).lt("created_at", input.before).in("status", input.statuses).eq("hidden_from_publish", false).order("created_at", { ascending: true }).limit(CLEANUP_BATCH);
+  const missingColumn = visibilityColumnError(error);
+  if (missingColumn) throw missingColumn;
+  if (error) throw new Error(`marketing_contents preview failed: ${error.message}`);
+  const rows = (data ?? []) as CleanupCandidate[];
+  const countContents = () => sb.from("marketing_contents").select("id", { count: "exact", head: true }).eq("company_id", companyId).lt("created_at", input.before);
+  const { count: alreadyHiddenCount, error: hiddenCountError } = await countContents().in("status", input.statuses).eq("hidden_from_publish", true);
+  if (hiddenCountError) throw new Error(`marketing_contents preview failed: ${hiddenCountError.message}`);
+  const { count: ignoredStatusCount, error: ignoredCountError } = await countContents().not("status", "in", `(${input.statuses.join(",")})`);
+  if (ignoredCountError) throw new Error(`marketing_contents preview failed: ${ignoredCountError.message}`);
+  const { data: scheduled, error: scheduleError } = await sb.from("marketing_schedule").select("content_id,status").eq("company_id", companyId);
+  if (scheduleError) throw new Error(`marketing_schedule preview failed: ${scheduleError.message}`);
+  const scheduledIds = new Set((scheduled ?? []).map((row) => row.content_id as string));
+  const activeScheduleIds = new Set((scheduled ?? []).filter((row) => ACTIVE_SCHEDULE_STATUSES.includes(String(row.status))).map((row) => row.content_id as string));
+  const { data: publications, error: publicationError } = await sb.from("marketing_publications").select("content_id").eq("company_id", companyId);
+  if (publicationError) throw new Error(`marketing_publications preview failed: ${publicationError.message}`);
+  const publicationIds = new Set((publications ?? []).map((row) => row.content_id as string));
+  const campaignIds = Array.from(new Set(rows.map((row) => row.campaign_id).filter((id): id is string => Boolean(id))));
+  const { data: campaigns, error: campaignsError } = campaignIds.length ? await sb.from("campaigns").select("id,status").eq("company_id", companyId).in("id", campaignIds) : { data: [], error: null };
+  const campaignStatusCounts = (campaigns ?? []).reduce<Record<string, number>>((acc, row) => { const status = String(row.status ?? "unknown"); acc[status] = (acc[status] ?? 0) + 1; return acc; }, {});
+  const selected = rows.filter((row) => input.statuses.includes(row.status as z.infer<typeof CleanupSchema>["statuses"][number]));
+  const protectedBySchedule = selected.filter((row) => !row.hidden_from_publish && scheduledIds.has(row.id));
+  const protectedByPublication = selected.filter((row) => !row.hidden_from_publish && !scheduledIds.has(row.id) && publicationIds.has(row.id));
+  // hidden_from_publish altera somente a visibilidade no Marketing IA (Início e Publicar). Agenda, histórico e campanhas permanecem intactos, então esses vínculos são informativos e não bloqueiam a ocultação.
+  const eligibleRows = selected.filter((row) => !row.hidden_from_publish && (!input.ids || input.ids.includes(row.id)));
+  return {
+    eligibleCount: eligibleRows.length,
+    protectedCount: alreadyHiddenCount ?? 0,
+    protectedByReason: { schedule: protectedBySchedule.length, publication: protectedByPublication.length, alreadyHidden: alreadyHiddenCount ?? 0 },
+    // Agendamentos ainda ativos continuam sendo publicados pelo worker mesmo com o conteúdo oculto.
+    activeScheduleCount: eligibleRows.filter((row) => activeScheduleIds.has(row.id)).length,
+    linkedCampaignCount: selected.filter((row) => Boolean(row.campaign_id)).length,
+    campaignStatusCounts,
+    campaignQueryError: campaignsError?.message ?? null,
+    ignoredStatusCount: ignoredStatusCount ?? 0,
+    scannedCount: rows.length + (alreadyHiddenCount ?? 0) + (ignoredStatusCount ?? 0),
+    truncated: rows.length === CLEANUP_BATCH,
+    ids: eligibleRows.map((row) => row.id),
+  };
+}
+export const previewMarketingCleanup = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).inputValidator((i: unknown) => CleanupSchema.omit({ ids: true }).parse(i)).handler(async ({ data, context }) => {
+  const { companyId, supabase } = await loadCompany(context);
+  await assertMarketingAdmin({ supabase, userId: context.userId }, companyId);
+  return { ...(await findMarketingCleanupCandidates(supabase, companyId, data)), company_id: companyId };
+});
+export const archiveMarketingCleanup = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((i: unknown) => CleanupSchema.parse(i)).handler(async ({ data, context }) => {
+  const { companyId, supabase } = await loadCompany(context);
+  await assertMarketingAdmin({ supabase, userId: context.userId }, companyId);
+  const preview = await findMarketingCleanupCandidates(supabase, companyId, data);
+  if (!preview.ids.length) return { archived: 0, hidden: 0, company_id: companyId };
+  const { data: hidden, error } = await supabase.from("marketing_contents").update({ hidden_from_publish: true }).eq("company_id", companyId).in("id", preview.ids).in("status", data.statuses).select("id");
+  const missingColumn = visibilityColumnError(error);
+  if (missingColumn) throw missingColumn;
+  if (error) throw new Error(error.message);
+  return { archived: hidden?.length ?? 0, hidden: hidden?.length ?? 0, company_id: companyId };
+});
 const SetStatusSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(["draft", "pending", "approved", "rejected", "archived"]),
@@ -460,7 +608,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     const { companyId, userId, supabase } = await loadCompany(context);
     const { data: content, error: cErr } = await supabase
       .from("marketing_contents")
-      .select("id, company_id, status, media_ids, ai_prompt")
+      .select("id, company_id, status, media_ids, ai_prompt, campaign_id, format, product_id, feed_video_id, story_video_id")
       .eq("id", data.content_id)
       .maybeSingle();
     if (cErr) throw new Error(cErr.message);
@@ -472,21 +620,11 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
         "Apenas conteúdos aprovados podem ser agendados. Aprove antes de programar.",
       );
     }
-    // IG/FB feed/reel/story exigem mídia associada (marketing_media OR product_media_refs).
+    // IG/FB feed/reel/story exigem mídia publicável — pela mesma regra do
+    // publicador: vídeo renderizado da campanha, acervo, fotos de produto.
     if (data.channel === "instagram" || data.channel === "facebook") {
-      const marketingCount = Array.isArray(content.media_ids) ? content.media_ids.length : 0;
-      const promptObj =
-        content.ai_prompt && typeof content.ai_prompt === "object"
-          ? (content.ai_prompt as { product_media_refs?: unknown })
-          : null;
-      const productRefs = Array.isArray(promptObj?.product_media_refs)
-        ? (promptObj!.product_media_refs as unknown[])
-        : [];
-      if (marketingCount === 0 && productRefs.length === 0) {
-        const canal = data.channel === "instagram" ? "Instagram" : "Facebook";
-        throw new Error(
-          `Selecione ao menos uma imagem ou vídeo (biblioteca ou produto) antes de agendar para o ${canal}.`,
-        );
+      if (!publishableMediaSource(content)) {
+        throw new Error(missingMediaMessage(content, data.channel === "instagram" ? "Instagram" : "Facebook"));
       }
     }
     // Guard: publicar no Facebook exige `pages_manage_posts` no token da
@@ -565,6 +703,24 @@ export const listMarketingSchedule = createServerFn({ method: "GET" })
       .limit(500);
     if (error) throw new Error(error.message);
     return { schedule: data ?? [] };
+  });
+
+/** Agenda do Marketing IA: só agendamentos cujo conteúdo não foi ocultado. */
+export const listMarketingPublishSchedule = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { companyId, supabase } = await loadCompany(context);
+    const { data, error } = await supabase
+      .from("marketing_schedule")
+      .select("*, marketing_contents!inner(hidden_from_publish)")
+      .eq("company_id", companyId)
+      .eq("marketing_contents.hidden_from_publish", false)
+      .order("scheduled_at", { ascending: true })
+      .limit(500);
+    const missingColumn = visibilityColumnError(error);
+    if (missingColumn) throw missingColumn;
+    if (error) throw new Error(error.message);
+    return { schedule: (data ?? []).map(({ marketing_contents: _content, ...row }) => row) };
   });
 
 export const cancelMarketingSchedule = createServerFn({ method: "POST" })

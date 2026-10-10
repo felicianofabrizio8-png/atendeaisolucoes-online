@@ -25,11 +25,10 @@ import {
   apiGenerateSimpleMarketingPost,
   apiGenerateManualCampaign,
   apiRetryCampaignRender,
-  urlForMarketingPath,
+  campaignMediaDeps,
   type CampaignImageInput,
   type FocalPointInput,
 } from "@/data/marketingRepo";
-import { getSignedImageUrl } from "@/lib/storage";
 import type { MarketingPromotionRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { MarketingLibrary } from "../MarketingLibrary";
 import { Chip, ChipRow, PhonePreview } from "../ui/MarketingUi";
@@ -42,7 +41,8 @@ import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
 import { FocalPointEditor } from "./FocalPointEditor";
 import { CampaignStickyActionBar } from "./CampaignStickyActionBar";
 import { CampaignRenderProgress } from "./CampaignRenderProgress";
-import { CampaignVideoEditor } from "./editor/CampaignVideoEditor";
+import { CampaignVideoEditor, type CampaignEditorImage } from "./editor/CampaignVideoEditor";
+import { resolveCampaignMedia, type MediaLoadError } from "@/lib/marketing/campaign-media";
 import { CampaignManualForm, type ManualSubmitPayload } from "./CampaignManualForm";
 import type { CampaignFormatSelection } from "@/lib/marketing/campaign-formats";
 import { AiUnavailableNotice } from "./AiUnavailableNotice";
@@ -82,10 +82,11 @@ interface Slot {
   previewUrl: string | null;
   loading: boolean;
   failed: boolean;
+  error: MediaLoadError | null;
 }
 
 const isVideoSelection = (sel: MediaSelection) => sel.origin === "marketing" && sel.mediaType === "video";
-const newSlot = (selection: MediaSelection): Slot => ({ selection, focal: null, previewUrl: null, loading: false, failed: false });
+const newSlot = (selection: MediaSelection): Slot => ({ selection, focal: null, previewUrl: null, loading: false, failed: false, error: null });
 
 export function MarketingCampaignGenerator({ companyId, onGenerated, initialSelection = [] }: Props) {
   const [promotions, setPromotions] = useState<MarketingPromotionRow[]>([]);
@@ -123,28 +124,45 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
   }, [companyId]);
 
   // Resolve a URL de prévia de cada mídia escolhida, uma única vez por item.
+  // A resolução tem tempo limite e sempre termina (link ou erro): o item nunca
+  // fica "carregando" para sempre, e uma falha pode ser tentada de novo.
   const previewResolutionsRef = useRef(new Set<string>());
+  const resolveSlotPreview = useCallback((selection: MediaSelection, fresh: boolean) => {
+    const key = selectionKey(selection);
+    if (!claimPreviewResolution(previewResolutionsRef.current, key)) return;
+    // Marca pelo próprio item (não pela posição): a lista pode ter sido reordenada.
+    setSlots((cur) => cur.map((s) => (sameSelection(s.selection, selection) ? { ...s, loading: true, failed: false, error: null } : s)));
+    const ref =
+      selection.origin === "marketing"
+        ? { key, origin: "marketing" as const, mediaId: selection.id, storagePath: selection.storagePath }
+        : { key, origin: "product" as const, imagePath: selection.imagePath };
+    void resolveCampaignMedia([ref], campaignMediaDeps, { fresh })
+      .then((resolved) => resolved[key] ?? { previewUrl: null, error: "url_failed" as const })
+      .catch(() => ({ previewUrl: null, error: "url_failed" as const }))
+      .then((result) => {
+        setSlots((cur) =>
+          cur.map((s) =>
+            sameSelection(s.selection, selection)
+              ? { ...s, previewUrl: result.previewUrl, loading: false, failed: !result.previewUrl, error: result.error }
+              : s,
+          ),
+        );
+        releasePreviewResolution(previewResolutionsRef.current, key);
+      });
+  }, []);
   useEffect(() => {
-    slots.forEach((slot, idx) => {
-      const key = selectionKey(slot.selection);
-      if (slot.previewUrl || slot.loading || slot.failed) return;
-      if (!claimPreviewResolution(previewResolutionsRef.current, key)) return;
-      setSlots((cur) => cur.map((s, i) => (i === idx ? { ...s, loading: true } : s)));
-      (async () => {
-        let url: string | null = null;
-        try {
-          if (slot.selection.origin === "marketing" && slot.selection.storagePath) {
-            url = await urlForMarketingPath(slot.selection.storagePath).catch(() => null);
-          } else if (slot.selection.origin === "product") {
-            url = await getSignedImageUrl(slot.selection.imagePath).catch(() => null);
-          }
-        } finally {
-          setSlots((cur) => cur.map((s) => (sameSelection(s.selection, slot.selection) ? { ...s, previewUrl: url, loading: false, failed: !url } : s)));
-          releasePreviewResolution(previewResolutionsRef.current, key);
-        }
-      })();
-    });
-  }, [slots]);
+    for (const slot of slots) {
+      if (slot.previewUrl || slot.loading || slot.failed) continue;
+      resolveSlotPreview(slot.selection, false);
+    }
+  }, [slots, resolveSlotPreview]);
+  const retryPreviewByKey = useCallback(
+    (key: string) => {
+      const slot = slots.find((s) => selectionKey(s.selection) === key);
+      if (slot) resolveSlotPreview(slot.selection, true);
+    },
+    [slots, resolveSlotPreview],
+  );
 
   const selections = useMemo(() => slots.map((s) => s.selection), [slots]);
   const primarySlot = slots[0] ?? null;
@@ -180,11 +198,35 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
       slots.map((s) => {
         const key = selectionKey(s.selection);
         return s.selection.origin === "marketing"
-          ? { key, origin: "marketing", media_id: s.selection.id, storagePath: s.selection.storagePath, previewUrl: s.previewUrl, loadingPreview: s.loading, focal_point: s.focal }
-          : { key, origin: "product", product_id: s.selection.productId, image_path: s.selection.imagePath, previewUrl: s.previewUrl, loadingPreview: s.loading, focal_point: s.focal };
+          ? { key, origin: "marketing", media_id: s.selection.id, storagePath: s.selection.storagePath, previewUrl: s.previewUrl, loadingPreview: s.loading, previewError: s.error, focal_point: s.focal }
+          : { key, origin: "product", product_id: s.selection.productId, image_path: s.selection.imagePath, previewUrl: s.previewUrl, loadingPreview: s.loading, previewError: s.error, focal_point: s.focal };
       }),
     [slots],
   );
+
+  // As mesmas imagens (e a mesma ordem) da campanha, no formato do estúdio:
+  // a prévia mostra todas as cenas e a aprovação envia exatamente estas.
+  const editorImages: CampaignEditorImage[] = useMemo(
+    () =>
+      slots
+        .filter((s) => !isVideoSelection(s.selection))
+        .map((s) => {
+          const base = { key: selectionKey(s.selection), previewUrl: s.previewUrl, loadError: s.error, focalPoint: s.focal };
+          return s.selection.origin === "marketing"
+            ? { ...base, origin: "marketing" as const, mediaId: s.selection.id }
+            : { ...base, origin: "product" as const, productId: s.selection.productId, imagePath: s.selection.imagePath };
+        }),
+    [slots],
+  );
+  const applyEditorImages = useCallback((next: CampaignEditorImage[]) => {
+    setSlots((cur) => {
+      const byKey = new Map(cur.map((s) => [selectionKey(s.selection), s]));
+      return next.flatMap((item) => {
+        const slot = byKey.get(item.key);
+        return slot ? [{ ...slot, focal: item.focalPoint }] : [];
+      });
+    });
+  }, []);
 
   const reorder = useCallback((next: CampaignImageItem[]) => {
     setSlots((cur) => {
@@ -335,11 +377,16 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
     return (
       <div className="space-y-4">
         {pendingReview && !campaignId && (
+          // O estúdio ocupa a altura que recebe; aqui ele vive na página, então a altura é fixada.
+          <div className="h-[calc(100dvh-11rem)] min-h-[520px]">
           <CampaignVideoEditor
             campaignId={pendingReview.campaignId}
             contents={pendingReview.contents}
             previewImageUrl={primarySlot?.previewUrl ?? null}
             focalPoint={primarySlot?.focal ?? null}
+            imageSequence={editorImages}
+            onImageSequenceChange={applyEditorImages}
+            onRetryImage={retryPreviewByKey}
             onContentsUpdated={(fresh: MarketingContentRow[]) => setPendingReview((cur) => (cur ? { ...cur, contents: fresh } : cur))}
             onApproved={() => {
               const id = pendingReview.campaignId;
@@ -348,6 +395,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
               trackCampaign(id);
             }}
           />
+          </div>
         )}
         {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
       </div>
@@ -411,7 +459,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
                       <span>Fotos do vídeo ({slots.length}/{MAX_IMAGES})</span>
                       <span>Arraste para reordenar · a 1ª é a capa</span>
                     </div>
-                    <CampaignImageList items={items} onReorder={reorder} onRemove={removeByKey} onMakePrimary={makePrimary} onEditFocal={(key) => setEditingKey(key)} />
+                    <CampaignImageList items={items} onReorder={reorder} onRemove={removeByKey} onMakePrimary={makePrimary} onEditFocal={(key) => setEditingKey(key)} onRetryPreview={retryPreviewByKey} />
                   </div>
                   <ChipRow label="Textos do vídeo">
                     <Chip active={mode === "ai"} onClick={() => setMode("ai")}><Sparkles className="h-3.5 w-3.5" /> Textos com IA</Chip>

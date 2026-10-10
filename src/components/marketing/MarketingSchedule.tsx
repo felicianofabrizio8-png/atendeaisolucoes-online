@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import {
-  apiListSchedule,
-  apiListContents,
+  apiListPublishSchedule,
+  apiListPublishContents,
   apiCancelSchedule,
 } from "@/data/marketingRepo";
 import type {
@@ -40,7 +40,7 @@ export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {
   async function refresh() {
     setLoading(true);
     try {
-      const [sched, conts] = await Promise.all([apiListSchedule(), apiListContents()]);
+      const [sched, conts] = await Promise.all([apiListPublishSchedule(), apiListPublishContents()]);
       setSchedule(sched);
       setContents(Object.fromEntries(conts.map((c) => [c.id, c])));
     } catch (e) {

@@ -3560,6 +3560,7 @@ export type Database = {
           format: Database["public"]["Enums"]["marketing_content_format"]
           hashtags: string[]
           id: string
+          hidden_from_publish: boolean
           media_ids: string[]
           overlay_approved_at: string | null
           overlay_cta: string | null
@@ -3625,6 +3626,7 @@ export type Database = {
           updated_at?: string
           video_layout?: Json | null
           video_template?: string | null
+          hidden_from_publish?: boolean
         }
         Update: {
           ai_model?: string | null
@@ -3669,6 +3671,7 @@ export type Database = {
           updated_at?: string
           video_layout?: Json | null
           video_template?: string | null
+          hidden_from_publish?: boolean
         }
         Relationships: [
           {

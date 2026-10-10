@@ -4,6 +4,7 @@
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { friendlyRenderError } from "@/lib/marketing/render-error-messages";
+import { RENDER_STALL_MESSAGE, type RenderStall } from "@/lib/marketing/render-status";
 import type { TrackedCampaign } from "@/lib/marketing/useCampaignRenderTracker";
 
 interface Props {
@@ -48,6 +49,7 @@ export function CampaignRenderProgress({ tracked, onRetry }: Props) {
           status={tracked.feed.status}
           progress={tracked.feed.progress}
           errorCode={tracked.feed.errorCode}
+          stall={tracked.feed.stall ?? null}
           done={!!tracked.feed.videoId}
           onRetry={() => onRetry("feed")}
         />
@@ -56,6 +58,7 @@ export function CampaignRenderProgress({ tracked, onRetry }: Props) {
           status={tracked.story.status}
           progress={tracked.story.progress}
           errorCode={tracked.story.errorCode}
+          stall={tracked.story.stall ?? null}
           done={!!tracked.story.videoId}
           onRetry={() => onRetry("story")}
         />
@@ -69,6 +72,7 @@ function RoleProgress({
   status,
   progress,
   errorCode,
+  stall,
   done,
   onRetry,
 }: {
@@ -76,12 +80,15 @@ function RoleProgress({
   status: string;
   progress: number | null;
   errorCode: string | null;
+  stall: RenderStall | null;
   done: boolean;
   onRetry: () => void;
 }) {
   const failed = status === "failed";
+  // Parado: o job segue ativo no banco, mas ninguém o está processando.
+  const stalled = !done && !failed && !!stall;
   const pct = Math.max(0, Math.min(100, progress ?? 0));
-  const stageLabel = done ? "Vídeo pronto" : failed ? "Falhou" : stageFromProgress(pct);
+  const stageLabel = done ? "Vídeo pronto" : failed ? "Falhou" : stalled ? "Parado" : stageFromProgress(pct);
   return (
     <div className="rounded-md border p-3 space-y-2 min-w-0">
       <div className="flex items-center justify-between gap-2 min-w-0">
@@ -94,12 +101,22 @@ function RoleProgress({
             <CheckCircle2 className="h-5 w-5 text-emerald-500" />
           ) : failed ? (
             <AlertTriangle className="h-5 w-5 text-destructive" />
+          ) : stalled ? (
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
           ) : (
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           )}
         </div>
       </div>
-      {!done && !failed && (
+      {stalled && (
+        <div role="alert" className="flex items-start justify-between gap-2">
+          <div className="text-xs text-amber-700 dark:text-amber-400 min-w-0">{RENDER_STALL_MESSAGE[stall!]}</div>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+            Tentar de novo
+          </Button>
+        </div>
+      )}
+      {!done && !failed && !stalled && (
         <div>
           <div className="h-2 rounded-full bg-muted overflow-hidden">
             <div

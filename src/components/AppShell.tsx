@@ -132,18 +132,27 @@ export function AppShell() {
       window.localStorage.removeItem("atendeai.demo");
       setDemoMode(false);
       loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+    } else {
+      setRepoMode("demo");
+    }
+  }, [user?.id, profile?.company_id]);
+
+  // Marketing IA nao consome o catalogo nem orcamentos. Evita disputar
+  // conexao/CPU com o workspace durante sua abertura, mas aquece as mesmas
+  // fontes ao entrar nas demais areas que dependem delas.
+  useEffect(() => {
+    if (user && profile && !location.pathname.startsWith("/marketing")) {
       loadProductsRemote(profile.company_id).catch((e) =>
         console.error("loadProductsRemote failed", e),
       );
       loadQuotesRemote(profile.company_id).catch((e) =>
         console.error("loadQuotesRemote failed", e),
       );
-    } else {
-      setRepoMode("demo");
+    } else if (!user || !profile) {
       setProductsMode("demo");
       setQuotesMode("demo");
     }
-  }, [user, profile]);
+  }, [user?.id, profile?.company_id, location.pathname]);
 
   // /login não usa o shell.
   // /login e o callback OAuth Meta não usam o shell (callback roda em popup).

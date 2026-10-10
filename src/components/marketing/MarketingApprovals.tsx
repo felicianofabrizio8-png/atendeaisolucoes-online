@@ -25,24 +25,24 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "sonner";
 import { openSettings } from "@/lib/settings-dialog";
 import {
-  apiListContents,
-  apiListMedia,
+  apiListPublishContents,
   apiUpdateContent,
   apiSetContentStatus,
   apiScheduleContent,
   apiFacebookPublishReadiness,
   apiGetCampaignRenderStatus,
   apiRetryCampaignRender,
-  urlForMarketingPath,
+  campaignMediaDeps,
+  apiGetRenderedVideoUrl,
 } from "@/data/marketingRepo";
 import type {
   MarketingContentRow,
-  MarketingMediaRow,
 } from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
-import { isActiveMarketingRenderStatus, resolveMarketingRenderState, type MarketingRenderState } from "@/lib/marketing/render-status";
+import { RENDER_STALL_MESSAGE, isActiveMarketingRenderStatus, resolveMarketingRenderState, type MarketingRenderState } from "@/lib/marketing/render-status";
 import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
-import { getSignedImageUrl } from "@/lib/storage";
+import { campaignImageRefs, resolveCampaignMedia } from "@/lib/marketing/campaign-media";
+import { missingMediaMessage, publishableMediaSource, renderedVideoIdFor } from "@/lib/marketing/publishable-media";
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
 import { MediaThumb, type MediaPreview } from "./ui/MarketingUi";
 import {
@@ -108,10 +108,9 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
 
   // ----- Editor Visual do Vídeo -----
   const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null);
-  const [editorPreviewUrl, setEditorPreviewUrl] = useState<string | null>(null);
+  const [editorRow, setEditorRow] = useState<MarketingContentRow | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
   const [editorImageSequence, setEditorImageSequence] = useState<CampaignEditorImage[]>([]);
-  const [mediaIndex, setMediaIndex] = useState<Record<string, MarketingMediaRow>>({});
   const { trackCampaign, campaigns, refresh: refreshTracked } = useCampaignRenderTracker();
   // Guarda campanhas cujo render completou para auto-refresh.
   const seenDoneRef = useRef<Set<string>>(new Set());
@@ -129,59 +128,49 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaigns]);
 
-  async function ensureMediaIndex(): Promise<Record<string, MarketingMediaRow>> {
-    if (Object.keys(mediaIndex).length > 0) return mediaIndex;
-    try {
-      const list = await apiListMedia();
-      const idx: Record<string, MarketingMediaRow> = {};
-      for (const m of list) idx[m.id] = m;
-      setMediaIndex(idx);
-      return idx;
-    } catch {
-      return {};
-    }
+  // Imagens do editor: a mesma regra do render (sequência salva ou imagem
+  // principal, do acervo ou de produto), com link buscado na hora — sem
+  // depender de uma lista de mídias em cache — e erro explícito por imagem.
+  async function loadEditorImages(row: MarketingContentRow, fresh = false): Promise<CampaignEditorImage[]> {
+    const { refs } = campaignImageRefs(row);
+    const resolved = await resolveCampaignMedia(refs, campaignMediaDeps, { fresh });
+    return refs.map((ref) => ({
+      key: ref.key,
+      origin: ref.origin,
+      ...(ref.origin === "marketing" ? { mediaId: ref.mediaId } : { productId: ref.productId, imagePath: ref.imagePath }),
+      previewUrl: resolved[ref.key]?.previewUrl ?? null,
+      loadError: resolved[ref.key]?.error ?? null,
+      focalPoint: ref.focalPoint,
+    }));
   }
 
   async function openVideoEditor(row: MarketingContentRow) {
     if (!row.campaign_id) return;
     setEditorLoading(true);
     setEditorCampaignId(row.campaign_id);
-    setEditorPreviewUrl(null);
+    setEditorRow(row);
+    setEditorImageSequence([]);
     try {
-      const idx = await ensureMediaIndex();
-      const mediaId = row.primary_image_media_id ?? row.media_ids?.[0] ?? null;
-      const media = mediaId ? idx[mediaId] : null;
-      if (media?.storage_path) {
-        const url = await urlForMarketingPath(media.storage_path).catch(() => null);
-        setEditorPreviewUrl(url);
-      }
-      const prompt = row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt) ? row.ai_prompt as { image_sequence?: unknown; focal_point?: { x: number; y: number; zoom?: number } | null } : {};
-      const sequence: CampaignEditorImage[] = [];
-      const rawSequence = Array.isArray(prompt.image_sequence) ? prompt.image_sequence : [];
-      for (const [index, item] of rawSequence.entries()) {
-        if (!item || typeof item !== "object") continue;
-        const entry = item as Record<string, unknown>;
-        const fp = entry.focal_point && typeof entry.focal_point === "object" ? entry.focal_point as CampaignEditorImage["focalPoint"] : null;
-        if (entry.source === "marketing_media" && typeof entry.image_id === "string") {
-          const source = idx[entry.image_id];
-          sequence.push({ key: `marketing:${entry.image_id}`, origin: "marketing", mediaId: entry.image_id, previewUrl: source?.storage_path ? await urlForMarketingPath(source.storage_path).catch(() => null) : null, focalPoint: fp });
-        } else if (entry.source === "product_image" && typeof entry.product_id === "string" && typeof entry.product_image_path === "string") {
-          sequence.push({ key: `product:${entry.product_id}:${index}`, origin: "product", productId: entry.product_id, imagePath: entry.product_image_path, previewUrl: await getSignedImageUrl(entry.product_image_path).catch(() => null), focalPoint: fp });
-        }
-      }
-      if (sequence.length === 0 && mediaId && mediaId === row.primary_image_media_id) {
-        const fp = prompt.focal_point ? { x: prompt.focal_point.x, y: prompt.focal_point.y, zoom: prompt.focal_point.zoom ?? 1 } : null;
-        sequence.push({ key: `marketing:${mediaId}`, origin: "marketing", mediaId, previewUrl: media?.storage_path ? await urlForMarketingPath(media.storage_path).catch(() => null) : null, focalPoint: fp });
-      }
-      setEditorImageSequence(sequence);
+      setEditorImageSequence(await loadEditorImages(row));
     } finally {
+      // `loadEditorImages` nunca fica pendente: cada imagem termina com link ou erro.
       setEditorLoading(false);
     }
   }
 
+  /** "Tentar novamente" do editor: novo link só para a imagem que falhou. */
+  async function retryEditorImage(key: string) {
+    if (!editorRow) return;
+    const fresh = (await loadEditorImages(editorRow, true)).find((item) => item.key === key);
+    if (!fresh) return;
+    setEditorImageSequence((cur) =>
+      cur.map((item) => (item.key === key ? { ...item, previewUrl: fresh.previewUrl, loadError: fresh.loadError } : item)),
+    );
+  }
+
   function closeVideoEditor() {
     setEditorCampaignId(null);
-    setEditorPreviewUrl(null);
+    setEditorRow(null);
     setEditorImageSequence([]);
   }
 
@@ -256,7 +245,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
     if (!hasActiveRender) return;
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void apiListContents()
+      void apiListPublishContents()
         .then(async (nextRows) => {
           setRows(nextRows);
           await refreshRenderStates(nextRows);
@@ -270,7 +259,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
   async function refresh() {
     setLoading(true);
     try {
-      const nextRows = await apiListContents();
+      const nextRows = await apiListPublishContents();
       setRows(nextRows);
       onChanged?.();
       await refreshRenderStates(nextRows);
@@ -389,20 +378,15 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
 
   async function schedule() {
     const target = scheduleFor ? rows.find((r) => r.id === scheduleFor) : null;
-    const marketingCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
-    const promptObj =
-      target && target.ai_prompt && typeof target.ai_prompt === "object"
-        ? (target.ai_prompt as { product_media_refs?: unknown })
-        : null;
-    const productRefsCount = Array.isArray(promptObj?.product_media_refs)
-      ? (promptObj!.product_media_refs as unknown[]).length
-      : 0;
-    const mediaCount = marketingCount + productRefsCount;
+    // Mesma regra do servidor e do publicador: o vídeo renderizado da campanha
+    // conta como mídia (antes só contavam media_ids e fotos de produto).
+    const mediaCount = target && publishableMediaSource(target) ? 1 : 0;
     const result = validateScheduleForm({
       scheduleFor,
       scheduleAt,
       channel: scheduleChannel,
       mediaCount,
+      missingMediaMessage: target ? missingMediaMessage(target, "Instagram") : undefined,
     });
 
     if (!result.ok) {
@@ -535,16 +519,24 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
               onRetryRender={() => void retryRender(c)}
               onOpenVideoEditor={() => void openVideoEditor(c)}
               onViewVideo={async () => {
-                const idx = await ensureMediaIndex();
-                const vid = c.feed_video_id || c.story_video_id;
-                const media = vid ? idx[vid] : null;
-                if (!media?.storage_path) {
+                // O vídeo renderizado fica em `video_library` (bucket video-library),
+                // não no acervo de mídias: o link vem do servidor, restrito à empresa.
+                const vid = renderedVideoIdFor(c) ?? c.story_video_id ?? c.feed_video_id ?? null;
+                if (!vid) {
                   toast.error("Vídeo ainda não disponível.");
                   return;
                 }
-                const url = await urlForMarketingPath(media.storage_path).catch(() => null);
-                if (url) window.open(url, "_blank", "noopener");
-                else toast.error("Não foi possível abrir o vídeo.");
+                try {
+                  const { url } = await apiGetRenderedVideoUrl(vid);
+                  window.open(url, "_blank", "noopener");
+                } catch (e) {
+                  const code = e instanceof Error ? e.message : "";
+                  toast.error(
+                    code === "video_not_found" || code === "video_inactive"
+                      ? "Este vídeo não está mais disponível na biblioteca."
+                      : "Não foi possível abrir o vídeo.",
+                  );
+                }
               }}
               tracked={c.campaign_id ? campaigns[c.campaign_id] ?? null : null}
               busy={busy}
@@ -620,8 +612,9 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
           if (!o) closeVideoEditor();
         }}
       >
-        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto p-4">
-          <DialogHeader>
+        <DialogContent className="w-[98vw] max-w-[1600px] h-[95dvh] max-h-[95dvh] overflow-hidden flex flex-col gap-0 p-2 [&_[data-studio-header]]:pr-10">
+          {/* O estúdio já tem cabeçalho próprio; o título fica só para leitores de tela. */}
+          <DialogHeader className="sr-only">
             <DialogTitle>Editor Visual do Vídeo IA</DialogTitle>
           </DialogHeader>
           {editorLoading ? (
@@ -632,10 +625,11 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
             <CampaignVideoEditor
               campaignId={editorCampaignId}
               contents={editorContents}
-              previewImageUrl={editorPreviewUrl}
+              previewImageUrl={editorImageSequence[0]?.previewUrl ?? null}
               focalPoint={editorFocalPoint}
               imageSequence={editorImageSequence}
               onImageSequenceChange={setEditorImageSequence}
+              onRetryImage={retryEditorImage}
               onContentsUpdated={(fresh) => {
                 setRows((cur) => {
                   const map = new Map(fresh.map((r) => [r.id, r]));
@@ -712,7 +706,10 @@ function ContentCard({
 
   const isVideo = isVideoContent(row);
   const videoReady = hasRenderedVideo(row);
-  const isRendering = isVideo && !videoReady && !!renderState && isActiveMarketingRenderStatus(renderState.status);
+  // Job ativo mas parado (fila sem worker / worker que caiu) não é "gerando":
+  // vira aviso com nova tentativa e libera a edição do vídeo.
+  const renderStalled = isVideo && !videoReady && !!renderState?.stall;
+  const isRendering = isVideo && !videoReady && !!renderState && isActiveMarketingRenderStatus(renderState.status) && !renderStalled;
   const renderFailed = isVideo && !videoReady && !!renderState && ["failed", "cancelled", "missing"].includes(renderState.status);
   const renderCompletedWithoutVideo = isVideo && !videoReady && renderState?.status === "completed";
   const trackerProgress = renderState?.progress ?? (tracked ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0) : null);
@@ -785,6 +782,14 @@ function ContentCard({
                 {renderState?.status === "queued" ? "Na fila para gerar vídeo…" : "Gerando vídeo…"}
                 {typeof trackerProgress === "number" && trackerProgress > 0 ? ` ${Math.round(trackerProgress)}%` : ""}
               </span>
+            </div>
+          )}
+
+          {renderStalled && renderState?.stall && (
+            <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span className="flex-1">{RENDER_STALL_MESSAGE[renderState.stall]}</span>
+              <Button size="sm" variant="outline" onClick={onRetryRender} disabled={busy}>Tentar novamente</Button>
             </div>
           )}
 

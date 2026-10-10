@@ -9,7 +9,7 @@
 // Puro: sem IO.
 // ============================================================================
 
-import type { SceneDefinition, SceneLayer, TextStyle } from "./scenes.js";
+import type { SceneDefinition, ScenePalette } from "./scenes.js";
 
 export interface ThemeSnapshot {
   id: string | null;
@@ -91,71 +91,33 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-function alphaOf(color: string): number | null {
-  const m = color.match(/rgba?\([^)]*?,\s*([0-9.]+)\s*\)/);
-  if (!m) return null;
-  const v = Number(m[1]);
-  return Number.isFinite(v) ? v : null;
-}
-
-function themeLayer(layer: SceneLayer, theme: ThemeSnapshot): SceneLayer {
-  switch (layer.kind) {
-    case "gradient":
-      return {
-        ...layer,
-        stops: layer.stops.map((s) => ({
-          ...s,
-          color: withAlpha(theme.overlayColor, alphaOf(s.color) ?? 1),
-        })),
-      };
-    case "solid":
-      // Faixas finas (<= 1.5% da altura) são réguas de destaque → accent.
-      return {
-        ...layer,
-        color: (layer.height ?? 30) <= 1.5 ? theme.accentColor : theme.backgroundColor,
-      };
-    case "angular":
-      return { ...layer, color: theme.accentColor };
-    case "frame":
-      return { ...layer, color: theme.accentColor };
-    default:
-      return layer;
-  }
-}
-
-function themeText(style: TextStyle, theme: ThemeSnapshot, isCta: boolean): TextStyle {
-  if (isCta) {
-    return {
-      ...style,
-      color: style.pill ? theme.ctaTextColor : theme.textColor,
-      pill: style.pill
-        ? { ...style.pill, background: theme.ctaColor, foreground: theme.ctaTextColor }
-        : null,
-      underline: style.underline
-        ? { ...style.underline, color: theme.accentColor }
-        : style.underline ?? null,
-    };
-  }
-  return { ...style, color: theme.textColor };
+/**
+ * Paleta da cena a partir do snapshot de tema. Quando o texto da cena fica
+ * sobre um painel sólido (e não sobre a sombra da foto), a legibilidade é
+ * conferida contra a cor do painel.
+ */
+export function paletteFromTheme(theme: ThemeSnapshot, scene: SceneDefinition): ScenePalette {
+  const surface = scene.textSurface === "background" ? theme.backgroundColor : theme.overlayColor;
+  const text = contrastRatio(theme.textColor, surface) < 3 ? readableTextOn(surface) : theme.textColor;
+  return {
+    accent: theme.accentColor,
+    background: theme.backgroundColor,
+    overlay: theme.overlayColor,
+    text,
+    cta: theme.ctaColor,
+    ctaText: theme.ctaTextColor,
+  };
 }
 
 /**
  * Aplica o snapshot de tema sobre uma cena, devolvendo uma NOVA cena.
- * Não muda geometria, tipografia, âncoras nem a lógica de logo — apenas cores.
+ * Não muda geometria, tipografia, âncoras nem a lógica de logo — apenas a
+ * paleta, que as camadas e os textos consultam pelos papéis de cor.
  */
 export function applyThemeToScene(
   scene: SceneDefinition,
   theme: ThemeSnapshot | null,
 ): SceneDefinition {
   if (!theme) return scene;
-  return {
-    ...scene,
-    layers: scene.layers.map((l) => themeLayer(l, theme)),
-    text: {
-      ...scene.text,
-      title: themeText(scene.text.title, theme, false),
-      subtitle: themeText(scene.text.subtitle, theme, false),
-      cta: themeText(scene.text.cta, theme, true),
-    },
-  };
+  return { ...scene, palette: paletteFromTheme(theme, scene) };
 }

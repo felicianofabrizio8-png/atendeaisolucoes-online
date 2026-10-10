@@ -1,7 +1,7 @@
 # Multi-stage: build TS, run com Node + FFmpeg
 # CACHE_BUST — muda a cada rebuild para invalidar TODA a cadeia de layers.
 # Passe no Railway (build args) ou deixe o valor abaixo forçar cache miss.
-ARG CACHE_BUST=render-manual-themes-build-005-20260730
+ARG CACHE_BUST=render-pro-templates-build-007-20261010
 
 FROM node:20-slim AS builder
 ARG CACHE_BUST
@@ -25,21 +25,26 @@ ENV NODE_ENV=production
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 COPY --from=builder /app/dist ./dist
-# Fase 5.B1 — Fontes OFL empacotadas (Inter + Playfair Display) para o Brand Composer.
-# Nunca baixadas em runtime; caminho estável usado por brand-composer.ts.
+# Fontes OFL empacotadas para o compositor de cenas. Nunca baixadas em
+# runtime; a lista vem do registro de cenas (src/scenes.ts → FONTS).
 COPY assets ./assets
 
 # ---------------------------------------------------------------------------
 # VERIFICAÇÃO DE IMAGEM (falha o build se algo estiver faltando).
-# Prova, no próprio log de build do Railway, que a imagem final contém:
-#   - dist/render.js com as assinaturas da Fase 5.B1
-#   - assets/fonts/Inter-Regular.ttf e PlayfairDisplay-Bold.ttf
+# Prova, no próprio log de build do Railway, que a imagem final:
+#   - contém o dist esperado e as assinaturas de código do motor de cenas;
+#   - carrega a assinatura de build declarada em src/build-info.ts (lida do
+#     próprio dist — não há mais string de versão duplicada aqui);
+#   - passa no selfcheck: binário do rasterizador, TODAS as fontes do registro
+#     e cada cena rasterizando em PNG.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     echo "=== IMAGE VERIFICATION (cache-bust=$CACHE_BUST) ==="; \
-    ls -la /app/dist/build-info.js /app/dist/render.js /app/dist/scenes.js /app/dist/scene-composer.js /app/dist/brand-composer.js; \
-    ls -la /app/assets/fonts/Inter-Regular.ttf /app/assets/fonts/PlayfairDisplay-Bold.ttf; \
-    for s in render_build_signature render-manual-themes-build-005 scene_engine_enabled brand_watermark_decision scene_logo_confirmed available_scene_ids brand_composition_gate composeBrandLayers buildSceneOverlaySvg scene_render_selected claim_snapshot_inspect getSceneById scene_applies_logo; do \
+    ls -la /app/dist/build-info.js /app/dist/render.js /app/dist/scenes.js /app/dist/scene-composer.js /app/dist/brand-composer.js /app/dist/font-metrics.js /app/dist/selfcheck.js; \
+    SIG=$(node -e "import('/app/dist/build-info.js').then((m) => process.stdout.write(m.BUILD_SIGNATURE))"); \
+    test -n "$SIG" || { echo "MISSING BUILD SIGNATURE"; exit 1; }; \
+    echo "build_signature=$SIG"; \
+    for s in "$SIG" render_build_signature scene_engine_enabled brand_watermark_decision scene_logo_confirmed available_scene_ids brand_composition_gate composeBrandLayers buildSceneOverlaySvg scene_render_selected claim_snapshot_inspect getSceneById scene_applies_logo; do \
       count=$(grep -rc "$s" /app/dist/ | awk -F: '{s+=$2} END {print s+0}'); \
       echo "signature[$s]=$count"; \
       test "$count" -ge 1 || { echo "MISSING SIGNATURE: $s"; exit 1; }; \
@@ -47,6 +52,8 @@ RUN set -eux; \
     ffmpeg_count=$(grep -c "buildBrandOverlayChain" /app/dist/ffmpeg.js || true); \
     echo "signature[buildBrandOverlayChain]=$ffmpeg_count"; \
     test "$ffmpeg_count" -ge 1 || { echo "MISSING SIGNATURE: buildBrandOverlayChain (ffmpeg.js)"; exit 1; }; \
+    node /app/dist/selfcheck.js; \
+    ffmpeg -hide_banner -h filter=xfade >/dev/null; \
     echo "=== IMAGE VERIFICATION OK ==="
 
 

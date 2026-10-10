@@ -1,20 +1,25 @@
 // ============================================================================
-// CampaignVideoEditor — Editor Criativo IA (Onda 1).
+// CampaignVideoEditor — estúdio do Vídeo IA.
 //
-// Redesign com preview PROTAGONISTA (ocupa a maior parte da tela) e
-// controles em sidebar à direita. Preparado para futuras evoluções:
-//  - Onda 2: seleção/movimentação direta no preview (canvas overlay).
-//  - Onda 3: templates com efeitos exclusivos (biblioteca de elementos).
+// Layout de estúdio que cabe na altura disponível (o pai define a altura; só
+// os painéis internos rolam):
+//   - esquerda: ferramentas (modelos, texto, cores, mídia, vídeo);
+//   - centro:   prévia 9:16, com seleção e arraste direto dos elementos;
+//   - direita:  propriedades do elemento selecionado;
+//   - base:     timeline compacta com as cenas e a reprodução.
 //
-// A logo é consumida automaticamente do Brand Center via `useBrandLogo`.
-// Se a empresa não tiver logo publicada, o preview mostra um placeholder
-// clicável para upload local (session-only, não persiste).
+// Tudo que se edita aqui vira `VideoLayout` + textos + sequência de imagens +
+// duração — exatamente o que `approveCampaignAndRender` persiste e o Render
+// Engine consome. A prévia é desenhada pelo mesmo compositor do worker.
+//
+// A identidade visual vem do Brand Center da empresa logada (logo e cores);
+// nada é fixo por cliente.
 // ============================================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Loader2, Layers, Type, ImageIcon, LayoutTemplate } from "lucide-react";
+import { CheckCircle2, Clapperboard, Images, LayoutTemplate, Loader2, Palette, RotateCcw, SlidersHorizontal, Type } from "lucide-react";
 import { toast } from "sonner";
 import {
   apiApproveCampaignAndRender,
@@ -23,18 +28,24 @@ import {
 } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 import type {
+  Anchor,
+  ColorMode,
+  ScenePalette,
   TemplateId,
+  TransitionId,
   VideoLayout,
 } from "@/lib/marketing/video-editor/layout.types";
 import { DEFAULT_TEMPLATE } from "@/lib/marketing/video-editor/layout.types";
-import { getScene } from "@/lib/marketing/video-editor/scenes/registry";
+import type { ColorRole, SceneDefinition } from "@/lib/marketing/video-editor/scene.types";
+import { DEFAULT_TRANSITION, getScene, normalizeFraming, normalizeLayout, type ImageFraming } from "@/lib/marketing/video-editor/scenes/registry";
+import { brandPalette, fitPaletteToScene, themePalette, usedColorRoles } from "@/lib/marketing/video-editor/palette";
 import { useBrandLogo } from "@/hooks/useBrandLogo";
-import { SceneRenderer } from "./SceneRenderer";
+import { MEDIA_ERROR_MESSAGE, type MediaLoadError } from "@/lib/marketing/campaign-media";
+import { useImageLoadStatus } from "./useImageLoadStatus";
+import { SceneRenderer, type SceneImageLayer, type ScenePart } from "./SceneRenderer";
 import { TabTexto } from "./tabs/TabTexto";
-import { TabLogo } from "./tabs/TabLogo";
-import { TabTextos } from "./tabs/TabTextos";
-import { TabTemplate } from "./tabs/TabTemplate";
-import { FocalPointEditor } from "../FocalPointEditor";
+import { ColorsPanel, MediaPanel, PropertiesPanel, TemplatePanel, VideoPanel, type LogoManager, type StudioScene } from "./StudioPanels";
+import { StudioTimeline } from "./StudioTimeline";
 
 export interface CampaignEditorImage {
   key: string;
@@ -44,6 +55,8 @@ export interface CampaignEditorImage {
   imagePath?: string;
   previewUrl: string | null;
   focalPoint: FocalPointInput | null;
+  /** Por que a prévia desta imagem não pôde ser obtida (null = sem erro). */
+  loadError?: MediaLoadError | null;
 }
 
 interface Props {
@@ -55,21 +68,55 @@ interface Props {
   focalPoint?: FocalPointInput | null;
   imageSequence?: CampaignEditorImage[];
   onImageSequenceChange?: (items: CampaignEditorImage[]) => void;
+  /** Pede um novo link para a imagem (quem abriu o editor sabe de onde ela vem). */
+  onRetryImage?: (key: string) => Promise<void> | void;
   onApproved: (jobId: string) => void;
   onContentsUpdated?: (contents: MarketingContentRow[]) => void;
 }
 
-function readSavedLayout(
-  row: MarketingContentRow | null | undefined,
-): { layout: VideoLayout; template: TemplateId } {
+/** Tela final de marca que o worker aplica nos últimos segundos do vídeo. */
+const OUTRO_SECONDS = 2;
+const DEFAULT_DURATION = 15;
+
+type Tool = "templates" | "text" | "colors" | "media" | "video" | "props";
+
+/**
+ * Layout salvo do conteúdo, já normalizado. `colorsResolved` indica que as
+ * cores já estão definidas (salvas ou por tema da campanha) — senão o editor
+ * aplica as cores da marca assim que o Brand Center responder.
+ */
+function readSavedLayout(row: MarketingContentRow | null | undefined): { layout: VideoLayout; colorsResolved: boolean } {
   const anyRow = row as unknown as {
-    video_layout?: VideoLayout | null;
-    video_template?: TemplateId | null;
+    video_layout?: unknown;
+    video_template?: string | null;
+    ai_prompt?: unknown;
   } | null;
-  const savedTemplate = (anyRow?.video_template as TemplateId) ?? DEFAULT_TEMPLATE;
-  const scene = getScene(savedTemplate);
-  const layout = (anyRow?.video_layout as VideoLayout) ?? scene.defaultLayout;
-  return { layout, template: savedTemplate };
+  const scene = getScene(anyRow?.video_template ?? DEFAULT_TEMPLATE);
+  const layout = normalizeLayout(anyRow?.video_layout ?? scene.defaultLayout, scene);
+  if (layout.colors) return { layout, colorsResolved: true };
+  const prompt = anyRow?.ai_prompt;
+  const themeId = prompt && typeof prompt === "object" ? (prompt as { theme?: unknown }).theme : null;
+  const fromTheme = themePalette(typeof themeId === "string" ? themeId : null, scene);
+  if (fromTheme) return { layout: { ...layout, colors: fromTheme, colorMode: "theme" }, colorsResolved: true };
+  return { layout: { ...layout, colors: scene.palette, colorMode: "template" }, colorsResolved: false };
+}
+
+/** Estilos da imagem que sai e da que entra, para um progresso 0..1. */
+function transitionStyles(type: TransitionId, p: number): { out: CSSProperties; into: CSSProperties } {
+  switch (type) {
+    case "fadeblack":
+      return { out: { opacity: Math.max(0, 1 - 2 * p) }, into: { opacity: Math.max(0, 2 * p - 1) } };
+    case "slideleft":
+      return { out: { transform: `translateX(${-p * 100}%)` }, into: { transform: `translateX(${(1 - p) * 100}%)` } };
+    case "slideup":
+      return { out: { transform: `translateY(${-p * 100}%)` }, into: { transform: `translateY(${(1 - p) * 100}%)` } };
+    case "wipeleft":
+      return { out: {}, into: { clipPath: `inset(0 0 0 ${(1 - p) * 100}%)` } };
+    case "circleopen":
+      return { out: {}, into: { clipPath: `circle(${p * 75}% at 50% 50%)` } };
+    default:
+      return { out: {}, into: { opacity: p } };
+  }
 }
 
 export function CampaignVideoEditor({
@@ -80,6 +127,7 @@ export function CampaignVideoEditor({
   focalPoint,
   imageSequence = [],
   onImageSequenceChange,
+  onRetryImage,
   onApproved,
   onContentsUpdated,
 }: Props) {
@@ -94,20 +142,25 @@ export function CampaignVideoEditor({
 
   const saved = useMemo(() => readSavedLayout(feedRow), [feedRow]);
   const [layout, setLayout] = useState<VideoLayout>(saved.layout);
+  const colorsResolved = useRef(saved.colorsResolved);
+  const scene = getScene(layout.template);
+
+  const savedDuration = Number(feedRow?.duration_seconds ?? DEFAULT_DURATION) || DEFAULT_DURATION;
+  const [duration, setDuration] = useState(savedDuration);
 
   const [regenerating, setRegenerating] = useState(false);
   const [approving, setApproving] = useState(false);
-  const [tab, setTab] = useState("template");
+  const [tool, setTool] = useState<Tool>("templates");
+  const [selected, setSelected] = useState<ScenePart>("title");
   const [showSafeArea, setShowSafeArea] = useState(false);
-  const [selectedImageKey, setSelectedImageKey] = useState<string | null>(imageSequence[0]?.key ?? null);
-  const [focalEditorOpen, setFocalEditorOpen] = useState(false);
-  const selectedImage = imageSequence.find((item) => item.key === selectedImageKey) ?? imageSequence[0] ?? null;
-  useEffect(() => { if (!selectedImageKey && imageSequence[0]) setSelectedImageKey(imageSequence[0].key); }, [imageSequence, selectedImageKey]);
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [time, setTime] = useState(0);
 
-  // Logo do Brand Center (com upload local como fallback).
+  // Logo e cores da marca da empresa logada (Brand Center).
   const brandLogo = useBrandLogo();
-  const effectiveLogoUrl =
-    logoUrlOverride !== undefined ? logoUrlOverride : brandLogo.logoUrl;
+  const effectiveLogoUrl = logoUrlOverride !== undefined ? logoUrlOverride : brandLogo.logoUrl;
+  const brandColors = brandLogo.brandColors;
 
   useEffect(() => {
     if (!feedRow) return;
@@ -116,6 +169,135 @@ export function CampaignVideoEditor({
     setCta(feedRow.overlay_cta ?? "");
   }, [feedRow]);
 
+  // Conteúdo sem cores definidas abre com a identidade da empresa.
+  useEffect(() => {
+    if (colorsResolved.current || !brandColors) return;
+    colorsResolved.current = true;
+    setLayout((cur) => {
+      const colors = brandPalette(brandColors, getScene(cur.template));
+      return colors ? { ...cur, colors, colorMode: "brand" } : cur;
+    });
+  }, [brandColors]);
+
+  // ------------------------------ Cenas (imagens) ---------------------------
+  const scenes: StudioScene[] = useMemo(
+    () =>
+      imageSequence.length > 0
+        ? imageSequence.map((item, index) => ({
+            key: item.key,
+            // A primeira cena é a imagem principal; `previewImageUrl` é o mesmo arquivo.
+            url: item.previewUrl ?? (index === 0 ? previewImageUrl : null),
+            focalPoint: item.focalPoint,
+            loadError: item.loadError ?? null,
+          }))
+        : [{ key: "single", url: previewImageUrl, focalPoint: focalPoint ?? null, loadError: null }],
+    [imageSequence, previewImageUrl, focalPoint],
+  );
+  const sequenceEditable = imageSequence.length > 0 && !!onImageSequenceChange;
+  const currentIndex = Math.min(sceneIndex, scenes.length - 1);
+  const perScene = duration / scenes.length;
+
+  // Situação da imagem em exibição: link ausente, carregando, erro ou pronta.
+  const [imageAttempt, setImageAttempt] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+  const stageScene = scenes[currentIndex];
+  const imageStatus = useImageLoadStatus(stageScene.url, imageAttempt);
+  const stageError: MediaLoadError | null = !stageScene.url
+    ? stageScene.loadError ?? "not_found"
+    : imageStatus === "timeout"
+      ? "timeout"
+      : imageStatus === "error"
+        ? "image_failed"
+        : null;
+  const stageLoading = retrying || (!!stageScene.url && imageStatus === "loading");
+
+  async function retryImage() {
+    setRetrying(true);
+    try {
+      // Novo link (o anterior pode ter expirado) e nova tentativa de abrir a imagem.
+      await onRetryImage?.(stageScene.key);
+    } finally {
+      setRetrying(false);
+      setImageAttempt((n) => n + 1);
+    }
+  }
+
+  function moveScene(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    // A posição 0 é a capa da campanha (o servidor recusa trocá-la).
+    if (index < 1 || target < 1 || target >= imageSequence.length) return;
+    const next = [...imageSequence];
+    [next[index], next[target]] = [next[target], next[index]];
+    onImageSequenceChange?.(next);
+    setSceneIndex(target);
+  }
+  function removeScene(index: number) {
+    if (index < 1) return;
+    onImageSequenceChange?.(imageSequence.filter((_, i) => i !== index));
+    setSceneIndex((cur) => Math.max(0, Math.min(cur, imageSequence.length - 2)));
+  }
+
+  // ------------------------------ Reprodução --------------------------------
+  useEffect(() => {
+    if (!playing) return;
+    const startedAt = performance.now() - time * 1000;
+    let frame = 0;
+    let last = 0;
+    const tick = (now: number) => {
+      const t = (now - startedAt) / 1000;
+      if (t >= duration) {
+        setPlaying(false);
+        setTime(0);
+        return;
+      }
+      // ~30 quadros por segundo bastam para a prévia.
+      if (now - last > 32) {
+        last = now;
+        setTime(t);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+    // `time` só define o ponto de partida ao iniciar a reprodução.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, duration]);
+
+  function selectScene(index: number) {
+    setPlaying(false);
+    setSceneIndex(index);
+    setTime(index * perScene);
+  }
+
+  const transition = layout.transition ?? DEFAULT_TRANSITION;
+  const imageLayers: SceneImageLayer[] = useMemo(() => {
+    // Mesma conta do worker: cada cena dura `perScene` e a transição ocupa o fim dela.
+    const xfade = scenes.length > 1 ? Math.min(0.6, perScene / 3) : 0;
+    const index = playing ? Math.min(scenes.length - 1, Math.floor(time / perScene)) : currentIndex;
+    const next = playing && index + 1 < scenes.length ? scenes[index + 1] : null;
+    const start = perScene * (index + 1) - xfade;
+    const progress = next && time >= start ? Math.min(1, (time - start) / xfade) : 0;
+    const styles = transitionStyles(transition, progress);
+    const layer = (sc: StudioScene, style: CSSProperties, key: string): SceneImageLayer => ({ key, url: sc.url, focalPoint: sc.focalPoint, style });
+    const out = [layer(scenes[index], progress > 0 ? styles.out : {}, `out-${scenes[index].key}`)];
+    if (next && progress > 0) out.push(layer(next, styles.into, `in-${next.key}`));
+    return out;
+  }, [scenes, perScene, playing, time, currentIndex, transition]);
+
+  // ------------------------------ Enquadramento -----------------------------
+  // Sem nada salvo, vale o padrão seguro do modelo: imagem inteira ("conter").
+  const framingDefaults = useMemo(() => ({ fit: "contain" as const, fill: scene.image.fill }), [scene.image.fill]);
+  const stageFraming: ImageFraming = normalizeFraming(scenes[currentIndex].focalPoint, framingDefaults);
+
+  function updateFraming(patch: Partial<ImageFraming> | null) {
+    const target = imageSequence[currentIndex];
+    if (!target || !onImageSequenceChange) return;
+    // null = voltar ao padrão do modelo (nada salvo).
+    const next = patch === null ? null : { ...normalizeFraming(target.focalPoint, framingDefaults), ...patch };
+    onImageSequenceChange(imageSequence.map((item) => (item.key === target.key ? { ...item, focalPoint: next } : item)));
+  }
+
+  // ------------------------------ Textos ------------------------------------
   const originalHeadline = feedRow?.overlay_original_headline ?? headline;
   const originalSub = feedRow?.overlay_original_subheadline ?? subheadline;
   const originalCta = feedRow?.overlay_original_cta ?? cta;
@@ -141,16 +323,75 @@ export function CampaignVideoEditor({
     toast.info("Sugestão original restaurada.");
   }
 
-  function handleTemplateChange(id: TemplateId) {
-    const scene = getScene(id);
-    setLayout({ ...scene.defaultLayout, template: id });
-    toast.info(`Template “${scene.label}” aplicado.`);
+  // ------------------------------ Modelo e cores ----------------------------
+  const paletteFor = useCallback(
+    (target: SceneDefinition): ScenePalette => {
+      if (layout.colorMode === "brand") return brandPalette(brandColors, target) ?? target.palette;
+      if (layout.colorMode === "template" || !layout.colors) return target.palette;
+      return fitPaletteToScene(layout.colors, target);
+    },
+    [layout.colorMode, layout.colors, brandColors],
+  );
+
+  const handleTemplateChange = useCallback(
+    (id: TemplateId) => {
+      const next = getScene(id);
+      colorsResolved.current = true;
+      setLayout((cur) => ({
+        ...next.defaultLayout,
+        template: id,
+        colors: paletteFor(next),
+        colorMode: cur.colorMode,
+        transition: cur.transition,
+      }));
+      toast.info(`Modelo “${next.label}” aplicado.`);
+    },
+    [paletteFor],
+  );
+
+  function setColors(colors: ScenePalette, colorMode: ColorMode) {
+    colorsResolved.current = true;
+    setLayout((cur) => ({ ...cur, colors, colorMode }));
+  }
+  const palette = fitPaletteToScene(layout.colors ?? scene.palette, scene);
+
+  function handleAnchor(anchor: Anchor) {
+    setLayout((cur) => {
+      // Texto e logo na mesma borda se sobrepõem: a logo vai para a borda oposta.
+      const collides = anchor !== "center" && cur.logo.vAnchor === anchor;
+      return {
+        ...cur,
+        title: { ...cur.title, vAnchor: anchor },
+        subtitle: { ...cur.subtitle, vAnchor: anchor },
+        cta: { ...cur.cta, vAnchor: anchor },
+        offsetY: 0,
+        logo: collides ? { ...cur.logo, vAnchor: anchor === "top" ? "bottom" : "top" } : cur.logo,
+      };
+    });
   }
 
+  // Deslocamento do texto no início do arraste; o gesto informa o delta total.
+  const dragBase = useRef<{ x: number; y: number } | null>(null);
+  const latestLayout = useRef(layout);
+  latestLayout.current = layout;
+  const handleDragText = useCallback((dx: number, dy: number, phase: "move" | "end") => {
+    const base = (dragBase.current ??= { x: latestLayout.current.offsetX ?? 0, y: latestLayout.current.offsetY ?? 0 });
+    if (phase === "end") dragBase.current = null;
+    const clamp = (v: number) => Math.round(Math.max(-50, Math.min(50, v)) * 2) / 2;
+    setLayout((cur) => ({ ...cur, offsetX: clamp(base.x + dx), offsetY: clamp(base.y + dy) }));
+  }, []);
+
+  const handleSelect = useCallback((part: ScenePart) => {
+    setSelected(part);
+    // No celular as propriedades ficam em uma aba; no desktop, na coluna direita.
+    if (typeof window !== "undefined" && !window.matchMedia?.("(min-width: 1024px)").matches) setTool("props");
+  }, []);
+
+  // ------------------------------ Gerar vídeo -------------------------------
   async function handleApprove() {
     if (!headline.trim()) {
       toast.error("O título é obrigatório.");
-      setTab("texto");
+      setTool("text");
       return;
     }
     setApproving(true);
@@ -160,126 +401,118 @@ export function CampaignVideoEditor({
         headline: headline.trim(),
         subheadline: subheadline.trim() ? subheadline.trim() : null,
         cta: cta.trim() ? cta.trim() : null,
-        layout: layout as unknown as Record<string, unknown>,
+        layout: { ...layout, colors: palette } as unknown as Record<string, unknown>,
         template: layout.template,
-        images: imageSequence.length > 0 ? imageSequence.map((item) => item.origin === "marketing" ? { origin: "marketing" as const, media_id: item.mediaId!, focal_point: item.focalPoint } : { origin: "product" as const, product_id: item.productId!, image_path: item.imagePath!, focal_point: item.focalPoint }) : undefined,
+        images: imageSequence.length > 0 ? imageSequence.map((item) => item.origin === "marketing" ? { origin: "marketing" as const, media_id: item.mediaId!, focal_point: normalizeFraming(item.focalPoint, framingDefaults) } : { origin: "product" as const, product_id: item.productId!, image_path: item.imagePath!, focal_point: normalizeFraming(item.focalPoint, framingDefaults) }) : undefined,
+        // Só envia a duração quando o usuário mudou — evita revalidar o áudio à toa.
+        ...(duration !== savedDuration ? { duration_seconds: duration } : {}),
       });
       toast.success("Aprovado! Iniciando renderização…");
       onApproved(res.job_id);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Falha ao aprovar.";
-      toast.error(message.startsWith("campaign_image_sequence_invalid") || message === "campaign_image_sequence_persist_failed" ? "Não foi possível salvar o enquadramento das imagens. Revise a campanha e tente novamente." : message);
+      toast.error(
+        message.startsWith("campaign_image_sequence_invalid") || message === "campaign_image_sequence_persist_failed"
+          ? "Não foi possível salvar o enquadramento das imagens. Revise a campanha e tente novamente."
+          : message === "audio_slice_exceeds_duration"
+            ? "A música escolhida é mais curta que essa duração. Escolha uma duração menor."
+            : message,
+      );
+      if (message === "audio_slice_exceeds_duration") setTool("video");
     } finally {
       setApproving(false);
     }
   }
 
-  const sceneLabel = getScene(layout.template).label;
+  // A logo é a do cadastro de marca da empresa: trocar/remover aqui altera o
+  // cadastro (o servidor exige administrador), e é dele que o vídeo a lê.
+  const logoManager: LogoManager = {
+    url: effectiveLogoUrl,
+    canManage: brandLogo.canManage,
+    saving: brandLogo.saving,
+    error: brandLogo.error,
+    published: brandLogo.brandPublished,
+    onUpload: (file) => {
+      void brandLogo.saveLogo(file).then((ok) => ok && toast.success("Logo da empresa atualizada."));
+    },
+    onRemove: () => {
+      void brandLogo.removeLogo().then((ok) => ok && toast.success("Logo removida do cadastro da empresa."));
+    },
+  };
+
+  const properties = (
+    <PropertiesPanel
+      scene={scene}
+      layout={layout}
+      selected={selected}
+      onSelect={setSelected}
+      onChange={setLayout}
+      onAnchor={handleAnchor}
+      logo={logoManager}
+    />
+  );
+
+  const tools: Array<{ id: Tool; label: string; icon: typeof Type; mobileOnly?: boolean }> = [
+    { id: "templates", label: "Modelos", icon: LayoutTemplate },
+    { id: "text", label: "Texto", icon: Type },
+    { id: "colors", label: "Cores", icon: Palette },
+    { id: "media", label: "Mídia", icon: Images },
+    { id: "video", label: "Vídeo", icon: Clapperboard },
+    { id: "props", label: "Ajustes", icon: SlidersHorizontal, mobileOnly: true },
+  ];
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden shadow-sm">
-      {/* Header */}
-      <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm" data-testid="video-studio">
+      {/* Cabeçalho */}
+      <div data-studio-header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b px-3 py-1.5">
         <div className="min-w-0">
-          <div className="text-sm font-semibold">Editor Criativo IA</div>
-          <div className="text-xs text-muted-foreground truncate">
-            Template atual: <b>{sceneLabel}</b> · edições refletem no preview em tempo real.
+          <div className="text-sm font-semibold">Estúdio de vídeo</div>
+          <div className="truncate text-xs text-muted-foreground">
+            Modelo <b>{scene.label}</b> · o vídeo só é criado ao clicar em Gerar vídeo.
           </div>
         </div>
-        <label className="text-xs flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={showSafeArea}
-            onChange={(e) => setShowSafeArea(e.target.checked)}
-            className="accent-primary"
-          />
-          Safe area
-        </label>
+        <div className="flex items-center gap-3">
+          <label className="flex cursor-pointer select-none items-center gap-2 text-xs">
+            <input type="checkbox" checked={showSafeArea} onChange={(e) => setShowSafeArea(e.target.checked)} className="accent-primary" />
+            Área segura
+          </label>
+          <Button onClick={handleApprove} disabled={approving || regenerating || !headline.trim()}>
+            {approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+            Gerar vídeo
+          </Button>
+        </div>
       </div>
 
-      {imageSequence.length > 0 && (
-        <div className="border-b px-4 py-3">
-          <div className="mb-2 text-xs font-medium">Imagens da campanha</div>
-          <div className="flex flex-wrap gap-2">
-            {imageSequence.map((item, index) => (
-              <button key={item.key} type="button" className={`flex items-center gap-2 rounded-md border px-2 py-1 text-xs ${selectedImage?.key === item.key ? "border-primary bg-primary/10" : ""}`} onClick={() => { setSelectedImageKey(item.key); setFocalEditorOpen(true); }} disabled={!item.previewUrl}>
-                {item.previewUrl ? <img src={item.previewUrl} alt="" className="h-8 w-8 rounded object-cover" loading="lazy" /> : <ImageIcon className="h-4 w-4" />} Imagem {index + 1}
-              </button>
+      {/* Corpo: ferramentas · prévia · propriedades */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,44%)_minmax(0,1fr)] lg:grid-cols-[minmax(320px,1.15fr)_minmax(250px,0.9fr)_minmax(290px,1fr)] lg:grid-rows-1">
+        <Tabs
+          value={tool}
+          onValueChange={(v) => setTool(v as Tool)}
+          className="order-2 flex min-h-0 min-w-0 flex-col border-t lg:order-1 lg:border-r lg:border-t-0"
+        >
+          <TabsList className="h-auto w-full shrink-0 justify-start gap-0.5 overflow-x-auto rounded-none border-b bg-transparent p-1">
+            {tools.map(({ id, label, icon: Icon, mobileOnly }) => (
+              <TabsTrigger key={id} value={id} className={`flex-1 flex-col gap-0.5 px-1.5 py-1.5 text-[11px] ${mobileOnly ? "lg:hidden" : ""}`}>
+                <Icon className="h-4 w-4" aria-hidden />
+                {label}
+              </TabsTrigger>
             ))}
-          </div>
-          {selectedImage && <Button type="button" size="sm" variant="outline" className="mt-2" disabled={!selectedImage.previewUrl} onClick={() => setFocalEditorOpen(true)}>Ajustar enquadramento</Button>}
-        </div>
-      )}
-      {selectedImage && <FocalPointEditor open={focalEditorOpen} imageUrl={selectedImage.previewUrl} initialFocal={selectedImage.focalPoint} onCancel={() => setFocalEditorOpen(false)} onSave={(focal) => { onImageSequenceChange?.(imageSequence.map((item) => item.key === selectedImage.key ? { ...item, focalPoint: focal } : item)); setFocalEditorOpen(false); }} />}
-
-      {/* Corpo: preview protagonista + sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
-        {/* PREVIEW — ocupa a maior parte da tela */}
-        <div className="bg-gradient-to-br from-muted/30 to-muted/60 p-4 sm:p-6 min-h-[560px] flex items-center justify-center">
-          <div
-            className="w-full mx-auto"
-            style={{ maxWidth: "min(100%, 520px)" }}
-          >
-            <SceneRenderer
-              imageUrl={previewImageUrl}
-              logoUrl={effectiveLogoUrl}
-              onRequestLogoUpload={brandLogo.uploadLocal}
-              focalPoint={focalPoint ?? null}
-              headline={headline}
-              subheadline={subheadline || null}
-              cta={cta || null}
-              layout={layout}
-              showSafeArea={showSafeArea}
-              fill={false}
-            />
-            <div className="mt-3 text-center text-[11px] text-muted-foreground">
-              Prévia 9:16 · {brandLogo.isPlaceholder && !logoUrlOverride
-                ? "sem logo no Brand Center (clique no placeholder para adicionar)"
-                : brandLogo.isLocalOverride
-                ? "logo local · não persiste"
-                : "logo do Brand Center"}
-              {brandLogo.isLocalOverride && (
-                <>
-                  {" · "}
-                  <button
-                    type="button"
-                    className="underline hover:text-foreground"
-                    onClick={brandLogo.clearLocalOverride}
-                  >
-                    remover
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* SIDEBAR — controles */}
-        <div className="border-t lg:border-t-0 lg:border-l p-4 min-w-0">
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="grid grid-cols-4 w-full">
-              <TabsTrigger value="template" className="gap-1">
-                <LayoutTemplate className="h-3.5 w-3.5" /> Cena
-              </TabsTrigger>
-              <TabsTrigger value="texto" className="gap-1">
-                <Type className="h-3.5 w-3.5" /> Texto
-              </TabsTrigger>
-              <TabsTrigger value="logo" className="gap-1">
-                <ImageIcon className="h-3.5 w-3.5" /> Logo
-              </TabsTrigger>
-              <TabsTrigger value="textos" className="gap-1">
-                <Layers className="h-3.5 w-3.5" /> Layout
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="template" className="pt-4">
-              <TabTemplate
+          </TabsList>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2.5">
+            <TabsContent value="templates" className="mt-0 min-h-0 flex-1">
+              <TemplatePanel
                 value={layout.template}
                 onChange={handleTemplateChange}
-                sampleImageUrl={previewImageUrl}
-                sampleLogoUrl={effectiveLogoUrl}
+                paletteFor={paletteFor}
+                imageUrl={scenes[0].url}
+                focalPoint={scenes[0].focalPoint}
+                logoUrl={effectiveLogoUrl}
+                headline={headline}
+                subheadline={subheadline || null}
+                cta={cta || null}
               />
             </TabsContent>
-            <TabsContent value="texto" className="pt-4">
+            <TabsContent value="text" className="mt-0">
               <TabTexto
                 headline={headline}
                 subheadline={subheadline}
@@ -293,38 +526,117 @@ export function CampaignVideoEditor({
                 disabled={approving}
               />
             </TabsContent>
-            <TabsContent value="logo" className="pt-4">
-              <TabLogo
-                value={layout.logo}
-                onChange={(logo) => setLayout({ ...layout, logo })}
+            <TabsContent value="colors" className="mt-0">
+              <ColorsPanel
+                mode={layout.colorMode ?? "template"}
+                palette={palette}
+                roles={usedColorRoles(scene)}
+                hasBrand={!!brandPalette(brandColors, scene)}
+                onMode={(mode) => setColors(mode === "brand" ? brandPalette(brandColors, scene) ?? scene.palette : scene.palette, mode)}
+                onTheme={(id) => {
+                  const next = themePalette(id, scene);
+                  if (next) setColors(next, "theme");
+                }}
+                onColor={(role: ColorRole, value) => setColors({ ...palette, [role]: value }, "custom")}
               />
             </TabsContent>
-            <TabsContent value="textos" className="pt-4">
-              <TabTextos layout={layout} onChange={setLayout} />
+            <TabsContent value="media" className="mt-0">
+              <MediaPanel
+                scenes={scenes}
+                selectedIndex={currentIndex}
+                editable={sequenceEditable}
+                secondsPerScene={perScene}
+                onSelect={selectScene}
+                onMove={moveScene}
+                onRemove={removeScene}
+                framing={stageFraming}
+                onFraming={updateFraming}
+              />
             </TabsContent>
-          </Tabs>
+            <TabsContent value="video" className="mt-0">
+              <VideoPanel
+                duration={duration}
+                onDuration={(d) => {
+                  setPlaying(false);
+                  setTime(0);
+                  setDuration(d);
+                }}
+                transition={transition}
+                onTransition={(t) => setLayout((cur) => ({ ...cur, transition: t }))}
+                sceneCount={scenes.length}
+              />
+            </TabsContent>
+            <TabsContent value="props" className="mt-0 lg:hidden">
+              {properties}
+            </TabsContent>
+          </div>
+        </Tabs>
+
+        {/* Prévia 9:16 — ocupa a altura disponível, sem rolagem */}
+        <div className="order-1 min-h-0 min-w-0 bg-gradient-to-br from-muted/30 to-muted/60 p-2 lg:order-2">
+          <div className="grid h-full w-full place-items-center" style={{ containerType: "size" }}>
+            <div className="relative" style={{ width: "min(100cqw, calc(100cqh * 9 / 16))" }}>
+              <SceneRenderer
+                imageUrl={scenes[currentIndex].url}
+                focalPoint={scenes[currentIndex].focalPoint}
+                imageLayers={imageLayers}
+                logoUrl={effectiveLogoUrl}
+                onRequestLogoUpload={brandLogo.canManage ? logoManager.onUpload : undefined}
+                headline={headline}
+                subheadline={subheadline || null}
+                cta={cta || null}
+                layout={layout}
+                showSafeArea={showSafeArea}
+                fill
+                selected={selected}
+                onSelect={handleSelect}
+                onDragText={handleDragText}
+              />
+              {!playing && (stageLoading || stageError) && (
+                <div
+                  className="pointer-events-none absolute inset-x-0 top-[38%] z-[28] flex justify-center px-3"
+                  role={stageError && !stageLoading ? "alert" : "status"}
+                >
+                  <div className="pointer-events-auto max-w-[92%] rounded-lg bg-black/75 px-3 py-2 text-center text-xs text-white shadow-lg">
+                    {stageLoading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando imagem…
+                      </span>
+                    ) : (
+                      <>
+                        <p>{MEDIA_ERROR_MESSAGE[stageError!]}</p>
+                        {stageError !== "not_found" && (
+                          <Button size="sm" variant="secondary" className="mt-2 h-7" onClick={() => void retryImage()}>
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Tentar novamente
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Propriedades do elemento selecionado (desktop) */}
+        <aside className="order-3 hidden min-h-0 min-w-0 flex-col border-l lg:flex" aria-label="Propriedades">
+          <div className="shrink-0 border-b px-3 py-2 text-sm font-semibold">Propriedades</div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">{properties}</div>
+        </aside>
       </div>
 
-      {/* Footer — botão único que dispara o render */}
-      <div className="border-t bg-muted/30 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-xs text-muted-foreground">
-          Nenhum vídeo é criado até você clicar em <b>Gerar vídeo</b>.
-        </div>
-        <Button
-          size="lg"
-          onClick={handleApprove}
-          disabled={approving || regenerating || !headline.trim()}
-          className="min-w-[180px]"
-        >
-          {approving ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : (
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-          )}
-          Gerar vídeo
-        </Button>
-      </div>
+      <StudioTimeline
+        scenes={scenes}
+        duration={duration}
+        time={time}
+        playing={playing}
+        selectedIndex={playing ? Math.min(scenes.length - 1, Math.floor(time / perScene)) : currentIndex}
+        transition={transition}
+        outroSeconds={brandColors || effectiveLogoUrl ? OUTRO_SECONDS : 0}
+        onTogglePlay={() => setPlaying((cur) => !cur)}
+        onSelectScene={selectScene}
+      />
     </div>
   );
 }

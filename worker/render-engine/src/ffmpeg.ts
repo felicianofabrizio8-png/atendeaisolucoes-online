@@ -1,3 +1,4 @@
+import { DEFAULT_TRANSITION, isTransitionId, type TransitionId } from "./scenes.js";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -10,6 +11,10 @@ export interface FocalPoint {
   x: number; // 0..1
   y: number; // 0..1
   zoom: number; // 1..3
+  /** "contain" = imagem inteira na área do modelo; ausente = "cover" (histórico). */
+  fit?: "contain" | "cover";
+  /** Preenchimento do que a imagem não cobre. */
+  fill?: "blur" | "color";
 }
 
 export type WatermarkPosition =
@@ -318,9 +323,19 @@ export interface SlideshowInput {
   timeoutMs: number;
   /** Fase 5.A — quando ausente, renderiza sem watermark. */
   watermark?: WatermarkInput | null;
+  /** Transição escolhida no editor. Valor fora da lista → "fade". */
+  transition?: string | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   debugLogDir?: string;
+}
+
+/**
+ * Nome do filtro `xfade` para a transição pedida. Só valores do registro de
+ * cenas entram no filter graph — nada vindo do payload é concatenado cru.
+ */
+export function resolveXfadeTransition(value: unknown): TransitionId {
+  return isTransitionId(value) ? value : DEFAULT_TRANSITION;
 }
 
 export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<void> {
@@ -360,6 +375,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
 
   const perSlot = durationSeconds / n;
   const xfadeDuration = Math.min(0.6, perSlot / 3); // ~0.5s ou menos
+  const transition = resolveXfadeTransition(input.transition);
 
   // Cada input roda com -loop 1 -t perSlot (para não terminar antes da hora).
   // Otimização de memória (hotfix SIGKILL): input framerate=2 reduz frames
@@ -402,7 +418,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
     const offset = perSlot * i - xfadeDuration;
     const nextLabel = i === n - 1 ? finalXfadeLabel : `vx${i}`;
     filterParts.push(
-      `[${lastLabel}][v${i}]xfade=transition=fade:duration=${xfadeDuration.toFixed(3)}:` +
+      `[${lastLabel}][v${i}]xfade=transition=${transition}:duration=${xfadeDuration.toFixed(3)}:` +
         `offset=${offset.toFixed(3)}[${nextLabel}]`,
     );
     lastLabel = nextLabel;

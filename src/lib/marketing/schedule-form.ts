@@ -68,6 +68,8 @@ export interface ScheduleValidationInput {
   scheduleAt: string;
   channel: ScheduleChannel;
   mediaCount: number;
+  /** Texto do erro quando falta mídia (ex.: vídeo de campanha ainda não gerado). */
+  missingMediaMessage?: string;
 }
 
 export interface ScheduleValidationOk {
@@ -100,7 +102,7 @@ export function validateScheduleForm(
   if (input.channel === "instagram" && input.mediaCount === 0) {
     errors.push({
       field: "media",
-      message: "Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.",
+      message: input.missingMediaMessage ?? "Selecione ao menos uma imagem ou vídeo antes de agendar para o Instagram.",
     });
   }
   if (errors.length > 0 || !parsed.ok || !input.scheduleFor) {

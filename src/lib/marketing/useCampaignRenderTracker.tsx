@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 import { apiGetCampaignRenderStatus } from "@/data/marketingRepo";
 import { friendlyRenderError } from "@/lib/marketing/render-error-messages";
+import type { RenderStall } from "@/lib/marketing/render-status";
 
 const STORAGE_KEY = "atendeai.campaign-tracker.v1";
 const POLL_INTERVAL_ACTIVE = 6000; // 6s quando aba visível
@@ -41,6 +42,8 @@ type RoleStatus = {
   errorCode: string | null;
   videoId: string | null;
   jobId: string | null;
+  /** Job ativo que parou de andar (fila sem worker ou worker que caiu). */
+  stall?: RenderStall | null;
 };
 
 export interface TrackedCampaign {
@@ -131,6 +134,7 @@ export function CampaignRenderTrackerProvider({ children }: { children: ReactNod
         errorCode: s.feed.job?.error_code ?? null,
         videoId: s.feed.video_id,
         jobId: s.feed.job_id,
+        stall: s.feed.video_id ? null : (s.feed.job?.stall ?? null),
       };
       const story: RoleStatus = {
         status: s.story.video_id ? "completed" : (s.story.job?.status ?? "pending"),
@@ -138,6 +142,7 @@ export function CampaignRenderTrackerProvider({ children }: { children: ReactNod
         errorCode: s.story.job?.error_code ?? null,
         videoId: s.story.video_id,
         jobId: s.story.job_id,
+        stall: s.story.video_id ? null : (s.story.job?.stall ?? null),
       };
       const feedTerm = isTerminalStatus(feed.status, feed.videoId);
       const storyTerm = isTerminalStatus(story.status, story.videoId);

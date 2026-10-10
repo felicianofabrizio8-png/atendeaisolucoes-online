@@ -42,6 +42,10 @@ export interface FocalPoint {
   x: number;
   y: number;
   zoom: number;
+  /** "contain" = imagem inteira na área do modelo; ausente = "cover" (histórico). */
+  fit?: "contain" | "cover";
+  /** Preenchimento do que a imagem não cobre: desfoque da foto ou cor do modelo. */
+  fill?: "blur" | "color";
 }
 
 export const DEFAULT_FOCAL_POINT: FocalPoint = { x: 0.5, y: 0.5, zoom: 1 };
@@ -61,7 +65,9 @@ export function isValidFocalPoint(v: unknown): v is FocalPoint {
     ny >= 0 &&
     ny <= 1 &&
     nz >= 1 &&
-    nz <= 3
+    nz <= 3 &&
+    (o.fit === undefined || o.fit === "contain" || o.fit === "cover") &&
+    (o.fill === undefined || o.fill === "blur" || o.fill === "color")
   );
 }
 

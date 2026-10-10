@@ -745,11 +745,9 @@ function subscribeRealtime(companyId: string) {
       if (status === "SUBSCRIBED") {
         const reconnect = hasSubscribedOnce;
         hasSubscribedOnce = true;
-        if (loadingPromise) {
-          void loadingPromise
-            .catch(() => undefined)
-            .then(() => scheduleReconciliation(companyId, generation));
-        } else {
+        // The initial subscription is covered by loadRemote while loading.
+        // A late initial SUBSCRIBED and every reconnect still reconcile.
+        if (reconnect || remoteLoaded) {
           void scheduleReconciliation(companyId, generation);
         }
         if (reconnect) console.info("[inbox-reconcile] realtime reconectado");

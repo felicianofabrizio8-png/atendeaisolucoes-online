@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { apiListContents, apiListSchedule } from "@/data/marketingRepo";
+import { apiListPublishContents, apiListPublishSchedule } from "@/data/marketingRepo";
 import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
 import { MediaThumb } from "./ui/MarketingUi";
@@ -22,7 +22,7 @@ export function MarketingDashboard({ companyId, onCreate, onOpenPublish }: Props
 
   useEffect(() => {
     let active = true;
-    void Promise.all([apiListContents().catch(() => []), apiListSchedule().catch(() => [])]).then(([c, s]) => {
+    void Promise.all([apiListPublishContents().catch(() => []), apiListPublishSchedule().catch(() => [])]).then(([c, s]) => {
       if (!active) return;
       setContents(c);
       setSchedule(s);

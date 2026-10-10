@@ -26,13 +26,18 @@ export const listMarketingPublications = createServerFn({ method: "GET" })
     const { supabase } = context as { supabase: any };
     const scope = data?.scope ?? "operational";
     const limit = data?.limit ?? (scope === "history" ? 100 : 50);
-    let q = supabase.from("marketing_publications").select("*");
+    // Conteúdos ocultados (hidden_from_publish) saem do acompanhamento e do histórico; o registro permanece.
+    let q = supabase
+      .from("marketing_publications")
+      .select("*, marketing_contents!inner(hidden_from_publish)")
+      .eq("marketing_contents.hidden_from_publish", false);
     if (scope === "operational") q = q.in("status", OPERATIONAL as unknown as string[]);
     if (scope === "history") q = q.eq("status", "published");
     q = q.order("created_at", { ascending: false }).limit(limit);
     const r = await q;
     if (r.error) throw new Error(r.error.message);
-    return { publications: r.data ?? [] };
+    const rows = (r.data ?? []) as any[];
+    return { publications: rows.map(({ marketing_contents: _content, ...row }) => row) };
   });
 
 export const getPublisherStats = createServerFn({ method: "GET" })

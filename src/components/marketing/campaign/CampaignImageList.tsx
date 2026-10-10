@@ -3,7 +3,8 @@
 // abrir o editor de focal point.
 
 import { useCallback, useState } from "react";
-import { GripVertical, Star, StarOff, X, Crop, Loader2 } from "lucide-react";
+import { GripVertical, Star, StarOff, X, Crop, Loader2, RotateCcw } from "lucide-react";
+import { MEDIA_ERROR_MESSAGE, type MediaLoadError } from "@/lib/marketing/campaign-media";
 import { Button } from "@/components/ui/button";
 import type { FocalPointInput } from "@/data/marketingRepo";
 import type { FrameSize } from "@/lib/render-engine/focal-geometry";
@@ -21,6 +22,8 @@ export interface CampaignImageItem {
   storagePath?: string;
   previewUrl: string | null;
   loadingPreview?: boolean;
+  /** Por que a prévia não carregou (null = sem erro). */
+  previewError?: MediaLoadError | null;
   focal_point?: FocalPointInput | null;
 }
 
@@ -30,6 +33,8 @@ interface Props {
   onRemove: (key: string) => void;
   onMakePrimary: (key: string) => void;
   onEditFocal: (key: string) => void;
+  /** Tenta carregar de novo a prévia de um item que falhou. */
+  onRetryPreview?: (key: string) => void;
 }
 
 export function CampaignImageList({
@@ -38,6 +43,7 @@ export function CampaignImageList({
   onRemove,
   onMakePrimary,
   onEditFocal,
+  onRetryPreview,
 }: Props) {
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -110,8 +116,13 @@ export function CampaignImageList({
                 focalPoint={it.focal_point}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-                Sem prévia
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-2 pt-8 text-center text-[11px] text-muted-foreground" role="alert">
+                <span>{MEDIA_ERROR_MESSAGE[it.previewError ?? "url_failed"]}</span>
+                {onRetryPreview && it.previewError !== "not_found" && (
+                  <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => onRetryPreview(it.key)} aria-label={`Tentar carregar a imagem ${idx + 1} novamente`}>
+                    <RotateCcw className="h-3 w-3" /> Tentar novamente
+                  </Button>
+                )}
               </div>
             )}
 
