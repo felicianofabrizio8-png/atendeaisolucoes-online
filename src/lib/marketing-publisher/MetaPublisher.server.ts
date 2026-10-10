@@ -8,6 +8,9 @@ import { isFailure, isSimulation } from "@/lib/outbound/MetaOutboundContract";
 import type { PublicationChannel, PublicationFormat } from "./types";
 import { publishFacebookCarousel, publishInstagramCarousel, type CarouselOutcome, type CarouselPending, type CarouselPost } from "./CarouselPublisher.server";
 import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "./carousel-flag";
+import { carouselContentProblem, carouselImagesProblem, type CarouselChannel } from "./carousel-readiness";
+
+type CarouselImages = { ok: true; urls: string[] } | { ok: false; code: string; message: string; retryable: boolean };
 
 const GRAPH = "https://graph.facebook.com/v25.0";
 
@@ -814,34 +817,50 @@ export class MetaPublisher {
    * das páginas). Qualquer imagem ausente, inativa, de outra empresa ou que
    * não seja imagem invalida o conjunto: carrossel não é publicado pela metade.
    */
-  private async resolveCarouselImages(content: ContentPayload): Promise<string[] | null> {
+  private async resolveCarouselImages(content: ContentPayload, channel: CarouselChannel): Promise<CarouselImages> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any; storage: { from: (b: string) => any } };
-    if (content.media_ids.length === 0) return null;
+    const missing: CarouselImages = { ok: false, code: "no_media", message: "O carrossel não tem todas as imagens disponíveis no acervo da empresa.", retryable: false };
+    // O documento do estúdio diz quantas páginas existem: imagens exportadas
+    // antes de uma edição não podem ser publicadas no lugar das atuais.
+    const d = await admin.from("marketing_contents").select("design").eq("id", content.contentId).eq("company_id", content.companyId).maybeSingle();
+    const contentProblem = carouselContentProblem({ media_ids: content.media_ids, design: d.data?.design ?? null }, channel);
+    if (contentProblem) return { ok: false, ...contentProblem, retryable: false };
     const r = await admin
       .from("marketing_media")
-      .select("id, storage_path, media_type")
+      .select("id, storage_path, media_type, mime_type, width, height")
       .in("id", content.media_ids)
       .eq("company_id", content.companyId)
       .eq("active", true)
       .is("deleted_at", null);
-    const rows = (r.data ?? []) as Array<{ id: string; storage_path: string; media_type: string }>;
+    type Row = { id: string; storage_path: string; media_type: string; mime_type: string | null; width: number | null; height: number | null };
+    const rows = (r.data ?? []) as Row[];
     const byId = new Map(rows.map((row) => [row.id, row]));
-    const urls: string[] = [];
+    const ordered: Row[] = [];
     for (const id of content.media_ids) {
       const row = byId.get(id);
       // Guard multi-tenant: o arquivo precisa estar na pasta da empresa.
-      if (!row || row.media_type !== "image" || !row.storage_path.startsWith(`${content.companyId}/`)) return null;
+      if (!row || row.media_type !== "image" || !row.storage_path.startsWith(`${content.companyId}/`)) return missing;
+      ordered.push(row);
+    }
+    const imagesProblem = carouselImagesProblem(ordered, channel);
+    if (imagesProblem) return { ok: false, ...imagesProblem, retryable: false };
+    const urls: string[] = [];
+    for (const [i, row] of ordered.entries()) {
       const signed = await admin.storage.from("marketing-media").createSignedUrl(row.storage_path, 60 * 60);
       const url = signed?.data?.signedUrl as string | undefined;
-      if (!url) return null;
+      // A Meta baixa o arquivo do lado dela: link que não abre aqui não abre lá.
+      if (!url || !(await this.isUrlAccessible(url, "image/"))) {
+        return { ok: false, code: "carousel_image_unavailable", message: `A imagem da página ${i + 1} do carrossel não pôde ser acessada no armazenamento.`, retryable: true };
+      }
       urls.push(url);
     }
-    return urls;
+    return { ok: true, urls };
   }
 
   private async publishCarousel(input: PublishInput, content: ContentPayload, caption: string): Promise<PublishOutcome> {
-    const imageUrls = await this.resolveCarouselImages(content);
-    if (!imageUrls) return this.fail("no_media", "O carrossel não tem todas as imagens disponíveis no acervo da empresa.", false);
+    const images = await this.resolveCarouselImages(content, input.channel === "instagram" ? "instagram" : "facebook");
+    if (!images.ok) return this.fail(images.code, images.message, images.retryable);
+    const imageUrls = images.urls;
     const shared = {
       companyId: input.companyId,
       graph: GRAPH,

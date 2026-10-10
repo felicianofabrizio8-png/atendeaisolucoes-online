@@ -48,6 +48,7 @@ import { campaignImageRefs, resolveCampaignMedia } from "@/lib/marketing/campaig
 import { missingMediaMessage, publishableMediaSource, renderedVideoIdFor } from "@/lib/marketing/publishable-media";
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
 import { MediaThumb, type MediaPreview } from "./ui/MarketingUi";
+import { PublishNowDialog } from "./PublishNowDialog";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
@@ -108,6 +109,8 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // "Publicar agora": conteúdo aguardando a escolha do destino.
+  const [publishFor, setPublishFor] = useState<MarketingContentRow | null>(null);
 
   // ----- Editor Visual do Vídeo -----
   const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null);
@@ -324,26 +327,13 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
     }
   }
 
-  async function publishNow(row: MarketingContentRow) {
+  function publishNow(row: MarketingContentRow) {
     if (row.status !== "approved") {
       toast.error("Aprove o conteúdo antes de publicar.");
       return;
     }
-    const channel = row.channel === "facebook" ? "facebook" : "instagram";
-    setBusy(true);
-    try {
-      await apiScheduleContent({
-        content_id: row.id,
-        channel,
-        scheduled_at: new Date(Date.now() + 1000).toISOString(),
-      });
-      toast.success("Publicação enfileirada. Aguardando confirmação do canal.");
-      await refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao enfileirar publicação.");
-    } finally {
-      setBusy(false);
-    }
+    // O destino (Instagram, Facebook ou os dois) é escolhido no diálogo.
+    setPublishFor(row);
   }
 
   async function retryRender(row: MarketingContentRow) {
@@ -522,7 +512,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
               }}
               onMarkPending={() => void setStatus(c, "pending")}
               onSchedule={() => openSchedule(c)}
-              onPublishNow={() => void publishNow(c)}
+              onPublishNow={() => publishNow(c)}
               preview={previews[c.id] ?? null}
               renderState={c.campaign_id ? renderStates[c.campaign_id]?.[c.campaign_role === "story" ? "story" : "feed"] ?? null : null}
               onRetryRender={() => void retryRender(c)}
@@ -614,6 +604,19 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
             </div>
           </div>
         </div>
+      )}
+
+      {publishFor && (
+        <PublishNowDialog
+          key={publishFor.id}
+          row={publishFor}
+          facebookBlockedReason={fbReadiness && !fbReadiness.ok ? fbReadiness.message : null}
+          onClose={() => setPublishFor(null)}
+          onDone={() => {
+            toast.success("Publicação enfileirada. Aguardando confirmação do canal.");
+            void refresh();
+          }}
+        />
       )}
 
       <StudioDialog companyId={companyId} session={studioSession} onClose={() => setStudioSession(null)} onSaved={() => void refresh()} />

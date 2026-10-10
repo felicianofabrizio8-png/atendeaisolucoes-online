@@ -41,6 +41,31 @@ function mapWriteError(error: { code?: string; message?: string }): Error {
   return new Error(message || "studio_save_failed");
 }
 
+/** JSON com chaves ordenadas: o banco (jsonb) não preserva a ordem das chaves. */
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
+/**
+ * O que gravar quando a arte muda sem uma nova exportação: as imagens
+ * guardadas saem do conteúdo. Nada muda se veio exportação nova, se não havia
+ * imagens ou se o documento é o mesmo.
+ */
+export function staleExportPatch(
+  current: { design: unknown; media_ids: unknown },
+  doc: StudioDocument,
+  hasNewExport: boolean,
+): { media_ids: string[]; primary_image_media_id: null } | Record<string, never> {
+  if (hasNewExport) return {};
+  if (!Array.isArray(current.media_ids) || current.media_ids.length === 0) return {};
+  if (stableJson(normalizeDocument(current.design)) === stableJson(doc)) return {};
+  return { media_ids: [], primary_image_media_id: null };
+}
+
 /** Toda imagem do documento precisa ser da empresa da sessão. */
 export async function assertDocumentImagesOwned(supabase: SB, companyId: string, doc: StudioDocument): Promise<void> {
   const mediaIds = documentMediaIds(doc);
@@ -118,7 +143,7 @@ export const saveStudioContent = createServerFn({ method: "POST" })
     if (data.id) {
       const { data: current, error: readError } = await supabase
         .from("marketing_contents")
-        .select("id, design, status")
+        .select("id, design, status, media_ids")
         .eq("id", data.id)
         .eq("company_id", companyId)
         .maybeSingle();
@@ -126,10 +151,14 @@ export const saveStudioContent = createServerFn({ method: "POST" })
       if (!current) throw new Error("studio_content_not_found");
       // Só conteúdos criados no estúdio; nunca sobrescreve um vídeo ou post antigo.
       if (!studioKindOf(current as { design: unknown })) throw new Error("studio_content_not_editable");
+      // Arte alterada sem exportar de novo: as imagens guardadas são da versão
+      // anterior e não podem ser publicadas. O conteúdo fica sem mídia até o
+      // próximo "Concluir" (mudar só a legenda não mexe nas imagens).
+      const staleExport = staleExportPatch(current, doc, !!exported);
       const { data: row, error } = await supabase
         .from("marketing_contents")
         // Editar depois de aprovado devolve o conteúdo para rascunho: a arte mudou.
-        .update({ ...patch, ...(current.status === "approved" ? { status: "draft" as const, approved_at: null, approved_by: null } : {}) })
+        .update({ ...patch, ...staleExport, ...(current.status === "approved" ? { status: "draft" as const, approved_at: null, approved_by: null } : {}) })
         .eq("id", data.id)
         .eq("company_id", companyId)
         .select("*")

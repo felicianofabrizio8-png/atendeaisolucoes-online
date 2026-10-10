@@ -11,21 +11,58 @@ const urls = (n: number) => Array.from({ length: n }, (_, i) => `https://cdn.tes
 
 type Call = { action: string; url: string; body: URLSearchParams; logicalPayload?: Record<string, unknown> };
 
-/** Envio falso: devolve ids em sequência; `failAt` simula uma falha na N-ésima chamada. */
-function fakePost(options: { failAt?: number; retryable?: boolean; simulate?: boolean } = {}) {
+/**
+ * Envio falso. Só as chamadas POST contam para os ids (`id-N`) e para
+ * `failAt`; as consultas (GET) respondem pelo roteiro em `statuses`/`lookup`.
+ */
+function fakePost(
+  options: {
+    failAt?: number;
+    retryable?: boolean;
+    failStatus?: number;
+    networkFailure?: boolean;
+    providerError?: unknown;
+    simulate?: boolean;
+    /** Estados do container do Instagram, em sequência (o último se repete). Padrão: FINISHED. */
+    statuses?: string[];
+    statusFailure?: boolean;
+    /** Posts devolvidos pela consulta da Página; "fail" = consulta com erro. */
+    lookup?: unknown[] | "fail";
+  } = {},
+) {
   const calls: Call[] = [];
+  let posts = 0;
+  let statusReads = 0;
+  const failure = (status: number, retryable: boolean) =>
+    ({ success: false, simulated: false, environment: "production", externalRequestSent: true, error: "erro da Meta", status, retryable, providerError: options.providerError }) as const;
   const post: CarouselPost = async (input) => {
-    calls.push({ action: input.action, url: input.url, body: new URLSearchParams(input.body), logicalPayload: input.logicalPayload });
-    const n = calls.length;
-    if (options.simulate) return { success: true, simulated: true, environment: "staging", externalRequestSent: false, simulationId: "sim", would: { url: input.url, method: "POST" } };
-    if (options.failAt === n) return { success: false, simulated: false, environment: "production", externalRequestSent: true, error: "erro da Meta", status: 500, retryable: options.retryable ?? true };
-    const raw = { id: `id-${n}` };
+    calls.push({ action: input.action, url: input.url, body: new URLSearchParams(input.body ?? ""), logicalPayload: input.logicalPayload });
+    if (options.simulate) return { success: true, simulated: true, environment: "staging", externalRequestSent: false, simulationId: "sim", would: { url: input.url, method: input.method } };
+    if (input.method === "GET") {
+      if (input.action.endsWith("container_status")) {
+        if (options.statusFailure) return failure(500, true);
+        const list = options.statuses ?? ["FINISHED"];
+        const status_code = list[Math.min(statusReads, list.length - 1)];
+        statusReads += 1;
+        return { success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: null, status: 200, raw: { status_code } };
+      }
+      if (options.lookup === "fail") return failure(403, false);
+      return { success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: null, status: 200, raw: { data: options.lookup ?? [] } };
+    }
+    posts += 1;
+    if (options.failAt === posts) {
+      if (options.networkFailure) return { success: false, simulated: false, environment: "production", externalRequestSent: false, error: "fetch failed", retryable: true };
+      return failure(options.failStatus ?? 500, options.retryable ?? true);
+    }
+    const raw = { id: `id-${posts}` };
     return { success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: input.extractExternalId?.(raw) ?? null, status: 200, raw };
   };
   return { post, calls };
 }
+const noWait = async () => {};
+const last = (action: string) => action.split(".").pop();
 
-const base = (post: CarouselPost, n = 3) => ({ companyId: "co", graph: GRAPH, accessToken: "TOKEN", imageUrls: urls(n), caption: "Legenda do post", post });
+const base = (post: CarouselPost, n = 3) => ({ companyId: "co", graph: GRAPH, accessToken: "TOKEN", imageUrls: urls(n), caption: "Legenda do post", post, wait: noWait, now: () => new Date("2026-10-10T12:00:00.000Z") });
 
 describe("chave da publicação de carrossel", () => {
   it("vem desligada e só liga com o valor exato", () => {
@@ -94,6 +131,7 @@ describe("Instagram", () => {
       "marketing_publisher.instagram.carousel.item",
       "marketing_publisher.instagram.carousel.item",
       "marketing_publisher.instagram.carousel.container",
+      "marketing_publisher.instagram.carousel.container_status",
       "marketing_publisher.instagram.carousel.publish",
     ]);
     // Itens: na ordem das páginas, sem legenda.
@@ -106,8 +144,10 @@ describe("Instagram", () => {
     expect(calls[3].body.get("media_type")).toBe("CAROUSEL");
     expect(calls[3].body.get("children")).toBe("id-1,id-2,id-3");
     expect(calls[3].body.get("caption")).toBe("Legenda do post");
-    expect(calls[4].url).toBe(`${GRAPH}/ig1/media_publish`);
-    expect(calls[4].body.get("creation_id")).toBe("id-4");
+    // Só publica depois de a Meta dizer que o container está pronto.
+    expect(calls[4].url).toContain(`${GRAPH}/id-4?fields=status_code`);
+    expect(calls[5].url).toBe(`${GRAPH}/ig1/media_publish`);
+    expect(calls[5].body.get("creation_id")).toBe("id-4");
     // O token nunca entra no payload lógico (que vai para log/auditoria).
     for (const c of calls) expect(JSON.stringify(c.logicalPayload ?? {})).not.toContain("TOKEN");
     // Cada id é guardado assim que chega.
@@ -126,17 +166,17 @@ describe("Instagram", () => {
     const { post, calls } = fakePost();
     const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", pending: { children: ["a", "b"] } });
     expect(out.success).toBe(true);
-    expect(calls.map((c) => c.action.split(".").pop())).toEqual(["item", "container", "publish"]);
+    expect(calls.map((c) => last(c.action))).toEqual(["item", "container", "container_status", "publish"]);
     expect(calls[0].body.get("image_url")).toBe(urls(3)[2]);
     expect(calls[1].body.get("children")).toBe("a,b,id-1");
   });
 
-  it("com o container já criado, só publica (uma chamada)", async () => {
+  it("com o container já criado, só confere o estado e publica", async () => {
     const { post, calls } = fakePost();
     const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", pending: { children: ["a", "b", "c"], container_id: "cont" } });
     expect(out.success).toBe(true);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].body.get("creation_id")).toBe("cont");
+    expect(calls.map((c) => last(c.action))).toEqual(["container_status", "publish"]);
+    expect(calls[1].body.get("creation_id")).toBe("cont");
   });
 
   it("em ambiente de simulação, nada é publicado e o resultado diz que foi simulado", async () => {
@@ -151,6 +191,62 @@ describe("Instagram", () => {
     const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", onPending: vi.fn(async () => Promise.reject(new Error("db"))) });
     expect(out.success).toBe(true);
   });
+
+  it("espera o container ficar pronto antes de publicar", async () => {
+    const { post, calls } = fakePost({ statuses: ["IN_PROGRESS", "IN_PROGRESS", "FINISHED"] });
+    const wait = vi.fn(async (_ms: number) => {});
+    const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", wait, poll: { attempts: 5, delayMs: 1234 } });
+    expect(out.success).toBe(true);
+    expect(calls.filter((c) => last(c.action) === "container_status")).toHaveLength(3);
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledWith(1234);
+    expect(last(calls.at(-1)!.action)).toBe("publish");
+  });
+
+  it("container que não fica pronto a tempo: não publica e pede nova tentativa com o MESMO container", async () => {
+    const { post, calls } = fakePost({ statuses: ["IN_PROGRESS"] });
+    const saved: CarouselPending[] = [];
+    const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", poll: { attempts: 3, delayMs: 1 }, onPending: async (p) => void saved.push(p) });
+    expect(out).toMatchObject({ success: false, errorCode: "container_not_ready", retryable: true });
+    expect(calls.some((c) => last(c.action) === "publish")).toBe(false);
+    expect(saved.at(-1)).toMatchObject({ container_id: "id-4" });
+  });
+
+  it("container com ERROR ou EXPIRED: não publica e limpa o andamento para recomeçar do zero", async () => {
+    for (const [status, retryable] of [["ERROR", false], ["EXPIRED", true]] as const) {
+      const { post, calls } = fakePost({ statuses: [status] });
+      const saved: CarouselPending[] = [];
+      const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", pending: { children: ["a", "b", "c"], container_id: "cont" }, onPending: async (p) => void saved.push(p) });
+      expect(out).toMatchObject({ success: false, errorCode: "container_processing_failed", retryable });
+      expect(calls.map((c) => last(c.action))).toEqual(["container_status"]);
+      expect(saved).toEqual([{ children: [], container_id: null }]);
+    }
+    // Com o andamento limpo, a tentativa seguinte cria tudo de novo.
+    const again = fakePost();
+    await publishInstagramCarousel({ ...base(again.post), igUserId: "ig1", pending: { children: [], container_id: null } });
+    expect(again.calls.map((c) => last(c.action))).toEqual(["item", "item", "item", "container", "container_status", "publish"]);
+  });
+
+  it("container já PUBLICADO por uma tentativa anterior: confirma sem publicar de novo", async () => {
+    const { post, calls } = fakePost({ statuses: ["PUBLISHED"] });
+    const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1", pending: { children: ["a", "b", "c"], container_id: "cont" } });
+    expect(out).toMatchObject({ success: true, simulated: false, platformPostId: null, platformResponse: { reconciled: true, container_id: "cont" } });
+    expect(calls.map((c) => last(c.action))).toEqual(["container_status"]);
+  });
+
+  it("falha ao consultar o container não publica às cegas", async () => {
+    const { post, calls } = fakePost({ statusFailure: true });
+    const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1" });
+    expect(out).toMatchObject({ success: false, errorCode: "container_status_500", retryable: true });
+    expect(calls.some((c) => last(c.action) === "publish")).toBe(false);
+  });
+
+  it("a mensagem de erro leva o código e o rastreio da Meta, nunca o token", async () => {
+    const { post } = fakePost({ failAt: 1, failStatus: 400, retryable: false, providerError: { message: "x", code: 9004, error_subcode: 2207052, fbtrace_id: "ABC", error_user_msg: "A imagem não pôde ser baixada." } });
+    const out = await publishInstagramCarousel({ ...base(post), igUserId: "ig1" });
+    expect(out).toMatchObject({ success: false, errorCode: "carousel_item_error_400", errorMessage: "A imagem não pôde ser baixada. [code=9004 subcode=2207052 fbtrace_id=ABC]" });
+    expect(JSON.stringify(out)).not.toContain("TOKEN");
+  });
 });
 
 describe("Facebook", () => {
@@ -159,7 +255,7 @@ describe("Facebook", () => {
     const saved: CarouselPending[] = [];
     const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", onPending: async (p) => void saved.push(p) });
     expect(out).toMatchObject({ success: true, simulated: false, platformPostId: "id-4" });
-    expect(calls.map((c) => c.action.split(".").pop())).toEqual(["photo", "photo", "photo", "publish"]);
+    expect(calls.map((c) => last(c.action))).toEqual(["photo", "photo", "photo", "publish"]);
     for (const [i, c] of calls.slice(0, 3).entries()) {
       expect(c.url).toBe(`${GRAPH}/pg1/photos`);
       expect(c.body.get("url")).toBe(urls(3)[i]);
@@ -169,7 +265,8 @@ describe("Facebook", () => {
     expect(calls[3].url).toBe(`${GRAPH}/pg1/feed`);
     expect(calls[3].body.get("message")).toBe("Legenda do post");
     expect([0, 1, 2].map((i) => calls[3].body.get(`attached_media[${i}]`))).toEqual(['{"media_fbid":"id-1"}', '{"media_fbid":"id-2"}', '{"media_fbid":"id-3"}']);
-    expect(saved.at(-1)).toEqual({ photo_ids: ["id-1", "id-2", "id-3"] });
+    // A tentativa de criar o post é registrada ANTES do pedido.
+    expect(saved.at(-1)).toEqual({ photo_ids: ["id-1", "id-2", "id-3"], publish_attempted_at: "2026-10-10T12:00:00.000Z" });
   });
 
   it("nova tentativa reaproveita as fotos já enviadas; falha não reenviável é informada", async () => {
@@ -181,5 +278,56 @@ describe("Facebook", () => {
     const failing = fakePost({ failAt: 4, retryable: false });
     const out = await publishFacebookCarousel({ ...base(failing.post), pageId: "pg1" });
     expect(out).toMatchObject({ success: false, errorCode: "publish_error_500", retryable: false });
+  });
+
+  it("sem conseguir registrar a tentativa, não pede o post (evita duplicar depois)", async () => {
+    const { post, calls } = fakePost();
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: { photo_ids: ["x", "y", "z"] }, onPending: async () => Promise.reject(new Error("db")) });
+    expect(out).toMatchObject({ success: false, errorCode: "pending_save_failed", retryable: true });
+    expect(calls).toHaveLength(0);
+  });
+
+  const attempted = { photo_ids: ["x", "y", "z"], publish_attempted_at: "2026-10-10T11:58:00.000Z" };
+
+  it("REGRESSÃO: resposta perdida + post já criado → a nova tentativa reconhece o post e NÃO cria outro", async () => {
+    const { post, calls } = fakePost({
+      lookup: [
+        { id: "pg1_outro", attachments: { data: [{ target: { id: "foto-alheia" } }] } },
+        { id: "pg1_999", attachments: { data: [{ target: { id: "pg1_999" }, subattachments: { data: [{ target: { id: "x" } }, { target: { id: "y" } }] } }] } },
+      ],
+    });
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: attempted });
+    expect(out).toMatchObject({ success: true, simulated: false, platformPostId: "pg1_999", platformResponse: { reconciled: true } });
+    expect(calls.map((c) => last(c.action))).toEqual(["lookup"]);
+    expect(calls[0].url).toContain(`${GRAPH}/pg1/published_posts?`);
+    // Janela de busca: a partir de pouco antes da tentativa registrada.
+    expect(new URL(calls[0].url).searchParams.get("since")).toBe(String(Math.floor(Date.parse(attempted.publish_attempted_at) / 1000) - 120));
+  });
+
+  it("tentativa anterior sem post na Página → publica normalmente", async () => {
+    const { post, calls } = fakePost({ lookup: [{ id: "pg1_outro", attachments: { data: [{ target: { id: "foto-alheia" } }] } }] });
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: attempted });
+    expect(out).toMatchObject({ success: true, platformPostId: "id-1" });
+    expect(calls.map((c) => last(c.action))).toEqual(["lookup", "publish"]);
+  });
+
+  it("sem conseguir conferir a Página, não publica às cegas", async () => {
+    const { post, calls } = fakePost({ lookup: "fail" });
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: attempted });
+    expect(out).toMatchObject({ success: false, errorCode: "facebook_publish_unconfirmed", retryable: false });
+    expect(calls.map((c) => last(c.action))).toEqual(["lookup"]);
+  });
+
+  it("recusa definitiva da Meta libera a marca; falha de rede mantém (a próxima tentativa confere antes)", async () => {
+    const refused = fakePost({ failAt: 1, failStatus: 400, retryable: false });
+    const savedRefused: CarouselPending[] = [];
+    await publishFacebookCarousel({ ...base(refused.post), pageId: "pg1", pending: { photo_ids: ["x", "y", "z"] }, onPending: async (p) => void savedRefused.push(p) });
+    expect(savedRefused.at(-1)).toEqual({ photo_ids: ["x", "y", "z"], publish_attempted_at: null });
+
+    const network = fakePost({ failAt: 1, networkFailure: true });
+    const savedNetwork: CarouselPending[] = [];
+    const out = await publishFacebookCarousel({ ...base(network.post), pageId: "pg1", pending: { photo_ids: ["x", "y", "z"] }, onPending: async (p) => void savedNetwork.push(p) });
+    expect(out).toMatchObject({ success: false, errorCode: "publish_error_network", retryable: true });
+    expect(savedNetwork.at(-1)).toEqual({ photo_ids: ["x", "y", "z"], publish_attempted_at: "2026-10-10T12:00:00.000Z" });
   });
 });

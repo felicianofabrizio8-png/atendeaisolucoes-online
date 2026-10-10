@@ -13,6 +13,13 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { missingMediaMessage, publishableMediaSource } from "./publishable-media";
 import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "@/lib/marketing-publisher/carousel-flag";
+import {
+  carouselContentProblem,
+  carouselImagesProblem,
+  missingPublishScope,
+  type CarouselChannel,
+  type CarouselImageInfo,
+} from "@/lib/marketing-publisher/carousel-readiness";
 
 type SB = SupabaseClient<Database>;
 
@@ -609,7 +616,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     const { companyId, userId, supabase } = await loadCompany(context);
     const { data: content, error: cErr } = await supabase
       .from("marketing_contents")
-      .select("id, company_id, status, media_ids, ai_prompt, campaign_id, format, product_id, feed_video_id, story_video_id")
+      .select("id, company_id, status, media_ids, ai_prompt, campaign_id, format, product_id, feed_video_id, story_video_id, design")
       .eq("id", data.content_id)
       .maybeSingle();
     if (cErr) throw new Error(cErr.message);
@@ -625,6 +632,12 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     // (sem isto o agendamento seria aceito e falharia na hora de publicar).
     if (content.format === "carousel" && !isCarouselPublishEnabled()) {
       throw new Error(CAROUSEL_PUBLISH_DISABLED_MESSAGE);
+    }
+    // Carrossel só entra na fila se puder ser publicado: imagens em dia com
+    // as páginas, proporção e tipo aceitos pelo canal e permissão registrada.
+    if (content.format === "carousel" && (data.channel === "instagram" || data.channel === "facebook")) {
+      const problem = await carouselScheduleProblem(supabase, companyId, content, data.channel);
+      if (problem) throw new Error(problem);
     }
     // IG/FB feed/reel/story exigem mídia publicável — pela mesma regra do
     // publicador: vídeo renderizado da campanha, acervo, fotos de produto.
@@ -657,6 +670,41 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return row;
   });
+
+/**
+ * Motivo (texto para o usuário) pelo qual um carrossel não pode ser agendado
+ * neste canal, ou null. Mesmas regras que o publicador aplica na hora do envio.
+ */
+export async function carouselScheduleProblem(
+  sb: SB,
+  companyId: string,
+  content: { media_ids: unknown; design?: unknown },
+  channel: CarouselChannel,
+): Promise<string | null> {
+  const contentProblem = carouselContentProblem(content, channel);
+  if (contentProblem) return contentProblem.message;
+  const ids = (content.media_ids as string[]).filter((id) => typeof id === "string");
+  const { data: rows, error } = await sb
+    .from("marketing_media")
+    .select("id, media_type, mime_type, width, height, active")
+    .in("id", ids)
+    .eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+  const byId = new Map((rows ?? []).filter((m) => m.active && m.media_type === "image").map((m) => [m.id, m]));
+  const ordered = ids.map((id) => byId.get(id));
+  if (ordered.some((m) => !m)) return "O carrossel não tem todas as imagens disponíveis no acervo da empresa. Abra no estúdio e clique em Concluir.";
+  const imagesProblem = carouselImagesProblem(ordered as CarouselImageInfo[], channel);
+  if (imagesProblem) return imagesProblem.message;
+  if (channel === "instagram") {
+    // Facebook é conferido logo adiante por `assertFacebookPublishAllowed`.
+    const list = await fetchReadinessRows(sb);
+    const ig = list.find((r) => r.channel === "instagram");
+    if (!ig) return "Nenhuma conta do Instagram marcada como principal para publicação. Conecte o Instagram antes de publicar.";
+    const missing = missingPublishScope(ig.granted_scopes, "instagram");
+    if (missing) return `Permissão para publicar no Instagram não concedida (${missing} ausente). Reconecte a conta Meta e conceda a permissão.`;
+  }
+  return null;
+}
 
 /**
  * Helper puro (server-side) que lê a integração principal e decide se o

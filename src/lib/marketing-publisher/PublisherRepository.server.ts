@@ -317,10 +317,13 @@ export class PublisherRepository {
       ...existing,
       pending: { ...prevPending, ...patch, saved_at: new Date().toISOString() },
     };
-    await admin
+    const upd = await admin
       .from("marketing_publications")
       .update({ platform_response: merged })
       .eq("id", id);
+    // Quem chama decide o que fazer sem o andamento salvo (todos tratam a
+    // exceção); engolir o erro aqui esconderia o risco de repetir um envio.
+    if (cur?.error || upd?.error) throw new Error("pending_save_failed");
   }
 
   async findById(id: string): Promise<PublicationRow | null> {

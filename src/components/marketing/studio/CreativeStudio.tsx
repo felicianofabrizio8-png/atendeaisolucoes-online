@@ -251,7 +251,8 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
       const row = await apiSaveStudioContent({ id: contentId ?? undefined, document: doc, caption });
       setContentId(row.id);
       setDirty(false);
-      toast.success("Rascunho salvo.");
+      // Sem imagens exportadas (nunca concluído, ou a arte mudou depois).
+      toast.success((row.media_ids ?? []).length === 0 ? "Rascunho salvo. Clique em Concluir para gerar as imagens antes de publicar." : "Rascunho salvo.");
       onSaved?.(row);
       return row;
     } catch (e) {
