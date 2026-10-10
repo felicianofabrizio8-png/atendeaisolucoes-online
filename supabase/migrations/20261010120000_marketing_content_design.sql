@@ -16,7 +16,7 @@ ALTER TABLE public.marketing_contents
       AND design ->> 'kind' IN ('video', 'carousel', 'art')
       AND jsonb_typeof(design -> 'pages') = 'array'
       AND jsonb_array_length(design -> 'pages') BETWEEN 1 AND 10
-      AND pg_column_size(design) < 262144
+      AND octet_length(design::text) < 262144
     )
   );
 
