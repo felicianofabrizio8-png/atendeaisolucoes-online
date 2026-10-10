@@ -65,6 +65,21 @@ describe("escolha do destino", () => {
     expect(schedule.mock.calls.map((c) => c[0].channel)).toEqual(["instagram", "facebook"]);
   });
 
+  it("REGRESSÃO: cliques repetidos no botão geram um único pedido por canal", async () => {
+    let release = () => {};
+    const schedule = vi.fn(() => new Promise<unknown>((done) => (release = () => done({}))));
+    const { onClose } = setup({ deps: { schedule } });
+    const button = screen.getByRole("button", { name: "Publicar" });
+    // Três cliques antes de a tela redesenhar o botão desabilitado.
+    button.click();
+    button.click();
+    button.click();
+    await waitFor(() => expect(schedule).toHaveBeenCalledTimes(1));
+    release();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(schedule).toHaveBeenCalledTimes(1);
+  });
+
   it("sem destino marcado não publica", async () => {
     const { user, schedule } = setup();
     await user.click(check("Instagram"));

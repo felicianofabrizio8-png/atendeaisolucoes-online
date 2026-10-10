@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CAROUSEL_LIMITS, publishFacebookCarousel, publishInstagramCarousel, validateCarouselImages, type CarouselPending, type CarouselPost } from "../CarouselPublisher.server";
-import { CAROUSEL_PUBLISH_ENV, isCarouselPublishEnabled } from "../carousel-flag";
+import { CAROUSEL_PUBLISH_COMPANIES_ENV, CAROUSEL_PUBLISH_ENV, carouselPublishCompanies, isCarouselPublishEnabled } from "../carousel-flag";
 
 const GRAPH = "https://graph.test/v25.0";
 const urls = (n: number) => Array.from({ length: n }, (_, i) => `https://cdn.test/co/p${i + 1}.jpg?sig=abc`);
@@ -27,7 +27,7 @@ function fakePost(
     statuses?: string[];
     statusFailure?: boolean;
     /** Posts devolvidos pela consulta da Página; "fail" = consulta com erro. */
-    lookup?: unknown[] | "fail";
+    lookup?: unknown[] | "fail" | "malformed";
   } = {},
 ) {
   const calls: Call[] = [];
@@ -47,6 +47,7 @@ function fakePost(
         return { success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: null, status: 200, raw: { status_code } };
       }
       if (options.lookup === "fail") return failure(403, false);
+      if (options.lookup === "malformed") return { success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: null, status: 200, raw: {} };
       return { success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: null, status: 200, raw: { data: options.lookup ?? [] } };
     }
     posts += 1;
@@ -66,26 +67,57 @@ const base = (post: CarouselPost, n = 3) => ({ companyId: "co", graph: GRAPH, ac
 
 describe("chave da publicação de carrossel", () => {
   it("vem desligada e só liga com o valor exato", () => {
-    expect(isCarouselPublishEnabled({})).toBe(false);
-    for (const value of ["true", "1", "on", "ENABLED", ""]) expect(isCarouselPublishEnabled({ [CAROUSEL_PUBLISH_ENV]: value })).toBe(false);
-    expect(isCarouselPublishEnabled({ [CAROUSEL_PUBLISH_ENV]: "enabled" })).toBe(true);
+    expect(isCarouselPublishEnabled(null, {})).toBe(false);
+    for (const value of ["true", "1", "on", "ENABLED", ""]) expect(isCarouselPublishEnabled(null, { [CAROUSEL_PUBLISH_ENV]: value })).toBe(false);
+    expect(isCarouselPublishEnabled(null, { [CAROUSEL_PUBLISH_ENV]: "enabled" })).toBe(true);
+  });
+
+  it("teste controlado: a lista libera SÓ as empresas indicadas na configuração", () => {
+    const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const env = { [CAROUSEL_PUBLISH_COMPANIES_ENV]: ` ${A} , ${B.toUpperCase()},lixo, ,*` };
+    expect(carouselPublishCompanies(env)).toEqual([A, B]);
+    expect(isCarouselPublishEnabled(A, env)).toBe(true);
+    expect(isCarouselPublishEnabled(B, env)).toBe(true);
+    expect(isCarouselPublishEnabled(A.toUpperCase(), env)).toBe(true);
+    // As demais empresas — e pedidos sem empresa — continuam desligados.
+    expect(isCarouselPublishEnabled(C, env)).toBe(false);
+    expect(isCarouselPublishEnabled(null, env)).toBe(false);
+    expect(isCarouselPublishEnabled(undefined, env)).toBe(false);
+    expect(isCarouselPublishEnabled("", env)).toBe(false);
+    expect(isCarouselPublishEnabled("*", env)).toBe(false);
+    // Lista vazia ou ausente não libera ninguém; a chave geral libera todos.
+    expect(isCarouselPublishEnabled(A, {})).toBe(false);
+    expect(isCarouselPublishEnabled(A, { [CAROUSEL_PUBLISH_COMPANIES_ENV]: "" })).toBe(false);
+    expect(isCarouselPublishEnabled(C, { ...env, [CAROUSEL_PUBLISH_ENV]: "enabled" })).toBe(true);
+  });
+
+  it("nenhuma empresa está escrita no código: a liberação vem só do ambiente e da empresa do pedido", () => {
+    const root = process.cwd();
+    const flag = readFileSync(resolve(root, "src/lib/marketing-publisher/carousel-flag.ts"), "utf8");
+    expect(flag).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    // Agendamento: empresa da sessão. Fila: empresa do agendamento. Envio: empresa da publicação.
+    expect(readFileSync(resolve(root, "src/lib/marketing/marketing.functions.ts"), "utf8")).toContain("!isCarouselPublishEnabled(companyId)");
+    expect(readFileSync(resolve(root, "src/lib/marketing-publisher/PublisherPlanner.server.ts"), "utf8")).toContain("isCarouselPublishEnabled(s.company_id)");
+    expect(readFileSync(resolve(root, "src/lib/marketing-publisher/MetaPublisher.server.ts"), "utf8")).toContain("!isCarouselPublishEnabled(input.companyId)");
   });
 
   it("com a chave desligada: não agenda, não entra na fila e o publicador recusa antes de qualquer chamada", () => {
     const root = process.cwd();
     const schedule = readFileSync(resolve(root, "src/lib/marketing/marketing.functions.ts"), "utf8");
     const fn = schedule.slice(schedule.indexOf("export const scheduleMarketingContent"), schedule.indexOf("export const listMarketingSchedule"));
-    expect(fn).toContain('content.format === "carousel" && !isCarouselPublishEnabled()');
-    expect(fn.indexOf("isCarouselPublishEnabled()")).toBeLessThan(fn.indexOf('.from("marketing_schedule")'));
+    expect(fn).toContain('content.format === "carousel" && !isCarouselPublishEnabled(companyId)');
+    expect(fn.indexOf("isCarouselPublishEnabled(companyId)")).toBeLessThan(fn.indexOf('.from("marketing_schedule")'));
 
     const planner = readFileSync(resolve(root, "src/lib/marketing-publisher/PublisherPlanner.server.ts"), "utf8");
     expect(planner).toContain('s.marketing_contents?.format === "carousel"');
-    expect(planner).toContain("isCarouselPublishEnabled()");
+    expect(planner).toContain("isCarouselPublishEnabled(s.company_id)");
 
     const publisher = readFileSync(resolve(root, "src/lib/marketing-publisher/MetaPublisher.server.ts"), "utf8");
     const branch = publisher.slice(publisher.indexOf('if (input.format === "carousel")'), publisher.indexOf("const media = await this.resolvePrimaryMedia(content, input.format);"));
-    expect(branch.indexOf("!isCarouselPublishEnabled()")).toBeGreaterThan(0);
-    expect(branch.indexOf("!isCarouselPublishEnabled()")).toBeLessThan(branch.indexOf("this.publishCarousel("));
+    expect(branch.indexOf("!isCarouselPublishEnabled(input.companyId)")).toBeGreaterThan(0);
+    expect(branch.indexOf("!isCarouselPublishEnabled(input.companyId)")).toBeLessThan(branch.indexOf("this.publishCarousel("));
     // O módulo do carrossel não fala com a rede por conta própria.
     const module = readFileSync(resolve(root, "src/lib/marketing-publisher/CarouselPublisher.server.ts"), "utf8");
     expect(module).not.toMatch(/\bfetch\(|graph\.facebook\.com|supabase/);
@@ -266,7 +298,7 @@ describe("Facebook", () => {
     expect(calls[3].body.get("message")).toBe("Legenda do post");
     expect([0, 1, 2].map((i) => calls[3].body.get(`attached_media[${i}]`))).toEqual(['{"media_fbid":"id-1"}', '{"media_fbid":"id-2"}', '{"media_fbid":"id-3"}']);
     // A tentativa de criar o post é registrada ANTES do pedido.
-    expect(saved.at(-1)).toEqual({ photo_ids: ["id-1", "id-2", "id-3"], publish_attempted_at: "2026-10-10T12:00:00.000Z" });
+    expect(saved.at(-1)).toEqual({ photo_ids: ["id-1", "id-2", "id-3"], photos_uploaded_at: "2026-10-10T12:00:00.000Z", publish_attempted_at: "2026-10-10T12:00:00.000Z" });
   });
 
   it("nova tentativa reaproveita as fotos já enviadas; falha não reenviável é informada", async () => {
@@ -297,7 +329,7 @@ describe("Facebook", () => {
       ],
     });
     const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: attempted });
-    expect(out).toMatchObject({ success: true, simulated: false, platformPostId: "pg1_999", platformResponse: { reconciled: true } });
+    expect(out).toMatchObject({ success: true, simulated: false, platformPostId: "pg1_999", platformResponse: { reconciled: true, matched_by: "photos" } });
     expect(calls.map((c) => last(c.action))).toEqual(["lookup"]);
     expect(calls[0].url).toContain(`${GRAPH}/pg1/published_posts?`);
     // Janela de busca: a partir de pouco antes da tentativa registrada.
@@ -309,6 +341,54 @@ describe("Facebook", () => {
     const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: attempted });
     expect(out).toMatchObject({ success: true, platformPostId: "id-1" });
     expect(calls.map((c) => last(c.action))).toEqual(["lookup", "publish"]);
+  });
+
+  it("reconhece o post pela legenda idêntica quando as fotos não vêm na resposta; legenda diferente ou post antigo não contam", async () => {
+    const same = fakePost({ lookup: [{ id: "pg1_777", message: "  Legenda do post ", created_time: "2026-10-10T11:58:30+0000" }] });
+    const out = await publishFacebookCarousel({ ...base(same.post), pageId: "pg1", pending: attempted });
+    expect(out).toMatchObject({ success: true, platformPostId: "pg1_777", platformResponse: { reconciled: true, matched_by: "caption" } });
+    expect(same.calls.map((c) => last(c.action))).toEqual(["lookup"]);
+
+    const other = fakePost({
+      lookup: [
+        { id: "pg1_a", message: "Outra legenda", created_time: "2026-10-10T11:59:00+0000" },
+        { id: "pg1_b", message: "Legenda do post", created_time: "2026-10-09T08:00:00+0000" },
+      ],
+    });
+    await publishFacebookCarousel({ ...base(other.post), pageId: "pg1", pending: attempted });
+    expect(other.calls.map((c) => last(c.action))).toEqual(["lookup", "publish"]);
+  });
+
+  it("tentativa de segundos atrás e post ainda não listado: espera em vez de publicar de novo", async () => {
+    const { post, calls } = fakePost({ lookup: [] });
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: { ...attempted, publish_attempted_at: "2026-10-10T11:59:40.000Z" } });
+    expect(out).toMatchObject({ success: false, errorCode: "facebook_publish_confirming", retryable: true });
+    expect(calls.map((c) => last(c.action))).toEqual(["lookup"]);
+  });
+
+  it("resposta da consulta sem a lista de posts não é tratada como 'não existe'", async () => {
+    const { post, calls } = fakePost({ lookup: "malformed" });
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: attempted });
+    expect(out).toMatchObject({ success: false, errorCode: "facebook_publish_unconfirmed", retryable: true });
+    expect(calls.map((c) => last(c.action))).toEqual(["lookup"]);
+  });
+
+  it("a conferência vem ANTES de qualquer reenvio de foto", async () => {
+    const { post, calls } = fakePost({ lookup: [{ id: "pg1_999", attachments: { data: [{ subattachments: { data: [{ target: { id: "x" } }] } }] } }] });
+    const out = await publishFacebookCarousel({ ...base(post), pageId: "pg1", pending: { photo_ids: ["x"], publish_attempted_at: attempted.publish_attempted_at } });
+    expect(out).toMatchObject({ success: true, platformPostId: "pg1_999" });
+    expect(calls.map((c) => last(c.action))).toEqual(["lookup"]);
+  });
+
+  it("fotos enviadas há mais de 20 h (descartadas pela Meta) são enviadas de novo; recentes são reaproveitadas", async () => {
+    const stale = fakePost();
+    await publishFacebookCarousel({ ...base(stale.post), pageId: "pg1", pending: { photo_ids: ["x", "y", "z"], photos_uploaded_at: "2026-10-09T12:00:00.000Z" } });
+    expect(stale.calls.map((c) => last(c.action))).toEqual(["photo", "photo", "photo", "publish"]);
+    expect(stale.calls[3].body.get("attached_media[0]")).toBe('{"media_fbid":"id-1"}');
+
+    const fresh = fakePost();
+    await publishFacebookCarousel({ ...base(fresh.post), pageId: "pg1", pending: { photo_ids: ["x", "y", "z"], photos_uploaded_at: "2026-10-10T09:00:00.000Z" } });
+    expect(fresh.calls.map((c) => last(c.action))).toEqual(["publish"]);
   });
 
   it("sem conseguir conferir a Página, não publica às cegas", async () => {
@@ -329,5 +409,16 @@ describe("Facebook", () => {
     const out = await publishFacebookCarousel({ ...base(network.post), pageId: "pg1", pending: { photo_ids: ["x", "y", "z"] }, onPending: async (p) => void savedNetwork.push(p) });
     expect(out).toMatchObject({ success: false, errorCode: "publish_error_network", retryable: true });
     expect(savedNetwork.at(-1)).toEqual({ photo_ids: ["x", "y", "z"], publish_attempted_at: "2026-10-10T12:00:00.000Z" });
+
+    // 200 sem id: o post pode existir — a marca fica para a conferência.
+    const noId: CarouselPending[] = [];
+    const out200 = await publishFacebookCarousel({
+      ...base(async (input) => ({ success: true, simulated: false, environment: "production", externalRequestSent: true, externalId: input.extractExternalId?.({}) ?? null, status: 200, raw: {} })),
+      pageId: "pg1",
+      pending: { photo_ids: ["x", "y", "z"] },
+      onPending: async (p) => void noId.push(p),
+    });
+    expect(out200).toMatchObject({ success: false, errorCode: "no_post_id", retryable: false });
+    expect(noId.at(-1)).toMatchObject({ publish_attempted_at: "2026-10-10T12:00:00.000Z" });
   });
 });

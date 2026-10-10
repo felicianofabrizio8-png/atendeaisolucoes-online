@@ -14,7 +14,13 @@
 // A chamada final (a que cria o post) pode ter sido aceita pela Meta mesmo
 // quando a resposta se perde; por isso, antes de repeti-la, o módulo pergunta
 // à Meta se o post já existe (Instagram: estado do container; Facebook: posts
-// recentes da Página com as mesmas fotos).
+// recentes da Página com as mesmas fotos ou com a mesma legenda).
+//
+// Facebook, resposta perdida — o que acontece em cada caso:
+// - pedido não chegou à Meta        → a consulta não acha o post → publica;
+// - Meta criou o post, resposta caiu → a consulta acha → confirma, sem repetir;
+// - consulta falhou                  → NÃO publica (fica "não confirmado");
+// - post criado há segundos e ainda fora da listagem → espera antes de decidir.
 // ============================================================================
 
 import type { OutboundResult } from "@/lib/outbound/MetaOutboundContract";
@@ -56,6 +62,8 @@ export interface CarouselPending {
    * Presente = a próxima tentativa confere a Página antes de postar de novo.
    */
   publish_attempted_at?: string | null;
+  /** Facebook: quando as fotos foram enviadas (fotos não publicadas expiram na Meta). */
+  photos_uploaded_at?: string | null;
 }
 
 export interface CarouselInput {
@@ -246,19 +254,22 @@ function attachedPhotoIds(post: unknown): string[] {
   return out;
 }
 
+/** Tempo mínimo desde a tentativa para aceitar "o post não existe" (a listagem da Página pode atrasar). */
+export const FACEBOOK_CONFIRM_MIN_AGE_MS = 60_000;
+/** Fotos enviadas sem publicar são descartadas pela Meta em cerca de um dia. */
+export const FACEBOOK_PHOTO_MAX_AGE_MS = 20 * 60 * 60_000;
+
+type Lookup = { kind: "found"; postId: string; match: "photos" | "caption" } | { kind: "absent" } | { kind: "simulated" } | { kind: "unknown"; failure: Failure };
+
 /**
- * Facebook: procura, nos posts recentes da Página, um que já tenha as fotos
- * deste carrossel. `null` = não achou; `undefined` = não deu para consultar.
+ * Facebook: procura, nos posts da Página criados desde a tentativa, o post
+ * deste carrossel — pelas fotos anexadas ou, na falta delas, pela legenda
+ * idêntica. Errar para o lado de "achou" só deixa de publicar; nunca duplica.
  */
-async function findExistingFacebookPost(
-  input: CarouselInput,
-  base: string,
-  photoIds: string[],
-  attemptedAt: string,
-): Promise<{ kind: "found"; postId: string } | { kind: "absent" } | { kind: "simulated" } | { kind: "unknown"; failure: Failure }> {
+async function findExistingFacebookPost(input: CarouselInput, base: string, photoIds: string[], attemptedAt: string): Promise<Lookup> {
   const sinceMs = new Date(attemptedAt).getTime();
   const since = Number.isFinite(sinceMs) ? Math.floor(sinceMs / 1000) - 120 : null;
-  const query = new URLSearchParams({ fields: "id,created_time,attachments{target{id},subattachments{target{id}}}", limit: "25", access_token: input.accessToken });
+  const query = new URLSearchParams({ fields: "id,message,created_time,attachments{target{id},subattachments{target{id}}}", limit: "25", access_token: input.accessToken });
   if (since) query.set("since", String(since));
   const res = await input.post({
     companyId: input.companyId,
@@ -270,13 +281,22 @@ async function findExistingFacebookPost(
   });
   if (isSimulation(res)) return { kind: "simulated" };
   if (isFailure(res)) return { kind: "unknown", failure: res };
-  const wanted = new Set(photoIds);
-  const posts = Array.isArray(res.raw?.data) ? (res.raw!.data as unknown[]) : [];
-  for (const post of posts) {
-    const id = (post as { id?: unknown } | null)?.id;
-    if (typeof id === "string" && attachedPhotoIds(post).some((photo) => wanted.has(photo))) return { kind: "found", postId: id };
+  // Resposta sem a lista não prova que o post não existe.
+  if (!Array.isArray(res.raw?.data)) {
+    return { kind: "unknown", failure: { success: false, simulated: false, environment: res.environment, externalRequestSent: true, error: "resposta inesperada da Meta", retryable: true } };
   }
-  return { kind: "absent" };
+  const wanted = new Set(photoIds);
+  const caption = input.caption.trim();
+  let byCaption: string | null = null;
+  for (const post of res.raw.data as unknown[]) {
+    const p = post as { id?: unknown; message?: unknown; created_time?: unknown } | null;
+    if (typeof p?.id !== "string") continue;
+    if (attachedPhotoIds(post).some((photo) => wanted.has(photo))) return { kind: "found", postId: p.id, match: "photos" };
+    const created = typeof p.created_time === "string" ? new Date(p.created_time).getTime() : NaN;
+    const afterAttempt = !since || !Number.isFinite(created) || created >= since * 1000;
+    if (!byCaption && caption && typeof p.message === "string" && p.message.trim() === caption && afterAttempt) byCaption = p.id;
+  }
+  return byCaption ? { kind: "found", postId: byCaption, match: "caption" } : { kind: "absent" };
 }
 
 /** Facebook: cada foto enviada sem publicar → um post no feed com todas anexadas. */
@@ -284,8 +304,45 @@ export async function publishFacebookCarousel(input: CarouselInput & { pageId: s
   const check = validateCarouselImages(input.imageUrls);
   if (!check.ok) return fail(check.code, check.message);
   const base = `${input.graph}/${encodeURIComponent(input.pageId)}`;
+  const now = (input.now?.() ?? new Date()).getTime();
 
-  const photoIds = [...(input.pending?.photo_ids ?? [])].slice(0, input.imageUrls.length);
+  let photoIds = [...(input.pending?.photo_ids ?? [])].slice(0, input.imageUrls.length);
+  let uploadedAt = input.pending?.photos_uploaded_at ?? undefined;
+
+  // Uma tentativa anterior chegou a pedir o post e ficou sem resposta
+  // conclusiva: antes de qualquer outro passo, confere se ele já está na Página.
+  const attemptedBefore = input.pending?.publish_attempted_at || null;
+  if (attemptedBefore) {
+    const existing = await findExistingFacebookPost(input, base, photoIds, attemptedBefore);
+    if (existing.kind === "simulated") return simulated();
+    if (existing.kind === "found") {
+      return {
+        success: true,
+        simulated: false,
+        platformPostId: existing.postId,
+        platformResponse: { reconciled: true, reason: "post_already_created", matched_by: existing.match, id: existing.postId, images: photoIds.length },
+      };
+    }
+    if (existing.kind === "unknown") {
+      return fail(
+        "facebook_publish_unconfirmed",
+        `Não foi possível confirmar se o post da tentativa anterior foi criado (${describeFailure(existing.failure)}). Confira a Página antes de reprocessar.`,
+        existing.failure.retryable,
+      );
+    }
+    // Não achou — mas um post criado há instantes pode ainda não estar listado.
+    const age = now - new Date(attemptedBefore).getTime();
+    if (Number.isFinite(age) && age < FACEBOOK_CONFIRM_MIN_AGE_MS) {
+      return fail("facebook_publish_confirming", "Aguardando a Meta confirmar a tentativa anterior antes de publicar de novo.", true);
+    }
+  }
+
+  // Fotos antigas demais já foram descartadas pela Meta: envia de novo.
+  if (uploadedAt && now - new Date(uploadedAt).getTime() > FACEBOOK_PHOTO_MAX_AGE_MS) {
+    photoIds = [];
+    uploadedAt = undefined;
+  }
+
   for (let i = photoIds.length; i < input.imageUrls.length; i++) {
     const body = new URLSearchParams({ url: input.imageUrls[i], published: "false", access_token: input.accessToken });
     const res = await input.post({
@@ -303,31 +360,14 @@ export async function publishFacebookCarousel(input: CarouselInput & { pageId: s
     const id = res.raw?.id;
     if (!id) return fail("no_photo_id", "Upload de uma imagem do carrossel não retornou id.");
     photoIds.push(id);
-    await savePending(input, { photo_ids: [...photoIds] });
-  }
-
-  // Uma tentativa anterior chegou a pedir o post e ficou sem resposta
-  // conclusiva: antes de pedir de novo, confere se ele já está na Página.
-  const attemptedBefore = input.pending?.publish_attempted_at;
-  if (attemptedBefore) {
-    const existing = await findExistingFacebookPost(input, base, photoIds, attemptedBefore);
-    if (existing.kind === "simulated") return simulated();
-    if (existing.kind === "found") {
-      return { success: true, simulated: false, platformPostId: existing.postId, platformResponse: { reconciled: true, reason: "post_already_created", id: existing.postId, images: photoIds.length } };
-    }
-    if (existing.kind === "unknown") {
-      return fail(
-        "facebook_publish_unconfirmed",
-        `Não foi possível confirmar se o post da tentativa anterior foi criado (${describeFailure(existing.failure)}). Confira a Página antes de reprocessar.`,
-        existing.failure.retryable,
-      );
-    }
+    uploadedAt ??= new Date(now).toISOString();
+    await savePending(input, { photo_ids: [...photoIds], photos_uploaded_at: uploadedAt, ...(attemptedBefore ? { publish_attempted_at: attemptedBefore } : {}) });
   }
 
   // Marca a tentativa ANTES de pedir o post. Sem conseguir gravar, não pede:
   // uma resposta perdida viraria post duplicado na tentativa seguinte.
-  const attemptedAt = (input.now?.() ?? new Date()).toISOString();
-  if (!(await savePending(input, { photo_ids: [...photoIds], publish_attempted_at: attemptedAt }))) {
+  const attemptedAt = new Date(now).toISOString();
+  if (!(await savePending(input, { photo_ids: [...photoIds], photos_uploaded_at: uploadedAt, publish_attempted_at: attemptedAt }))) {
     return fail("pending_save_failed", "Não foi possível registrar a tentativa de publicação. Uma nova tentativa será feita.", true);
   }
 
@@ -350,9 +390,11 @@ export async function publishFacebookCarousel(input: CarouselInput & { pageId: s
   if (isSimulation(res)) return simulated();
   if (isFailure(res)) {
     // Recusa definitiva da Meta (4xx): o post não foi criado; libera a marca.
-    if (!res.retryable && res.externalRequestSent) await savePending(input, { photo_ids: [...photoIds], publish_attempted_at: null });
+    // Rede, 5xx e 429 mantêm a marca: a próxima tentativa confere antes.
+    if (!res.retryable && res.externalRequestSent) await savePending(input, { photo_ids: [...photoIds], photos_uploaded_at: uploadedAt, publish_attempted_at: null });
     return fail(`publish_error_${res.status ?? "network"}`, describeFailure(res), res.retryable);
   }
+  // 200 sem id: o post pode existir. A marca fica; reprocessar confere a Página.
   if (!res.externalId) return fail("no_post_id", "A Meta respondeu sem o id do post. Confira a Página antes de reprocessar.");
   return { success: true, simulated: false, platformPostId: res.externalId, platformResponse: { id: res.raw?.id ?? null, images: photoIds.length } };
 }

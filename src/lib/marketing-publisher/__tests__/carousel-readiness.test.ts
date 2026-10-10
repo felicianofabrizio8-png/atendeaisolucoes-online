@@ -118,7 +118,7 @@ describe("ligação das regras ao agendamento e ao publicador", () => {
   it("o agendamento confere o carrossel depois da chave e antes de gravar, restrito à empresa", () => {
     const source = read("src/lib/marketing/marketing.functions.ts");
     const fn = source.slice(source.indexOf("export const scheduleMarketingContent"), source.indexOf("export async function carouselScheduleProblem"));
-    const order = ["!isCarouselPublishEnabled()", "carouselScheduleProblem(supabase, companyId, content, data.channel)", '.from("marketing_schedule")'].map((s) => fn.indexOf(s));
+    const order = ["!isCarouselPublishEnabled(companyId)", "carouselScheduleProblem(supabase, companyId, content, data.channel)", '.from("marketing_schedule")'].map((s) => fn.indexOf(s));
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     const helper = source.slice(source.indexOf("export async function carouselScheduleProblem"), source.indexOf("export async function assertFacebookPublishAllowed"));

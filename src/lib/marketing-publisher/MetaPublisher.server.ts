@@ -106,7 +106,7 @@ export class MetaPublisher {
 
       // Carrossel: fluxo próprio (várias imagens), desligado por padrão.
       if (input.format === "carousel") {
-        if (!isCarouselPublishEnabled()) return this.fail("carousel_publish_disabled", CAROUSEL_PUBLISH_DISABLED_MESSAGE, false);
+        if (!isCarouselPublishEnabled(input.companyId)) return this.fail("carousel_publish_disabled", CAROUSEL_PUBLISH_DISABLED_MESSAGE, false);
         return await this.publishCarousel(input, content, this.buildCaption(content));
       }
 

@@ -2,7 +2,7 @@
 // Cada canal vira um agendamento próprio, então o envio, o erro e a situação
 // de um canal não dependem do outro.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiListPublishSchedule, apiScheduleContent } from "@/data/marketingRepo";
@@ -86,6 +86,9 @@ export function PublishNowDialog({
   const [results, setResults] = useState<Partial<Record<PublishChannel, ChannelResult>>>({});
   const [history, setHistory] = useState<Partial<Record<PublishChannel, MarketingScheduleRow>>>({});
   const [busy, setBusy] = useState(false);
+  // Trava imediata: dois cliques seguidos chegam antes de a tela redesenhar
+  // o botão desabilitado. (O servidor também recusa o pedido repetido.)
+  const sending = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -101,10 +104,16 @@ export function PublishNowDialog({
   const chosen = PUBLISH_CHANNELS.filter((c) => selected[c] && results[c]?.state !== "queued");
 
   async function confirm() {
-    if (chosen.length === 0) return;
+    if (chosen.length === 0 || sending.current) return;
+    sending.current = true;
     setBusy(true);
-    const out = await publishToChannels(row.id, chosen, deps.schedule, (channel, result) => setResults((cur) => ({ ...cur, [channel]: result })));
-    setBusy(false);
+    let out: Partial<Record<PublishChannel, ChannelResult>>;
+    try {
+      out = await publishToChannels(row.id, chosen, deps.schedule, (channel, result) => setResults((cur) => ({ ...cur, [channel]: result })));
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
     const queued = Object.values(out).some((r) => r?.state === "queued");
     if (queued) onDone?.();
     if (Object.values(out).every((r) => r?.state === "queued")) onClose();

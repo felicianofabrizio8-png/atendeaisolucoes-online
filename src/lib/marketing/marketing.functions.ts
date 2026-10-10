@@ -13,6 +13,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { missingMediaMessage, publishableMediaSource } from "./publishable-media";
 import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "@/lib/marketing-publisher/carousel-flag";
+import { duplicateMessage, findDuplicateSchedule, type ScheduleSibling } from "@/lib/marketing-publisher/publish-dedupe";
 import {
   carouselContentProblem,
   carouselImagesProblem,
@@ -630,7 +631,7 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     }
     // Carrossel: a publicação automática fica desligada até ser liberada
     // (sem isto o agendamento seria aceito e falharia na hora de publicar).
-    if (content.format === "carousel" && !isCarouselPublishEnabled()) {
+    if (content.format === "carousel" && !isCarouselPublishEnabled(companyId)) {
       throw new Error(CAROUSEL_PUBLISH_DISABLED_MESSAGE);
     }
     // Carrossel só entra na fila se puder ser publicado: imagens em dia com
@@ -655,6 +656,23 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
         throw new Error(readiness.message);
       }
     }
+    // Clique repetido: o mesmo conteúdo, no mesmo canal, quase no mesmo
+    // horário (ou ainda em andamento, para "publicar agora") é o mesmo pedido.
+    const canal = data.channel === "instagram" ? "Instagram" : data.channel === "facebook" ? "Facebook" : "WhatsApp";
+    const siblings = async (): Promise<ScheduleSibling[]> => {
+      const { data: rows, error: sErr } = await supabase
+        .from("marketing_schedule")
+        .select("id, status, scheduled_at, created_at")
+        .eq("company_id", companyId)
+        .eq("content_id", data.content_id)
+        .eq("channel", data.channel)
+        .in("status", ["planned", "queued", "published"]);
+      if (sErr) throw new Error(sErr.message);
+      return (rows ?? []) as ScheduleSibling[];
+    };
+    const before = findDuplicateSchedule({ scheduled_at: data.scheduled_at }, await siblings(), { mode: "request" });
+    if (before) throw new Error(duplicateMessage(canal, before));
+
     const { data: row, error } = await supabase
       .from("marketing_schedule")
       .insert({
@@ -668,6 +686,15 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+
+    // Pedidos simultâneos passam juntos pela conferência acima. Depois de
+    // gravar, cada um confere de novo: só o primeiro da ordem segue; o outro
+    // cancela o próprio agendamento. (A fila repete a conferência.)
+    const after = findDuplicateSchedule({ id: row.id, scheduled_at: row.scheduled_at, created_at: row.created_at }, await siblings(), { mode: "request" });
+    if (after) {
+      await supabase.from("marketing_schedule").update({ status: "cancelled" }).eq("id", row.id).eq("company_id", companyId).eq("status", "planned");
+      throw new Error(duplicateMessage(canal, after));
+    }
     return row;
   });
 

@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { PublisherRepository } from "./PublisherRepository.server";
 import type { PublicationChannel, PublicationFormat } from "./types";
 import { isCarouselPublishEnabled } from "./carousel-flag";
+import { findDuplicateSchedule, type ScheduleSibling } from "./publish-dedupe";
 import {
   resolveCampaignFormats,
   roleFromContentFormat,
@@ -37,11 +38,15 @@ export class PublisherPlanner {
     const q = await admin
       .from("marketing_schedule")
       .select(
-        "id, company_id, content_id, channel, scheduled_at, status, created_by, marketing_contents!inner(id, status, format, channel, campaign_id, ai_prompt)",
+        "id, company_id, content_id, channel, scheduled_at, created_at, status, created_by, marketing_contents!inner(id, status, format, channel, campaign_id, ai_prompt)",
       )
       .in("status", ["planned"])
       .lte("scheduled_at", nowIso)
+      // Ordem estável: a conferência de repetição depende de todos os
+      // processos verem os agendamentos na mesma sequência.
       .order("scheduled_at", { ascending: true })
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .limit(limit);
 
     const rows = (q.data ?? []) as Array<{
@@ -50,6 +55,7 @@ export class PublisherPlanner {
       content_id: string;
       channel: string;
       scheduled_at: string;
+      created_at: string;
       status: string;
       created_by: string | null;
       marketing_contents: {
@@ -69,7 +75,7 @@ export class PublisherPlanner {
       // Carrossel só entra na fila com a publicação de carrossel ligada.
       const mappedFormat: PublicationFormat | null =
         s.marketing_contents?.format === "carousel"
-          ? isCarouselPublishEnabled()
+          ? isCarouselPublishEnabled(s.company_id)
             ? "carousel"
             : null
           : (FORMAT_MAP[s.marketing_contents?.format ?? ""] ?? null);
@@ -121,6 +127,21 @@ export class PublisherPlanner {
         }),
       );
 
+      // Clique repetido / pedidos simultâneos: o mesmo conteúdo, no mesmo
+      // canal, quase no mesmo horário, vira UMA publicação.
+      const duplicateOf = await this.findDuplicate(s);
+      if (duplicateOf) {
+        // eslint-disable-next-line no-console
+        console.info("[marketing-publisher] duplicate_schedule_cancelled", {
+          schedule_id: s.id,
+          duplicate_of: duplicateOf.id,
+          company_id: s.company_id,
+          channel: s.channel,
+        });
+        await admin.from("marketing_schedule").update({ status: "cancelled" }).eq("id", s.id).eq("company_id", s.company_id).eq("status", "planned");
+        continue;
+      }
+
       const row = await this.repo.materialize({
         companyId: s.company_id,
         scheduleId: s.id,
@@ -141,5 +162,19 @@ export class PublisherPlanner {
       }
     }
     return created;
+  }
+
+  /** Outro agendamento do mesmo conteúdo e canal (da mesma empresa) que torna este uma repetição. */
+  private async findDuplicate(s: { id: string; company_id: string; content_id: string; channel: string; scheduled_at: string; created_at: string }): Promise<ScheduleSibling | null> {
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any };
+    const q = await admin
+      .from("marketing_schedule")
+      .select("id, status, scheduled_at, created_at")
+      .eq("company_id", s.company_id)
+      .eq("content_id", s.content_id)
+      .eq("channel", s.channel)
+      .in("status", ["planned", "queued", "published"])
+      .neq("id", s.id);
+    return findDuplicateSchedule(s, (q.data ?? []) as ScheduleSibling[], { mode: "materialize" });
   }
 }
