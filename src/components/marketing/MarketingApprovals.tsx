@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Film,
+  Images,
   Play,
   MoreHorizontal,
 } from "lucide-react";
@@ -41,6 +42,8 @@ import type {
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
 import { RENDER_STALL_MESSAGE, isActiveMarketingRenderStatus, resolveMarketingRenderState, type MarketingRenderState } from "@/lib/marketing/render-status";
 import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import { StudioDialog, type StudioSession } from "@/components/marketing/studio/StudioDialog";
+import { documentFromContentRow, studioKindOf } from "@/lib/marketing/studio/content-mapping";
 import { campaignImageRefs, resolveCampaignMedia } from "@/lib/marketing/campaign-media";
 import { missingMediaMessage, publishableMediaSource, renderedVideoIdFor } from "@/lib/marketing/publishable-media";
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
@@ -111,6 +114,12 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
   const [editorRow, setEditorRow] = useState<MarketingContentRow | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
   const [editorImageSequence, setEditorImageSequence] = useState<CampaignEditorImage[]>([]);
+  // ----- Estúdio Criativo (carrossel e arte) -----
+  const [studioSession, setStudioSession] = useState<StudioSession | null>(null);
+  function openStudio(row: MarketingContentRow) {
+    const document = documentFromContentRow(row);
+    if (document && studioKindOf(row)) setStudioSession({ key: `${row.id}-${Date.now()}`, document, contentId: row.id, caption: row.body ?? "" });
+  }
   const { trackCampaign, campaigns, refresh: refreshTracked } = useCampaignRenderTracker();
   // Guarda campanhas cujo render completou para auto-refresh.
   const seenDoneRef = useRef<Set<string>>(new Set());
@@ -518,6 +527,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
               renderState={c.campaign_id ? renderStates[c.campaign_id]?.[c.campaign_role === "story" ? "story" : "feed"] ?? null : null}
               onRetryRender={() => void retryRender(c)}
               onOpenVideoEditor={() => void openVideoEditor(c)}
+              onOpenStudio={studioKindOf(c) ? () => openStudio(c) : undefined}
               onViewVideo={async () => {
                 // O vídeo renderizado fica em `video_library` (bucket video-library),
                 // não no acervo de mídias: o link vem do servidor, restrito à empresa.
@@ -606,6 +616,8 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
         </div>
       )}
 
+      <StudioDialog companyId={companyId} session={studioSession} onClose={() => setStudioSession(null)} onSaved={() => void refresh()} />
+
       <Dialog
         open={!!editorCampaignId}
         onOpenChange={(o) => {
@@ -658,6 +670,7 @@ function ContentCard({
   row,
   editing,
   onEdit,
+  onOpenStudio,
   onCancelEdit,
   onSave,
   onApprove,
@@ -684,6 +697,8 @@ function ContentCard({
   onSchedule: () => void;
   onPublishNow: () => void;
   onOpenVideoEditor: () => void;
+  /** Conteúdo criado no Estúdio Criativo: reabre o carrossel ou a arte. */
+  onOpenStudio?: () => void;
   onViewVideo: () => void;
   tracked: import("@/lib/marketing/useCampaignRenderTracker").TrackedCampaign | null;
   renderState: MarketingRenderState | null;
@@ -843,7 +858,8 @@ function ContentCard({
               <DropdownMenuContent align="end">
                 {isVideo && videoReady && <DropdownMenuItem onSelect={onViewVideo}><Play className="h-4 w-4 mr-2" /> Ver vídeo</DropdownMenuItem>}
                 {isVideo && videoReady && <DropdownMenuItem onSelect={onOpenVideoEditor} disabled={isRendering}><Film className="h-4 w-4 mr-2" /> Editar vídeo de novo</DropdownMenuItem>}
-                {!isVideo && <DropdownMenuItem onSelect={onEdit}>Editar texto</DropdownMenuItem>}
+                {onOpenStudio && <DropdownMenuItem onSelect={onOpenStudio}><Images className="h-4 w-4 mr-2" /> Editar no estúdio</DropdownMenuItem>}
+                {!isVideo && <DropdownMenuItem onSelect={onEdit}>{onOpenStudio ? "Editar legenda" : "Editar texto"}</DropdownMenuItem>}
                 {row.status === "draft" && <DropdownMenuItem onSelect={onMarkPending} disabled={busy}><Send className="h-4 w-4 mr-2" /> Enviar para revisão</DropdownMenuItem>}
                 {row.status !== "rejected" && <DropdownMenuItem onSelect={onReject} disabled={busy} className="text-destructive"><XCircle className="h-4 w-4 mr-2" /> Rejeitar</DropdownMenuItem>}
               </DropdownMenuContent>

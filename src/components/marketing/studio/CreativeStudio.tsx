@@ -15,9 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ImagePlus, Images, LayoutTemplate, Loader2, Palette, RotateCcw, Save, SlidersHorizontal, Trash2, Type } from "lucide-react";
+import { CheckCircle2, Download, ImagePlus, Images, LayoutTemplate, Loader2, Palette, RotateCcw, Save, SlidersHorizontal, Trash2, Type } from "lucide-react";
 import { toast } from "sonner";
-import { apiSaveStudioContent, campaignMediaDeps } from "@/data/marketingRepo";
+import { apiRegisterMedia, apiSaveStudioContent, campaignMediaDeps, uploadMarketingFile } from "@/data/marketingRepo";
+import { EXPORT_ERROR_MESSAGE, downloadBlob, exportFileName, renderPageImage, type RenderPageInput, type RenderedPage } from "@/lib/marketing/studio/export-image";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 import type { Anchor, TemplateId, VideoLayout } from "@/lib/marketing/video-editor/layout.types";
 import type { ColorRole, SceneDefinition } from "@/lib/marketing/video-editor/scene.types";
@@ -67,9 +68,10 @@ interface Props {
   /** Só para testes e para a página de validação visual. */
   mediaDeps?: MediaResolverDeps;
   logoUrl?: string | null;
+  renderPage?: (input: RenderPageInput) => Promise<RenderedPage>;
 }
 
-export function CreativeStudio({ companyId, initial, contentId: initialContentId = null, initialCaption = "", onSaved, mediaDeps = campaignMediaDeps, logoUrl: logoUrlOverride }: Props) {
+export function CreativeStudio({ companyId, initial, contentId: initialContentId = null, initialCaption = "", onSaved, mediaDeps = campaignMediaDeps, logoUrl: logoUrlOverride, renderPage = renderPageImage }: Props) {
   const [doc, setDoc] = useState<StudioDocument>(initial);
   const [pageId, setPageId] = useState(initial.pages[0].id);
   const [contentId, setContentId] = useState<string | null>(initialContentId);
@@ -80,6 +82,11 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(!initialContentId);
   const [picking, setPicking] = useState(false);
+  /** Exportação em andamento: "download" ou "finish", com a página atual. */
+  const [exporting, setExporting] = useState<{ mode: "download" | "finish"; done: number; total: number } | null>(null);
+  /** As imagens finais no acervo correspondem ao documento atual. */
+  const [finished, setFinished] = useState(false);
+  const [finishing, setFinishing] = useState(false);
 
   const page = doc.pages.find((p) => p.id === pageId) ?? doc.pages[0];
   const pageIndex = doc.pages.indexOf(page);
@@ -89,6 +96,7 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
   const change = useCallback((next: (cur: StudioDocument) => StudioDocument) => {
     setDoc(next);
     setDirty(true);
+    setFinished(false);
   }, []);
   const changePage = useCallback((patch: (p: StudioPage) => StudioPage) => change((cur) => updatePage(cur, pageId, patch)), [change, pageId]);
   const setLayout = useCallback((next: VideoLayout) => changePage((p) => ({ ...p, layout: next })), [changePage]);
@@ -250,6 +258,102 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
     }
   }
 
+  // ------------------------------ Exportar ----------------------------------
+  function exportError(e: unknown) {
+    const code = e instanceof Error ? e.message : "";
+    toast.error(EXPORT_ERROR_MESSAGE[code] ?? "Não foi possível exportar. Tente novamente.");
+  }
+
+  /** Páginas que ainda esperam o link da foto não podem ser exportadas. */
+  function pagesNotReady(list: StudioPage[]): number[] {
+    return list.flatMap((p) => (p.image && !urlFor(p) ? [doc.pages.indexOf(p) + 1] : []));
+  }
+
+  async function renderPages(list: StudioPage[], mode: "download" | "finish", type: "png" | "jpeg"): Promise<RenderedPage[] | null> {
+    const waiting = pagesNotReady(list);
+    if (waiting.length > 0) {
+      toast.error(`A imagem da página ${waiting.join(", ")} ainda não carregou. Aguarde ou troque a imagem.`);
+      return null;
+    }
+    const out: RenderedPage[] = [];
+    setExporting({ mode, done: 0, total: list.length });
+    try {
+      for (const [i, p] of list.entries()) {
+        out.push(await renderPage({ page: p, format: doc.format, imageUrl: urlFor(p), logoUrl: p.layout.logo.visible === false ? null : logoUrl, type }));
+        setExporting({ mode, done: i + 1, total: list.length });
+      }
+      return out;
+    } catch (e) {
+      exportError(e);
+      return null;
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  /** Baixa a página atual (arte) ou todas (carrossel), sem salvar nada. */
+  async function handleDownload() {
+    const list = multi ? doc.pages : [page];
+    const rendered = await renderPages(list, "download", "png");
+    if (!rendered) return;
+    rendered.forEach((r, i) => downloadBlob(r.blob, exportFileName(doc.kind, i, rendered.length)));
+    toast.success(rendered.length > 1 ? `${rendered.length} imagens baixadas.` : "Imagem baixada.");
+  }
+
+  /**
+   * Conclui a peça: gera as imagens finais, guarda no acervo da empresa e
+   * vincula ao conteúdo (que continua rascunho, à espera de aprovação).
+   */
+  async function handleFinish() {
+    if (!doc.pages.some((p) => p.text.headline.trim() || p.image)) {
+      toast.error("Adicione uma imagem ou um título antes de concluir.");
+      return;
+    }
+    // JPEG: é o formato que Instagram e Facebook aceitam em publicações.
+    setFinishing(true);
+    const rendered = await renderPages(doc.pages, "finish", "jpeg");
+    if (!rendered) {
+      setFinishing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const ids: string[] = [];
+      for (const [i, r] of rendered.entries()) {
+        const name = exportFileName(doc.kind, i, rendered.length, "jpeg");
+        const path = await uploadMarketingFile(companyId, new File([r.blob], name, { type: r.mimeType }));
+        const media = await apiRegisterMedia({
+          storage_path: path,
+          media_type: "image",
+          mime_type: r.mimeType,
+          size_bytes: r.blob.size,
+          width: r.width,
+          height: r.height,
+          title: `${STUDIO_KINDS[doc.kind]}${rendered.length > 1 ? ` · página ${i + 1}` : ""}${doc.pages[i].text.headline ? ` — ${doc.pages[i].text.headline}` : ""}`.slice(0, 200),
+          tags: ["estúdio", doc.kind === "carousel" ? "carrossel" : "arte"],
+        });
+        ids.push(media.id);
+      }
+      const row = await apiSaveStudioContent({ id: contentId ?? undefined, document: doc, caption, exported_media_ids: ids });
+      setContentId(row.id);
+      setDirty(false);
+      setFinished(true);
+      toast.success(`${rendered.length > 1 ? "Imagens salvas" : "Imagem salva"} no acervo. O conteúdo está em Publicar, como rascunho.`);
+      onSaved?.(row);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "";
+      toast.error(
+        message === "studio_migration_pending"
+          ? "O banco de dados ainda não foi atualizado para o Estúdio Criativo. Peça ao administrador para aplicar a atualização."
+          : "As imagens foram geradas, mas não foi possível salvar no acervo. Tente novamente.",
+      );
+    } finally {
+      setSaving(false);
+      setFinishing(false);
+    }
+  }
+  const busy = saving || !!exporting;
+
   const properties = (
     <PropertiesPanel
       scene={scene}
@@ -299,9 +403,18 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
             <input type="checkbox" aria-label="Área segura" checked={showSafeArea} onChange={(e) => setShowSafeArea(e.target.checked)} className="accent-primary" />
             Área segura
           </label>
-          <Button onClick={() => void handleSave()} disabled={saving || !dirty} variant="outline">
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Salvar
+          <Button onClick={() => void handleDownload()} disabled={busy} variant="ghost" size="icon" aria-label={multi ? "Baixar as páginas em PNG" : "Baixar em PNG"} title={multi ? "Baixar as páginas em PNG" : "Baixar em PNG"}>
+            {exporting?.mode === "download" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          </Button>
+          <Button onClick={() => void handleSave()} disabled={busy || !dirty} variant="outline" aria-label="Salvar" title="Salvar rascunho">
+            {saving && !finishing ? <Loader2 className="h-4 w-4 animate-spin sm:mr-2" /> : <Save className="h-4 w-4 sm:mr-2" />}
+            <span className="hidden sm:inline">Salvar</span>
+          </Button>
+          <Button onClick={() => void handleFinish()} disabled={busy || finished} aria-label="Concluir">
+            {finishing ? <Loader2 className="h-4 w-4 animate-spin sm:mr-2" /> : <CheckCircle2 className="h-4 w-4 sm:mr-2" />}
+            <span className="hidden sm:inline">
+              {finishing ? (exporting ? `Gerando ${Math.min(exporting.done + 1, exporting.total)}/${exporting.total}` : "Salvando…") : finished ? "Concluído" : "Concluir"}
+            </span>
           </Button>
         </div>
       </div>
@@ -441,6 +554,7 @@ export function CreativeStudio({ companyId, initial, contentId: initialContentId
                 selected={selected}
                 onSelect={handleSelect}
                 onDragText={handleDragText}
+                emptyLabel={null}
               />
               {!page.image && (
                 <div className="absolute inset-x-0 top-[30%] z-[28] flex justify-center px-3">

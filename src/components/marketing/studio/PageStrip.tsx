@@ -57,6 +57,7 @@ export function PageStrip({ pages, format, selectedId, logoUrl, urlFor, onSelect
                   subheadline={page.text.subheadline || null}
                   cta={page.text.cta || null}
                   layout={page.layout}
+                  emptyLabel={null}
                 />
                 <span className="absolute left-0.5 top-0.5 z-30 rounded bg-black/65 px-1 text-[10px] font-semibold leading-4 text-white">{i + 1}</span>
               </button>

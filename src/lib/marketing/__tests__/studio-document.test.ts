@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -19,7 +19,8 @@ import {
   type StudioDocument,
 } from "../studio/document";
 import { contentFormatFor, contentTitleFor, documentFromContentRow, documentMediaIds, documentProductImages, studioKindOf } from "../studio/content-mapping";
-import { getScene } from "../video-editor/scenes/registry";
+import { SCENE_FORMATS, SCENE_LIST, buildSceneOverlaySvgWithMeta, getScene } from "../video-editor/scenes/registry";
+import { FONT_FACES, exportFileName, fontFacesInSvg, svgWithFonts } from "../studio/export-image";
 import type { MarketingContentRow } from "../marketing.types";
 
 const root = resolve(process.cwd());
@@ -225,6 +226,59 @@ describe("documento ↔ conteúdo", () => {
   it("página em branco usa o modelo pedido", () => {
     expect(blankPage("luxo").layout.template).toBe("luxo");
     expect(STUDIO_DOC_VERSION).toBe(1);
+  });
+});
+
+describe("exportação de imagem", () => {
+  it("as fontes embutidas são as mesmas da prévia (video-fonts.css) e existem em public/", () => {
+    const css = readFileSync(resolve(root, "src/components/marketing/campaign/editor/video-fonts.css"), "utf8");
+    const declared = css
+      .split("@font-face")
+      .slice(1)
+      .map((rule) => {
+        const family = rule.split('font-family: "')[1].split('"')[0];
+        const file = rule.split('url("/fonts/video/')[1].split('"')[0];
+        const weight = rule.split("font-weight: ")[1].split(";")[0];
+        return `${family}|${weight}|${file}`;
+      });
+    expect(declared).toHaveLength(9);
+    expect(FONT_FACES.map((f) => `${f.family}|${f.weight}|${f.file}`).sort()).toEqual([...declared].sort());
+    for (const face of FONT_FACES) expect(existsSync(resolve(root, "public/fonts/video", face.file))).toBe(true);
+  });
+
+  it("embute só as fontes que o desenho usa, logo após a abertura do SVG", () => {
+    const scene = getScene("oferta");
+    const svg = buildSceneOverlaySvgWithMeta({ width: 1080, height: 1350, scene, layout: scene.defaultLayout, content: { headline: "Oferta", supportingText: "Só hoje", ctaText: "Peça já" } }).svg;
+    const faces = fontFacesInSvg(svg);
+    expect(faces.length).toBeGreaterThan(0);
+    expect(faces.length).toBeLessThan(FONT_FACES.length);
+    const out = svgWithFonts(svg, faces.map((f) => ({ family: f.family, weight: f.weight, dataUri: "data:font/ttf;base64,AAAA" })));
+    expect(out.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"')).toBe(true);
+    expect(out.indexOf("<defs><style>@font-face")).toBe(out.indexOf(">") + 1);
+    for (const f of faces) expect(out).toContain(`font-family:"${f.family}"`);
+    // O desenho em si não muda.
+    const start = out.indexOf("<defs><style>@font-face");
+    const end = out.indexOf("</style></defs>", start) + "</style></defs>".length;
+    expect(out.slice(0, start) + out.slice(end)).toBe(svg);
+    expect(svgWithFonts(svg, [])).toBe(svg);
+  });
+
+  it("todo modelo, em todo formato, só usa fontes que a exportação sabe embutir", () => {
+    const known = new Set<string>(FONT_FACES.map((f) => f.family));
+    for (const scene of SCENE_LIST) {
+      for (const size of Object.values(SCENE_FORMATS)) {
+        const svg = buildSceneOverlaySvgWithMeta({ width: size.width, height: size.height, scene, layout: scene.defaultLayout, content: { headline: "Título", supportingText: "Apoio", ctaText: "Chamada" } }).svg;
+        expect(svg).toContain("font-family=");
+        expect(fontFacesInSvg(svg).length).toBeGreaterThan(0);
+        for (const part of svg.split('font-family="').slice(1)) expect(known.has(part.split('"')[0])).toBe(true);
+      }
+    }
+  });
+
+  it("nomes de arquivo previsíveis", () => {
+    expect(exportFileName("art", 0, 1)).toBe("arte.png");
+    expect(exportFileName("carousel", 1, 5)).toBe("carrossel-pagina-2.png");
+    expect(exportFileName("carousel", 0, 2, "jpeg")).toBe("carrossel-pagina-1.jpg");
   });
 });
 

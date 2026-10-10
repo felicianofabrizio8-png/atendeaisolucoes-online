@@ -62,6 +62,8 @@ interface Props {
   selected?: ScenePart | null;
   /** Torna textos e logo clicáveis na prévia. */
   onSelect?: (part: ScenePart) => void;
+  /** Aviso no quadro sem foto. null = só o fundo na cor do modelo (como na exportação). */
+  emptyLabel?: string | null;
   /** Arrastar o bloco de textos: deslocamento total do gesto, em % do quadro. */
   onDragText?: (dxPct: number, dyPct: number, phase: "move" | "end") => void;
 }
@@ -84,6 +86,7 @@ export const SceneRenderer = memo(function SceneRenderer({
   selected,
   onSelect,
   onDragText,
+  emptyLabel = "sem imagem",
 }: Props) {
   const idPrefix = useId();
   const { width: W, height: H } = SCENE_FORMATS[format];
@@ -196,8 +199,12 @@ export const SceneRenderer = memo(function SceneRenderer({
             onClick={onSelect ? () => onSelect("image") : undefined}
           />
         ) : (
-          <div key={layer.key} className="absolute inset-0 z-0 grid place-items-center text-xs text-white/60" style={layer.style}>
-            sem imagem
+          <div
+            key={layer.key}
+            className="absolute inset-0 z-0 grid place-items-center text-xs text-white/60"
+            style={emptyLabel === null ? { background: scene.palette.background, ...layer.style } : layer.style}
+          >
+            {emptyLabel}
           </div>
         ),
       )}
