@@ -53,7 +53,7 @@ RUN set -eux; \
     echo "signature[buildBrandOverlayChain]=$ffmpeg_count"; \
     test "$ffmpeg_count" -ge 1 || { echo "MISSING SIGNATURE: buildBrandOverlayChain (ffmpeg.js)"; exit 1; }; \
     node /app/dist/selfcheck.js; \
-    ffmpeg -hide_banner -h filter=xfade >/dev/null; \
+    ffmpeg -hide_banner -h filter=xfade >/dev/null;     for f in xfade gblur overlay fade; do       ffmpeg -hide_banner -filters 2>/dev/null | awk '{print $2}' | grep -qx "$f" || { echo "MISSING FFMPEG FILTER: $f"; exit 1; };       echo "ffmpeg_filter[$f]=ok";     done; \
     echo "=== IMAGE VERIFICATION OK ==="
 
 
