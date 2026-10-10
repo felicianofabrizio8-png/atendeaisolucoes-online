@@ -14,6 +14,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { KIND_PAGE_LIMITS, normalizeDocument, type StudioDocument } from "./document";
+import { getRecipe } from "./carousel-recipes";
+import { buildFacts, proposeCarousel, type ProposalProduct, type ProposalPromotion } from "./proposal";
 import { contentFormatFor, contentTitleFor, documentMediaIds, documentProductImages, studioKindOf } from "./content-mapping";
 
 type SB = SupabaseClient<Database>;
@@ -158,4 +160,95 @@ export const getStudioContent = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     if (!row) throw new Error("studio_content_not_found");
     return { content: row };
+  });
+
+// ------------------------------ Proposta a partir do cadastro ---------------
+
+/** Produtos e promoções da empresa que podem originar uma proposta. */
+export const listStudioSources = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const supabase = context.supabase as SB;
+    const companyId = await companyOf(supabase, context.userId);
+    const [products, promotions] = await Promise.all([
+      supabase.from("products").select("id, name").eq("company_id", companyId).eq("active", true).order("name").limit(300),
+      supabase.from("marketing_promotions").select("id, title, status").eq("company_id", companyId).neq("status", "ended").order("created_at", { ascending: false }).limit(100),
+    ]);
+    if (products.error) throw new Error(products.error.message);
+    if (promotions.error) throw new Error(promotions.error.message);
+    return {
+      products: (products.data ?? []).map((p) => ({ id: p.id, name: p.name })),
+      promotions: (promotions.data ?? []).map((p) => ({ id: p.id, title: p.title })),
+    };
+  });
+
+const ProposeInput = z
+  .object({
+    product_id: z.string().uuid().nullable().optional(),
+    promotion_id: z.string().uuid().nullable().optional(),
+    recipe: z.string().max(40).optional(),
+    format: z.enum(["portrait", "square"]).optional(),
+  })
+  .refine((v) => !!v.product_id || !!v.promotion_id, { message: "studio_proposal_needs_source" });
+
+/**
+ * Monta um carrossel proposto só com dados do cadastro da empresa (produto
+ * e/ou promoção). Não chama modelo de IA e não grava nada: devolve o
+ * documento para o usuário revisar no estúdio.
+ */
+export const proposeStudioCarousel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i: unknown) => ProposeInput.parse(i))
+  .handler(async ({ data, context }) => {
+    const supabase = context.supabase as SB;
+    const companyId = await companyOf(supabase, context.userId);
+
+    let promotion: ProposalPromotion | null = null;
+    if (data.promotion_id) {
+      const { data: row, error } = await supabase
+        .from("marketing_promotions")
+        .select("id, title, description, price_original, price_promo, discount_percent, ends_at, whatsapp_cta_text, cover_media_id, product_id")
+        .eq("id", data.promotion_id)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!row) throw new Error("studio_source_not_found");
+      promotion = row;
+      // A promoção pode apontar o produto; o pedido explícito tem prioridade.
+      if (!data.product_id && row.product_id) data.product_id = row.product_id;
+    }
+
+    let product: ProposalProduct | null = null;
+    if (data.product_id) {
+      const { data: row, error } = await supabase
+        .from("products")
+        .select("id, name, description, price, promo_price, included_items, images")
+        .eq("id", data.product_id)
+        .eq("company_id", companyId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!row) throw new Error("studio_source_not_found");
+      product = {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        promo_price: row.promo_price,
+        included_items: Array.isArray(row.included_items) ? row.included_items : [],
+        images: Array.isArray(row.images) ? (row.images as unknown[]).filter((x): x is string => typeof x === "string") : [],
+      };
+    }
+
+    const facts = buildFacts(product, promotion);
+    const document = proposeCarousel(facts, getRecipe(data.recipe ?? (promotion ? "oferta" : "produto")), data.format ?? "portrait");
+    // A capa da promoção precisa ser uma imagem ativa da empresa; senão sai da proposta.
+    try {
+      await assertDocumentImagesOwned(supabase, companyId, document);
+    } catch {
+      for (const page of document.pages) if (page.image?.origin === "marketing") page.image = null;
+    }
+    return {
+      document: document as unknown as Record<string, never>,
+      used: { has_price: !!(facts.priceNow || facts.priceFrom), has_discount: !!facts.discountPercent, images: facts.images.length },
+    };
   });

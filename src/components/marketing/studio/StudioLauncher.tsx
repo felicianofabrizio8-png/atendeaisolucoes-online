@@ -3,11 +3,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { GalleryHorizontalEnd, Image as ImageIcon, Loader2 } from "lucide-react";
-import { apiListContents } from "@/data/marketingRepo";
+import { GalleryHorizontalEnd, Image as ImageIcon, Loader2, Wand2 } from "lucide-react";
+import { apiListContents, apiListStudioSources, apiProposeStudioCarousel } from "@/data/marketingRepo";
+import { toast } from "sonner";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { documentFromContentRow, studioKindOf } from "@/lib/marketing/studio/content-mapping";
-import { STUDIO_KINDS, newDocument, type StudioKind } from "@/lib/marketing/studio/document";
+import { STUDIO_KINDS, newDocument, normalizeDocument, type StudioKind } from "@/lib/marketing/studio/document";
 import { CAROUSEL_RECIPES, buildCarousel, getRecipe } from "@/lib/marketing/studio/carousel-recipes";
 import { Chip, ChipRow } from "../ui/MarketingUi";
 import type { SceneFormat } from "@/lib/marketing/video-editor/scenes/registry";
@@ -31,6 +32,36 @@ export function StudioLauncher({ companyId }: Props) {
   const [failed, setFailed] = useState(false);
   const [recipeId, setRecipeId] = useState<string>(CAROUSEL_RECIPES[0].id);
   const recipe = getRecipe(recipeId);
+
+  // Proposta a partir do cadastro (produto e/ou promoção da empresa).
+  const [sources, setSources] = useState<{ products: Array<{ id: string; name: string }>; promotions: Array<{ id: string; title: string }> } | null>(null);
+  const [productId, setProductId] = useState("");
+  const [promotionId, setPromotionId] = useState("");
+  const [proposing, setProposing] = useState(false);
+  useEffect(() => {
+    apiListStudioSources()
+      .then(setSources)
+      .catch(() => setSources({ products: [], promotions: [] }));
+  }, []);
+
+  async function propose() {
+    setProposing(true);
+    try {
+      const res = await apiProposeStudioCarousel({ product_id: productId || null, promotion_id: promotionId || null, recipe: recipeId, format: "portrait" });
+      const document = normalizeDocument(res.document);
+      if (!document) throw new Error("invalid");
+      setSession({ key: `proposal-${Date.now()}`, document });
+      toast.info(
+        res.used.has_price
+          ? "Proposta montada com os dados do cadastro. Revise os textos antes de concluir."
+          : "Proposta montada com os dados do cadastro. Não há preço cadastrado, então nenhum preço foi incluído.",
+      );
+    } catch {
+      toast.error("Não foi possível montar a proposta. Verifique o produto ou a promoção e tente de novo.");
+    } finally {
+      setProposing(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -88,6 +119,41 @@ export function StudioLauncher({ companyId }: Props) {
             <div className="text-xs text-muted-foreground">{hint}</div>
           </button>
         ))}
+      </div>
+
+      <div className="rounded-xl border bg-card p-4" data-testid="studio-proposal">
+        <h3 className="text-sm font-semibold">Carrossel a partir do seu cadastro</h3>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Monta as páginas com o nome, a descrição, as fotos e o preço que já estão cadastrados. Nada é inventado: sem preço no cadastro, não aparece preço.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[180px] flex-1 text-xs">
+            <span className="mb-1 block font-medium">Produto</span>
+            <select aria-label="Produto" className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!sources}>
+              <option value="">{sources ? "Nenhum" : "Carregando…"}</option>
+              {sources?.products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="min-w-[180px] flex-1 text-xs">
+            <span className="mb-1 block font-medium">Promoção</span>
+            <select aria-label="Promoção" className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={promotionId} onChange={(e) => setPromotionId(e.target.value)} disabled={!sources}>
+              <option value="">{sources ? "Nenhuma" : "Carregando…"}</option>
+              {sources?.promotions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button onClick={() => void propose()} disabled={proposing || (!productId && !promotionId)}>
+            {proposing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+            Montar proposta
+          </Button>
+        </div>
       </div>
 
       <div>

@@ -2,7 +2,7 @@
 // - Chama server functions para toda mutação.
 // - Uploads passam pelo bucket privado `marketing-media` com prefixo por empresa.
 
-import { getStudioContent, saveStudioContent } from "@/lib/marketing/studio/studio.functions";
+import { getStudioContent, listStudioSources, proposeStudioCarousel, saveStudioContent } from "@/lib/marketing/studio/studio.functions";
 import type { StudioDocument } from "@/lib/marketing/studio/document";
 import { supabase } from "@/integrations/supabase/client";
 import { getSignedImageUrl, getSignedMediaUrl } from "@/lib/storage";
@@ -350,6 +350,20 @@ export async function apiSaveStudioContent(input: {
 }): Promise<MarketingContentRow> {
   const res = await saveStudioContent({ data: input });
   return res.content as unknown as MarketingContentRow;
+}
+
+export async function apiListStudioSources(): Promise<{ products: Array<{ id: string; name: string }>; promotions: Array<{ id: string; title: string }> }> {
+  return listStudioSources();
+}
+
+/** Proposta montada só com dados do cadastro (sem IA, sem gravar nada). */
+export async function apiProposeStudioCarousel(input: {
+  product_id?: string | null;
+  promotion_id?: string | null;
+  recipe?: string;
+  format?: "portrait" | "square";
+}): Promise<{ document: unknown; used: { has_price: boolean; has_discount: boolean; images: number } }> {
+  return proposeStudioCarousel({ data: input });
 }
 
 export async function apiGetStudioContent(id: string): Promise<MarketingContentRow> {
