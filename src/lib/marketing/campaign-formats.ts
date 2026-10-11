@@ -85,9 +85,16 @@ export function isRoleEnabled(resolved: ResolvedCampaignFormats, role: CampaignR
   return resolved.roles.includes(role);
 }
 
-/** Converte o formato de `marketing_contents.format` para role de campanha. */
+/**
+ * Converte o formato de `marketing_contents.format` para role de campanha.
+ * Só Feed e Story são linhas de campanha. Reel é conteúdo auxiliar (como o
+ * WhatsApp): não entra na escolha de formatos da campanha — antes era
+ * tratado como "feed" aqui, enquanto o vídeo dele é o vertical do Story
+ * (ver `renderedVideoIdFor`), e um Reel podia ser cancelado só porque a
+ * campanha foi criada sem Feed.
+ */
 export function roleFromContentFormat(format: string | null | undefined): CampaignRole | null {
-  if (format === "feed" || format === "reel") return "feed";
+  if (format === "feed") return "feed";
   if (format === "story") return "story";
   return null;
 }

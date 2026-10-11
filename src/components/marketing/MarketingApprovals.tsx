@@ -46,7 +46,7 @@ import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/mark
 import { StudioDialog, type StudioSession } from "@/components/marketing/studio/StudioDialog";
 import { documentFromContentRow, studioKindOf } from "@/lib/marketing/studio/content-mapping";
 import { campaignImageRefs, resolveCampaignMedia } from "@/lib/marketing/campaign-media";
-import { missingMediaMessage, publishableMediaSource, renderedVideoIdFor } from "@/lib/marketing/publishable-media";
+import { REEL_NEEDS_VIDEO_MESSAGE, REEL_SCRIPT_HINT, missingMediaMessage, publishableMediaSource, renderedVideoIdFor, videoRequirementStatus } from "@/lib/marketing/publishable-media";
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
 import { MediaThumb, type MediaPreview } from "./ui/MarketingUi";
 import { PublishNowDialog } from "./PublishNowDialog";
@@ -338,6 +338,10 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
       toast.error(formatChannelProblem(row.format, "instagram") ?? "Este conteúdo não pode ser publicado.");
       return;
     }
+    if (videoRequirementStatus(row) === "missing") {
+      toast.error(REEL_NEEDS_VIDEO_MESSAGE);
+      return;
+    }
     // O destino (Instagram, Facebook ou os dois) é escolhido no diálogo.
     setPublishFor(row);
   }
@@ -369,6 +373,10 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
     const targets = publishChannelsFor(row.format);
     if (targets.length === 0) {
       toast.error(formatChannelProblem(row.format, "instagram") ?? "Este conteúdo não pode ser agendado.");
+      return;
+    }
+    if (videoRequirementStatus(row) === "missing") {
+      toast.error(REEL_NEEDS_VIDEO_MESSAGE);
       return;
     }
     // Sempre resetar estado ao abrir para evitar `busy` preso de operação anterior.
@@ -688,6 +696,24 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
   );
 }
 
+function CopyTextButton({ text, label }: { text: string; label: string }) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="rounded-full"
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(text)
+          .then(() => toast.success("Texto copiado."))
+          .catch(() => toast.error("Não foi possível copiar o texto."));
+      }}
+    >
+      <Copy className="h-4 w-4 mr-1" /> {label}
+    </Button>
+  );
+}
+
 function ContentCard({
   row,
   editing,
@@ -744,6 +770,9 @@ function ContentCard({
 
   const isVideo = isVideoContent(row);
   const videoReady = hasRenderedVideo(row);
+  // Reel gerado como texto (sem campanha): é o roteiro, ainda sem vídeo.
+  // Com campanha, o fluxo de vídeo existente ("Editar vídeo") já cuida dele.
+  const reelScript = !isVideo && videoRequirementStatus(row) === "missing";
   // Job ativo mas parado (fila sem worker / worker que caiu) não é "gerando":
   // vira aviso com nova tentativa e libera a edição do vídeo.
   const renderStalled = isVideo && !videoReady && !!renderState?.stall;
@@ -760,6 +789,7 @@ function ContentCard({
         <span className="rounded-full bg-muted px-2 py-0.5 font-semibold">
           {FORMAT_LABEL[row.format] ?? row.format}
           {isVideo ? " · vídeo" : ""}
+          {reelScript ? " · roteiro (sem vídeo)" : ""}
         </span>
         <span className={`rounded-full px-2 py-0.5 font-semibold ${statusColor[row.status] ?? ""}`}>
           {STATUS_LABEL[row.status] ?? row.status}
@@ -854,6 +884,12 @@ function ContentCard({
             </p>
           )}
 
+          {reelScript && (
+            <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="reel-script-hint">
+              {REEL_SCRIPT_HINT}
+            </p>
+          )}
+
           <div className="flex items-center justify-end gap-2" data-testid="card-actions">
             {isVideo && !videoReady ? (
               <Button size="sm" className="rounded-full" onClick={onOpenVideoEditor} disabled={isRendering} title={isRendering ? "Aguarde a renderização terminar" : undefined}>
@@ -861,19 +897,10 @@ function ContentCard({
               </Button>
             ) : row.status === "approved" && publishChannelsFor(row.format).length === 0 ? (
               // Sem destino de publicação automática (ex.: mensagem de WhatsApp).
-              <Button
-                size="sm"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => {
-                  void navigator.clipboard
-                    ?.writeText(row.body ?? "")
-                    .then(() => toast.success("Texto copiado."))
-                    .catch(() => toast.error("Não foi possível copiar o texto."));
-                }}
-              >
-                <Copy className="h-4 w-4 mr-1" /> Copiar texto
-              </Button>
+              <CopyTextButton text={row.body ?? ""} label="Copiar texto" />
+            ) : row.status === "approved" && reelScript ? (
+              // Roteiro de Reel: sem vídeo não há o que publicar nem agendar.
+              <CopyTextButton text={row.body ?? ""} label="Copiar roteiro" />
             ) : row.status === "approved" ? (
               <>
                 <Button size="sm" variant="outline" className="rounded-full" onClick={onPublishNow} disabled={busy}>

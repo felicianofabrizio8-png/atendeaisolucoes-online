@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { apiListPublishSchedule, apiScheduleContent } from "@/data/marketingRepo";
 import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
 import { formatChannelProblem, publishChannelsFor, type PublishChannel } from "@/lib/marketing-publisher/publish-compat";
+import { REEL_NEEDS_VIDEO_MESSAGE, videoRequirementStatus } from "@/lib/marketing/publishable-media";
 
 export type { PublishChannel };
 export const PUBLISH_CHANNELS: PublishChannel[] = ["instagram", "facebook"];
@@ -82,7 +83,9 @@ export function PublishNowDialog({
   deps?: PublishNowDeps;
 }) {
   // Só os destinos compatíveis com o formato do conteúdo são oferecidos.
-  const available = publishChannelsFor(row.format);
+  // Reel sem vídeo é só o roteiro: nenhum destino até o vídeo existir.
+  const reelWithoutVideo = videoRequirementStatus(row) === "missing";
+  const available = reelWithoutVideo ? [] : publishChannelsFor(row.format);
   const [selected, setSelected] = useState<Record<PublishChannel, boolean>>({
     instagram: available.includes("instagram") && row.channel !== "facebook",
     facebook: available.includes("facebook") && row.channel === "facebook" && !facebookBlockedReason,
@@ -129,7 +132,7 @@ export function PublishNowDialog({
         <div className="font-semibold">Publicar agora</div>
         {available.length === 0 ? (
           <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">
-            {formatChannelProblem(row.format, "instagram")}
+            {reelWithoutVideo ? REEL_NEEDS_VIDEO_MESSAGE : formatChannelProblem(row.format, "instagram")}
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">Escolha onde publicar. Cada canal é enviado e acompanhado separadamente.</p>

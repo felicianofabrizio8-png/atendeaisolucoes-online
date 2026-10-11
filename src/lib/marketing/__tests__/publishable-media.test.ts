@@ -84,7 +84,8 @@ describe("validação no servidor e na tela usam a mesma regra", () => {
   it("a regra bate com a ordem real do publicador", () => {
     const publisher = read("src/lib/marketing-publisher/MetaPublisher.server.ts");
     const resolveMedia = publisher.slice(publisher.indexOf("private async resolvePrimaryMedia"), publisher.indexOf("private async isUrlAccessible"));
-    expect(resolveMedia).toContain('format === "feed" ? content.feed_video_id : content.story_video_id');
+    // A coluna do vídeo por formato vem da regra compartilhada, não de uma cópia local.
+    expect(resolveMedia).toContain("renderedVideoIdFor({ format, feed_video_id: content.feed_video_id, story_video_id: content.story_video_id })");
     const order = ['.from("video_library")', "content.media_ids.length > 0", "content.product_media_refs", "content.product_id"].map((s) => resolveMedia.indexOf(s));
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);

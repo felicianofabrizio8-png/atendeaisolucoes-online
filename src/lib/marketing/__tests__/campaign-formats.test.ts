@@ -62,7 +62,8 @@ describe("resolveCampaignFormats", () => {
   it("mapeia formato de conteúdo para role", () => {
     expect(roleFromContentFormat("feed")).toBe("feed");
     expect(roleFromContentFormat("story")).toBe("story");
-    expect(roleFromContentFormat("reel")).toBe("feed");
+    // Reel é auxiliar: não depende dos formatos escolhidos na campanha.
+    expect(roleFromContentFormat("reel")).toBeNull();
     expect(roleFromContentFormat("whatsapp_cta")).toBeNull();
   });
 

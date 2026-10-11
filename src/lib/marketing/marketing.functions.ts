@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
-import { missingMediaMessage, publishableMediaSource } from "./publishable-media";
+import { REEL_NEEDS_VIDEO_MESSAGE, missingMediaMessage, publishableMediaSource, renderedVideoIdFor, requiresVideo, videoRequirementStatus } from "./publishable-media";
 import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "@/lib/marketing-publisher/carousel-flag";
 import { duplicateMessage, findDuplicateSchedule, type ScheduleSibling } from "@/lib/marketing-publisher/publish-dedupe";
 import { formatChannelProblem } from "@/lib/marketing-publisher/publish-compat";
@@ -668,6 +668,11 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
         throw new Error(missingMediaMessage(content, data.channel === "instagram" ? "Instagram" : "Facebook"));
       }
     }
+    // Reel só com vídeo pronto — a mesma regra que o publicador aplica no envio.
+    if (requiresVideo(content.format) && (data.channel === "instagram" || data.channel === "facebook")) {
+      const problem = await reelVideoProblem(supabase, companyId, content);
+      if (problem) throw new Error(problem);
+    }
     // Guard: publicar no Facebook exige `pages_manage_posts` no token da
     // integração principal. Validamos aqui (leitura do snapshot persistido),
     // sem chamar a Meta.
@@ -718,6 +723,34 @@ export const scheduleMarketingContent = createServerFn({ method: "POST" })
     }
     return row;
   });
+
+/**
+ * Motivo (texto para o usuário) pelo qual um Reel não pode ser agendado, ou
+ * null. Confere no banco, restrito à empresa, que o vídeo existe de fato:
+ * o vídeo renderizado (ativo, na pasta da empresa) ou um vídeo ativo do
+ * acervo. O acesso ao arquivo é conferido pelo publicador na hora do envio.
+ */
+export async function reelVideoProblem(
+  sb: SB,
+  companyId: string,
+  content: { format?: string | null; media_ids?: string[] | null; feed_video_id?: string | null; story_video_id?: string | null },
+): Promise<string | null> {
+  const renderedId = renderedVideoIdFor(content);
+  if (renderedId) {
+    const { data: video, error } = await sb.from("video_library").select("id, is_active, file_path").eq("id", renderedId).eq("company_id", companyId).maybeSingle();
+    if (error) throw new Error(error.message);
+    const usable = !!video && video.is_active === true && typeof video.file_path === "string" && video.file_path.startsWith(`${companyId}/`);
+    return usable ? null : "O vídeo deste Reel não está mais disponível na biblioteca. Gere o vídeo novamente antes de publicar.";
+  }
+  const ids = Array.isArray(content.media_ids) ? content.media_ids.filter((id) => typeof id === "string") : [];
+  let types: string[] = [];
+  if (ids.length > 0) {
+    const { data: rows, error } = await sb.from("marketing_media").select("id, media_type, active, deleted_at").in("id", ids).eq("company_id", companyId);
+    if (error) throw new Error(error.message);
+    types = (rows ?? []).filter((m) => m.active && !m.deleted_at).map((m) => m.media_type as string);
+  }
+  return videoRequirementStatus(content, types) === "ready" ? null : REEL_NEEDS_VIDEO_MESSAGE;
+}
 
 /**
  * Motivo (texto para o usuário) pelo qual um carrossel não pode ser agendado
