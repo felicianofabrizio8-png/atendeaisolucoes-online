@@ -11,7 +11,10 @@ describe("mensagem respondida pelo cliente", () => {
 
   it("liga a pergunta ao produto da foto que o cliente respondeu", () => {
     const quoted = { text: "[imagem: Vestido Longo Azul]", source_metadata: { product_id: "p-azul" } };
-    const item = applyQuotedMessage({ role: "lead", text: "Qual o valor desse?" }, quoted);
+    const item = applyQuotedMessage<{ role: string; text: string; productIds?: string[] }>(
+      { role: "lead", text: "Qual o valor desse?" },
+      quoted,
+    );
     expect(item.productIds).toEqual(["p-azul"]);
     expect(item.text).toBe('[O cliente respondeu a esta mensagem: "[imagem: Vestido Longo Azul]"]\nQual o valor desse?');
   });
