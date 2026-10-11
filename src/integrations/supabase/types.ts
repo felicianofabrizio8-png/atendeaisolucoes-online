@@ -2765,6 +2765,7 @@ export type Database = {
           product_ids: string[]
           scope_id: string
           scope_type: string
+          seller_state: Json | null
           updated_at: string
         }
         Insert: {
@@ -2778,6 +2779,7 @@ export type Database = {
           product_ids?: string[]
           scope_id: string
           scope_type: string
+          seller_state?: Json | null
           updated_at?: string
         }
         Update: {
@@ -2791,6 +2793,7 @@ export type Database = {
           product_ids?: string[]
           scope_id?: string
           scope_type?: string
+          seller_state?: Json | null
           updated_at?: string
         }
         Relationships: [
@@ -2830,6 +2833,7 @@ export type Database = {
           lead_score: number
           lead_temperature: string | null
           purchase_timing: string | null
+          sales_agent_auto_reply: boolean
           unread: number
           updated_at: string
         }
@@ -2859,6 +2863,7 @@ export type Database = {
           lead_score?: number
           lead_temperature?: string | null
           purchase_timing?: string | null
+          sales_agent_auto_reply?: boolean
           unread?: number
           updated_at?: string
         }
@@ -2888,6 +2893,7 @@ export type Database = {
           lead_score?: number
           lead_temperature?: string | null
           purchase_timing?: string | null
+          sales_agent_auto_reply?: boolean
           unread?: number
           updated_at?: string
         }
@@ -3552,16 +3558,16 @@ export type Database = {
           company_id: string
           created_at: string
           created_by: string | null
-          design: Json | null
           cta_destination: string | null
           cta_text: string | null
+          design: Json | null
           duration_seconds: number | null
           feed_render_job_id: string | null
           feed_video_id: string | null
           format: Database["public"]["Enums"]["marketing_content_format"]
           hashtags: string[]
-          id: string
           hidden_from_publish: boolean
+          id: string
           media_ids: string[]
           overlay_approved_at: string | null
           overlay_cta: string | null
@@ -3598,14 +3604,15 @@ export type Database = {
           company_id: string
           created_at?: string
           created_by?: string | null
-          design?: Json | null
           cta_destination?: string | null
           cta_text?: string | null
+          design?: Json | null
           duration_seconds?: number | null
           feed_render_job_id?: string | null
           feed_video_id?: string | null
           format: Database["public"]["Enums"]["marketing_content_format"]
           hashtags?: string[]
+          hidden_from_publish?: boolean
           id?: string
           media_ids?: string[]
           overlay_approved_at?: string | null
@@ -3628,7 +3635,6 @@ export type Database = {
           updated_at?: string
           video_layout?: Json | null
           video_template?: string | null
-          hidden_from_publish?: boolean
         }
         Update: {
           ai_model?: string | null
@@ -3644,14 +3650,15 @@ export type Database = {
           company_id?: string
           created_at?: string
           created_by?: string | null
-          design?: Json | null
           cta_destination?: string | null
           cta_text?: string | null
+          design?: Json | null
           duration_seconds?: number | null
           feed_render_job_id?: string | null
           feed_video_id?: string | null
           format?: Database["public"]["Enums"]["marketing_content_format"]
           hashtags?: string[]
+          hidden_from_publish?: boolean
           id?: string
           media_ids?: string[]
           overlay_approved_at?: string | null
@@ -3674,7 +3681,6 @@ export type Database = {
           updated_at?: string
           video_layout?: Json | null
           video_template?: string | null
-          hidden_from_publish?: boolean
         }
         Relationships: [
           {
@@ -4460,6 +4466,7 @@ export type Database = {
           name: string
           sort_order: number
           updated_at: string
+          valid_until: string | null
         }
         Insert: {
           active?: boolean
@@ -4473,6 +4480,7 @@ export type Database = {
           name: string
           sort_order?: number
           updated_at?: string
+          valid_until?: string | null
         }
         Update: {
           active?: boolean
@@ -4486,6 +4494,7 @@ export type Database = {
           name?: string
           sort_order?: number
           updated_at?: string
+          valid_until?: string | null
         }
         Relationships: []
       }
@@ -7258,7 +7267,13 @@ export const Constants = {
         "perdido",
       ],
       marketing_content_channel: ["instagram", "facebook", "whatsapp"],
-      marketing_content_format: ["story", "feed", "reel", "whatsapp_cta", "carousel"],
+      marketing_content_format: [
+        "story",
+        "feed",
+        "reel",
+        "whatsapp_cta",
+        "carousel",
+      ],
       marketing_content_status: [
         "draft",
         "pending",
