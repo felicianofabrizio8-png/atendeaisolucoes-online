@@ -1,3 +1,5 @@
+import { MarketingArtwork } from "./MarketingArtwork";
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,11 +10,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   CheckCircle2,
   XCircle,
-  Loader2,
   Send,
   Calendar,
   AlertTriangle,
@@ -20,7 +22,7 @@ import {
   Film,
   Play,
 } from "lucide-react";
-import { toast } from "sonner";
+import { lumeToast as toast } from "./MarketingFeedback";
 import { openSettings } from "@/lib/settings-dialog";
 import {
   apiListContents,
@@ -31,10 +33,7 @@ import {
   apiFacebookPublishReadiness,
   urlForMarketingPath,
 } from "@/data/marketingRepo";
-import type {
-  MarketingContentRow,
-  MarketingMediaRow,
-} from "@/lib/marketing/marketing.types";
+import type { MarketingContentRow, MarketingMediaRow } from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
 import { CampaignVideoEditor } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
 import {
@@ -53,10 +52,7 @@ function hasRenderedVideo(row: MarketingContentRow): boolean {
 }
 
 function hasPendingRenderJob(row: MarketingContentRow): boolean {
-  return (
-    !hasRenderedVideo(row) &&
-    !!(row.feed_render_job_id || row.story_render_job_id)
-  );
+  return !hasRenderedVideo(row) && !!(row.feed_render_job_id || row.story_render_job_id);
 }
 
 interface Props {
@@ -64,11 +60,18 @@ interface Props {
 }
 
 type Filter = "all" | "draft" | "pending" | "approved" | "rejected";
+const contentStatusLabel: Record<string, string> = {
+  draft: "Rascunho",
+  pending: "Em revisão",
+  approved: "Aprovado",
+  rejected: "Rejeitado",
+  archived: "Arquivado",
+};
 
 export function MarketingApprovals({ companyId }: Props) {
   const [rows, setRows] = useState<MarketingContentRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>("draft");
+  const [filter, setFilter] = useState<Filter>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [scheduleFor, setScheduleFor] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState("");
@@ -150,17 +153,14 @@ export function MarketingApprovals({ companyId }: Props) {
     if (!fp) return null;
     return { x: fp.x, y: fp.y, zoom: fp.zoom ?? 1 };
   }, [editorContents]);
-  const [fbReadiness, setFbReadiness] = useState<
-    | null
-    | {
-        ok: boolean;
-        code: string;
-        message: string;
-        hasPagesManagePosts: boolean;
-        integrationChannel: string | null;
-        pageId: string | null;
-      }
-  >(null);
+  const [fbReadiness, setFbReadiness] = useState<null | {
+    ok: boolean;
+    code: string;
+    message: string;
+    hasPagesManagePosts: boolean;
+    integrationChannel: string | null;
+    pageId: string | null;
+  }>(null);
   const [fbReadinessLoading, setFbReadinessLoading] = useState(false);
 
   async function refreshFbReadiness() {
@@ -201,7 +201,16 @@ export function MarketingApprovals({ companyId }: Props) {
     [rows, filter],
   );
 
-  async function saveEdit(row: MarketingContentRow, patch: { body: string; title: string | null; hashtags: string[]; cta_text: string | null; cta_destination: string | null }) {
+  async function saveEdit(
+    row: MarketingContentRow,
+    patch: {
+      body: string;
+      title: string | null;
+      hashtags: string[];
+      cta_text: string | null;
+      cta_destination: string | null;
+    },
+  ) {
     setBusy(true);
     try {
       await apiUpdateContent({ id: row.id, ...patch });
@@ -215,11 +224,17 @@ export function MarketingApprovals({ companyId }: Props) {
     }
   }
 
-  async function setStatus(row: MarketingContentRow, status: "approved" | "rejected" | "pending", reason?: string) {
+  async function setStatus(
+    row: MarketingContentRow,
+    status: "approved" | "rejected" | "pending",
+    reason?: string,
+  ) {
     setBusy(true);
     try {
       await apiSetContentStatus({ id: row.id, status, rejection_reason: reason ?? null });
-      toast.success(`Conteúdo marcado como ${status}.`);
+      toast.success(
+        `Conteúdo marcado como ${contentStatusLabel[status].toLocaleLowerCase("pt-BR")}.`,
+      );
       await refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao alterar status.");
@@ -318,16 +333,32 @@ export function MarketingApprovals({ companyId }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        {(["draft", "pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
+      <div className="mkt-filter-bar flex items-center gap-2">
+        {(["all", "pending", "draft", "approved", "rejected"] as Filter[]).map((f) => (
           <button
             key={f}
+            aria-pressed={filter === f}
             onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-md text-xs font-medium border ${
               filter === f ? "bg-primary text-primary-foreground border-primary" : "bg-background"
             }`}
           >
-            {f === "all" ? "Todos" : f}
+            {
+              {
+                all: "Todos",
+                draft: "Rascunhos",
+                pending: "Em revisão",
+                approved: "Aprovados",
+                rejected: "Rejeitados",
+              }[f]
+            }
+            <span className="mkt-filter-count">
+              {loading
+                ? "—"
+                : f === "all"
+                  ? rows.length
+                  : rows.filter((row) => row.status === f).length}
+            </span>
           </button>
         ))}
         <Button variant="ghost" size="sm" onClick={() => void refresh()} className="ml-auto">
@@ -340,13 +371,18 @@ export function MarketingApprovals({ companyId }: Props) {
           role="alert"
           className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex items-start gap-3"
         >
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+          <AlertTriangle
+            className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
+            aria-hidden
+          />
           <div className="flex-1 space-y-1">
             <div className="font-semibold">Publicação no Facebook bloqueada</div>
             <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
             <div className="text-[11px] text-muted-foreground">
               Código: <code>{fbReadiness.code}</code>
-              {fbReadiness.integrationChannel ? ` · integração: ${fbReadiness.integrationChannel}` : ""}
+              {fbReadiness.integrationChannel
+                ? ` · integração: ${fbReadiness.integrationChannel}`
+                : ""}
               {fbReadiness.pageId ? ` · page_id: ${fbReadiness.pageId}` : ""}
             </div>
           </div>
@@ -362,18 +398,18 @@ export function MarketingApprovals({ companyId }: Props) {
         </div>
       ) : null}
 
-
-
       {loading ? (
         <div className="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+          <LumePulse className="h-4 w-4 animate-spin" /> Carregando…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nenhum conteúdo para este filtro.
+        <div className="mkt-empty-state">
+          <MarketingArtwork kind="prism" />
+          <h3>Um olhar antes de ir ao mundo.</h3>
+          <p>Nenhum conteúdo para este filtro. Suas criações aparecerão aqui para revisão.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="mkt-review-grid">
           {filtered.map((c) => (
             <ContentCard
               key={c.id}
@@ -402,73 +438,83 @@ export function MarketingApprovals({ companyId }: Props) {
                 if (url) window.open(url, "_blank", "noopener");
                 else toast.error("Não foi possível abrir o vídeo.");
               }}
-              tracked={c.campaign_id ? campaigns[c.campaign_id] ?? null : null}
+              tracked={c.campaign_id ? (campaigns[c.campaign_id] ?? null) : null}
               busy={busy}
             />
           ))}
         </div>
       )}
 
-      {scheduleFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-lg bg-card border p-4 space-y-3">
-            <div className="font-semibold">Agendar conteúdo</div>
-            <div>
-              <Label>Canal</Label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                value={scheduleChannel}
-                onChange={(e) => setScheduleChannel(e.target.value as typeof scheduleChannel)}
-              >
-                <option value="instagram">Instagram</option>
-                <option value="facebook">Facebook</option>
-                <option value="whatsapp">WhatsApp</option>
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="schedule-at-input">Data e hora</Label>
-              <Input
-                id="schedule-at-input"
-                type="datetime-local"
-                value={scheduleAt}
-                aria-invalid={scheduleAtError ? true : undefined}
-                aria-describedby={scheduleAtError ? "schedule-at-error" : undefined}
-                className={
-                  scheduleAtError
-                    ? "border-destructive focus-visible:ring-destructive"
-                    : undefined
-                }
-                onChange={(e) => {
-                  setScheduleAt(e.target.value);
-                  if (scheduleAtError) setScheduleAtError(null);
-                }}
-              />
-              {scheduleAtError && (
-                <p id="schedule-at-error" className="mt-1 text-xs text-destructive">
-                  {scheduleAtError}
-                </p>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Este agendamento é apenas planejamento. Publicação automática não faz parte da Fase 1.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => void schedule()}
-                disabled={busy}
-                aria-disabled={busy}
-                className={busy ? "cursor-not-allowed opacity-70" : undefined}
-              >
-                {busy && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-                {busy ? "Agendando…" : "Agendar"}
-              </Button>
-            </div>
+      <Dialog
+        open={!!scheduleFor}
+        onOpenChange={(open) => {
+          if (!open && !busy) closeSchedule();
+        }}
+      >
+        <DialogContent className="mkt-dialog w-full max-w-md p-6 space-y-3">
+          <DialogHeader>
+            <DialogTitle>Seu próximo encontro com o público.</DialogTitle>
+            <DialogDescription>
+              Agendar conteúdo: escolha o canal, a data e o horário.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="lume-schedule-art">
+            <MarketingArtwork kind="orbit" />
           </div>
-        </div>
-      )}
+          <div>
+            <Label htmlFor="lume-schedule-channel">Canal</Label>
+            <select
+              className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+              id="lume-schedule-channel"
+              value={scheduleChannel}
+              onChange={(e) => setScheduleChannel(e.target.value as typeof scheduleChannel)}
+            >
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="whatsapp">WhatsApp</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="schedule-at-input">Data e hora</Label>
+            <Input
+              id="schedule-at-input"
+              type="datetime-local"
+              value={scheduleAt}
+              aria-invalid={scheduleAtError ? true : undefined}
+              aria-describedby={scheduleAtError ? "schedule-at-error" : undefined}
+              className={
+                scheduleAtError ? "border-destructive focus-visible:ring-destructive" : undefined
+              }
+              onChange={(e) => {
+                setScheduleAt(e.target.value);
+                if (scheduleAtError) setScheduleAtError(null);
+              }}
+            />
+            {scheduleAtError && (
+              <p id="schedule-at-error" className="mt-1 text-xs text-destructive">
+                {scheduleAtError}
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Salve a data e o canal. Depois, acompanhe o conteúdo no calendário e em Publicações.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void schedule()}
+              disabled={busy}
+              aria-disabled={busy}
+              className={busy ? "cursor-not-allowed opacity-70" : undefined}
+            >
+              {busy && <LumePulse className="h-4 w-4 animate-spin mr-1" />}
+              {busy ? "Agendando…" : "Agendar"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!editorCampaignId}
@@ -476,13 +522,13 @@ export function MarketingApprovals({ companyId }: Props) {
           if (!o) closeVideoEditor();
         }}
       >
-        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto p-4">
+        <DialogContent className="mkt-dialog max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto p-4">
           <DialogHeader>
-            <DialogTitle>Editor Visual do Vídeo IA</DialogTitle>
+            <DialogTitle>Estúdio de vídeo com Lume</DialogTitle>
           </DialogHeader>
           {editorLoading ? (
             <div className="p-8 text-sm text-muted-foreground flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Carregando editor…
+              <LumePulse className="h-4 w-4 animate-spin" /> Carregando editor…
             </div>
           ) : editorCampaignId && editorContents.length > 0 ? (
             <CampaignVideoEditor
@@ -503,9 +549,7 @@ export function MarketingApprovals({ companyId }: Props) {
               }}
             />
           ) : (
-            <div className="p-6 text-sm text-muted-foreground">
-              Campanha não encontrada.
-            </div>
+            <div className="p-6 text-sm text-muted-foreground">Campanha não encontrada.</div>
           )}
         </DialogContent>
       </Dialog>
@@ -532,7 +576,13 @@ function ContentCard({
   editing: boolean;
   onEdit: () => void;
   onCancelEdit: () => void;
-  onSave: (p: { body: string; title: string | null; hashtags: string[]; cta_text: string | null; cta_destination: string | null }) => void;
+  onSave: (p: {
+    body: string;
+    title: string | null;
+    hashtags: string[];
+    cta_text: string | null;
+    cta_destination: string | null;
+  }) => void;
   onApprove: () => void;
   onReject: () => void;
   onMarkPending: () => void;
@@ -560,21 +610,29 @@ function ContentCard({
   const videoReady = hasRenderedVideo(row);
   // Considera "renderizando" também o estado global do tracker (recém-aprovado).
   const trackerRendering =
-    !!tracked && !tracked.done && (tracked.feed.status !== "idle" || tracked.story.status !== "idle");
+    !!tracked &&
+    !tracked.done &&
+    (tracked.feed.status !== "idle" || tracked.story.status !== "idle");
   const isRendering = isVideo && !videoReady && (hasPendingRenderJob(row) || trackerRendering);
   const trackerProgress = tracked
     ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0)
     : null;
 
   return (
-    <div className="rounded-lg border bg-card p-3 space-y-2">
-      <div className="flex items-center gap-2 text-xs">
+    <div
+      data-lume-light
+      className="mkt-review-card rounded-lg border bg-card p-3 space-y-2"
+      data-status={row.status}
+    >
+      <div className="mkt-review-meta flex items-center gap-2 text-xs">
         <span className="uppercase font-semibold rounded bg-primary/10 text-primary px-1.5 py-0.5">
           {row.format}
         </span>
         <span className="uppercase text-[10px] text-muted-foreground">{row.channel}</span>
-        <span className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}>
-          {row.status}
+        <span
+          className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}
+        >
+          {contentStatusLabel[row.status] ?? row.status}
         </span>
         {isVideo && (
           <span className="uppercase text-[10px] rounded bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 px-1.5 py-0.5">
@@ -630,16 +688,16 @@ function ContentCard({
         </div>
       ) : (
         <>
-          {row.title && <div className="font-medium text-sm">{row.title}</div>}
+          {row.title && <div className="mkt-review-title font-medium text-sm">{row.title}</div>}
           {isVideo && (row.overlay_headline || row.overlay_subheadline) ? (
             <div className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Overlay:</span>{" "}
+              <span className="font-medium text-foreground">Texto no vídeo:</span>{" "}
               {row.overlay_headline}
               {row.overlay_subheadline ? ` — ${row.overlay_subheadline}` : ""}
               {row.overlay_cta ? ` · ${row.overlay_cta}` : ""}
             </div>
           ) : null}
-          <div className="text-sm whitespace-pre-wrap">{row.body}</div>
+          <div className="mkt-review-body text-sm whitespace-pre-wrap">{row.body}</div>
           {row.hashtags?.length ? (
             <div className="text-xs text-muted-foreground">
               {row.hashtags.map((h) => `#${h.replace(/^#+/, "")}`).join(" ")}
@@ -647,14 +705,14 @@ function ContentCard({
           ) : null}
           {row.cta_text && (
             <div className="text-xs">
-              <strong>CTA:</strong> {row.cta_text}
+              <strong>Chamada:</strong> {row.cta_text}
               {row.cta_destination ? ` → ${row.cta_destination}` : ""}
             </div>
           )}
 
           {isVideo && isRendering && (
             <div className="rounded-md border border-dashed bg-muted/40 p-2 text-xs flex items-center gap-2">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <LumePulse className="h-3.5 w-3.5 animate-spin" />
               <span className="flex-1">
                 Gerando vídeo…
                 {typeof trackerProgress === "number" && trackerProgress > 0
@@ -664,7 +722,7 @@ function ContentCard({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2 justify-end">
+          <div className="mkt-review-actions flex flex-wrap gap-2 justify-end">
             {/* Ações específicas de vídeo */}
             {isVideo ? (
               <>
@@ -681,7 +739,7 @@ function ContentCard({
                   title={
                     isRendering
                       ? "Aguarde a renderização terminar"
-                      : "Abrir Editor Visual do Vídeo IA"
+                      : "Abrir Estúdio de vídeo com Lume"
                   }
                 >
                   <Film className="h-4 w-4 mr-1" />

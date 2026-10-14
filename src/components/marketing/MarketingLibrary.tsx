@@ -1,17 +1,10 @@
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Loader2,
-  Upload,
-  Trash2,
-  Image as ImageIcon,
-  Video,
-  Package,
-  Sparkles,
-  X,
-} from "lucide-react";
-import { toast } from "sonner";
+import { Upload, Trash2, Image as ImageIcon, Video, Package, Sparkles, X } from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
 import {
   apiListMedia,
   apiRegisterMedia,
@@ -54,12 +47,7 @@ interface UnifiedItem {
   raw: MarketingMediaRow | ProductImageItem;
 }
 
-export function MarketingLibrary({
-  companyId,
-  selectable,
-  selected = [],
-  onToggleSelect,
-}: Props) {
+export function MarketingLibrary({ companyId, selectable, selected = [], onToggleSelect }: Props) {
   const [marketingItems, setMarketingItems] = useState<MarketingMediaRow[]>([]);
   const [productImages, setProductImages] = useState<ProductImageItem[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -105,8 +93,7 @@ export function MarketingLibrary({
       // Resolve URLs for both sources in parallel.
       const mediaEntries = await Promise.all(
         mediaRows.map(
-          async (r) =>
-            [`m:${r.id}`, (await urlForMarketingPath(r.storage_path)) ?? ""] as const,
+          async (r) => [`m:${r.id}`, (await urlForMarketingPath(r.storage_path)) ?? ""] as const,
         ),
       );
       const productEntries = await Promise.all(
@@ -189,10 +176,7 @@ export function MarketingLibrary({
     }));
     const products: UnifiedItem[] = productImages.map((p) => {
       const key = `p:${p.productId}:${p.imagePath}`;
-      const tags = [
-        "produto",
-        ...(p.category ? [p.category] : []),
-      ];
+      const tags = ["produto", ...(p.category ? [p.category] : [])];
       return {
         key,
         origin: "product",
@@ -242,8 +226,23 @@ export function MarketingLibrary({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      {!selectable && (
+        <div className="mkt-upload-panel">
+          <ImageIcon />
+          <div>
+            <h3>Seu próximo conteúdo começa aqui.</h3>
+            <p>
+              Fotos até 15 MB · Vídeos até 50 MB · Imagens de produtos também ficam disponíveis.
+            </p>
+          </div>
+          <Button onClick={() => inputRef.current?.click()} disabled={uploading}>
+            <Upload size={16} /> Adicionar ao acervo
+          </Button>
+        </div>
+      )}
+      <div className="mkt-library-toolbar flex flex-wrap items-center gap-2">
         <Input
+          aria-label="Buscar no acervo"
           placeholder="Buscar por título, produto, categoria ou tag"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -285,7 +284,7 @@ export function MarketingLibrary({
           />
           <Button onClick={() => inputRef.current?.click()} disabled={uploading}>
             {uploading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              <LumePulse className="h-4 w-4 animate-spin mr-1" />
             ) : (
               <Upload className="h-4 w-4 mr-1" />
             )}
@@ -322,18 +321,26 @@ export function MarketingLibrary({
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        Centro de mídia unificado — imagens de produtos aparecem em somente leitura
-        e podem ser combinadas com fotos e vídeos do marketing. Nenhuma cópia é
-        duplicada.
+        Escolha fotos da biblioteca ou envie novas. Você também pode usar as imagens dos seus
+        produtos; elas são editadas no cadastro do produto.
       </p>
 
       {loading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+          <LumePulse className="h-4 w-4 animate-spin" /> Carregando…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          Nada por aqui. Envie fotos e vídeos ou cadastre produtos com imagens.
+        <div className="mkt-empty-state">
+          <MarketingArtwork kind="bloom" />
+          <h3>{unified.length ? "Vamos tentar outro olhar?" : "Dê espaço às suas imagens."}</h3>
+          <p>
+            {unified.length
+              ? "Nenhuma mídia corresponde à busca. Experimente outro nome ou filtro."
+              : "Envie fotos e vídeos ou use imagens do cadastro de produtos. Elas serão a matéria-prima das suas campanhas."}
+          </p>
+          <Button variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}>
+            <Upload size={15} /> Enviar fotos/vídeos
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -343,20 +350,37 @@ export function MarketingLibrary({
             return (
               <div
                 key={u.key}
-                className={`group relative rounded-lg border overflow-hidden bg-muted/30 ${
+                className={`mkt-media-tile group relative rounded-lg border overflow-hidden bg-muted/30 ${
                   selectable ? "cursor-pointer" : ""
                 } ${isSel ? "ring-2 ring-primary" : ""}`}
+                role={selectable ? "button" : undefined}
+                tabIndex={selectable ? 0 : undefined}
+                aria-pressed={selectable ? isSel : undefined}
+                aria-label={selectable ? `Selecionar ${u.title}` : undefined}
+                onKeyDown={(event) => {
+                  if (selectable && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    onToggleSelect?.(u.selection);
+                  }
+                }}
                 onClick={() => selectable && onToggleSelect?.(u.selection)}
               >
                 <div className="aspect-square bg-black/40 flex items-center justify-center">
                   {u.isVideo ? (
                     u.url ? (
-                      <video src={u.url} className="h-full w-full object-cover" muted />
+                      <video
+                        preload="metadata"
+                        src={u.url}
+                        className="h-full w-full object-cover"
+                        muted
+                      />
                     ) : (
                       <Video className="h-8 w-8 text-muted-foreground" />
                     )
                   ) : u.url ? (
                     <img
+                      loading="lazy"
+                      decoding="async"
                       src={u.url}
                       alt={u.title}
                       className="h-full w-full object-cover"
@@ -380,9 +404,7 @@ export function MarketingLibrary({
                   <div className="truncate font-medium">{u.title}</div>
                   <div className="text-muted-foreground truncate">
                     {u.subtitle}
-                    {u.sizeBytes
-                      ? ` · ${(u.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                      : ""}
+                    {u.sizeBytes ? ` · ${(u.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : ""}
                   </div>
                 </div>
                 {!selectable && isMarketing && (

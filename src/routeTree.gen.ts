@@ -83,11 +83,13 @@ import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
 import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
+import { Route as ApiDashboardAnalyzeRouteImport } from './routes/api.dashboard.analyze'
 import { Route as ApiCoachSuggestRouteImport } from './routes/api.coach.suggest'
 import { Route as ApiCoachAnalyzeRouteImport } from './routes/api.coach.analyze'
 import { Route as ApiBusinessLearningSnapshotRouteImport } from './routes/api.business-learning.snapshot'
 import { Route as ApiBusinessBrainSnapshotRouteImport } from './routes/api.business-brain.snapshot'
 import { Route as ApiAtendimentoFollowupRouteImport } from './routes/api.atendimento.followup'
+import { Route as ApiAtendimentoCopilotRouteImport } from './routes/api.atendimento.copilot'
 import { Route as ApiAiV2SuggestionRouteImport } from './routes/api.ai.v2-suggestion'
 import { Route as ApiAiTestNowRouteImport } from './routes/api.ai.test-now'
 import { Route as ApiAiSuggestReplyRouteImport } from './routes/api.ai.suggest-reply'
@@ -535,6 +537,11 @@ const ApiExecutiveNarrativeRoute = ApiExecutiveNarrativeRouteImport.update({
   path: '/api/executive/narrative',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDashboardAnalyzeRoute = ApiDashboardAnalyzeRouteImport.update({
+  id: '/api/dashboard/analyze',
+  path: '/api/dashboard/analyze',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCoachSuggestRoute = ApiCoachSuggestRouteImport.update({
   id: '/api/coach/suggest',
   path: '/api/coach/suggest',
@@ -560,6 +567,11 @@ const ApiBusinessBrainSnapshotRoute =
 const ApiAtendimentoFollowupRoute = ApiAtendimentoFollowupRouteImport.update({
   id: '/api/atendimento/followup',
   path: '/api/atendimento/followup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAtendimentoCopilotRoute = ApiAtendimentoCopilotRouteImport.update({
+  id: '/api/atendimento/copilot',
+  path: '/api/atendimento/copilot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAiV2SuggestionRoute = ApiAiV2SuggestionRouteImport.update({
@@ -807,11 +819,13 @@ export interface FileRoutesByFullPath {
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/ai/v2-suggestion': typeof ApiAiV2SuggestionRoute
+  '/api/atendimento/copilot': typeof ApiAtendimentoCopilotRoute
   '/api/atendimento/followup': typeof ApiAtendimentoFollowupRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
+  '/api/dashboard/analyze': typeof ApiDashboardAnalyzeRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
@@ -923,11 +937,13 @@ export interface FileRoutesByTo {
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/ai/v2-suggestion': typeof ApiAiV2SuggestionRoute
+  '/api/atendimento/copilot': typeof ApiAtendimentoCopilotRoute
   '/api/atendimento/followup': typeof ApiAtendimentoFollowupRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
+  '/api/dashboard/analyze': typeof ApiDashboardAnalyzeRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
@@ -1041,11 +1057,13 @@ export interface FileRoutesById {
   '/api/ai/suggest-reply': typeof ApiAiSuggestReplyRoute
   '/api/ai/test-now': typeof ApiAiTestNowRoute
   '/api/ai/v2-suggestion': typeof ApiAiV2SuggestionRoute
+  '/api/atendimento/copilot': typeof ApiAtendimentoCopilotRoute
   '/api/atendimento/followup': typeof ApiAtendimentoFollowupRoute
   '/api/business-brain/snapshot': typeof ApiBusinessBrainSnapshotRoute
   '/api/business-learning/snapshot': typeof ApiBusinessLearningSnapshotRoute
   '/api/coach/analyze': typeof ApiCoachAnalyzeRoute
   '/api/coach/suggest': typeof ApiCoachSuggestRoute
+  '/api/dashboard/analyze': typeof ApiDashboardAnalyzeRoute
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
@@ -1160,11 +1178,13 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
     | '/api/ai/v2-suggestion'
+    | '/api/atendimento/copilot'
     | '/api/atendimento/followup'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
+    | '/api/dashboard/analyze'
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
@@ -1276,11 +1296,13 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
     | '/api/ai/v2-suggestion'
+    | '/api/atendimento/copilot'
     | '/api/atendimento/followup'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
+    | '/api/dashboard/analyze'
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
@@ -1393,11 +1415,13 @@ export interface FileRouteTypes {
     | '/api/ai/suggest-reply'
     | '/api/ai/test-now'
     | '/api/ai/v2-suggestion'
+    | '/api/atendimento/copilot'
     | '/api/atendimento/followup'
     | '/api/business-brain/snapshot'
     | '/api/business-learning/snapshot'
     | '/api/coach/analyze'
     | '/api/coach/suggest'
+    | '/api/dashboard/analyze'
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
@@ -1506,11 +1530,13 @@ export interface RootRouteChildren {
   ApiAiSuggestReplyRoute: typeof ApiAiSuggestReplyRoute
   ApiAiTestNowRoute: typeof ApiAiTestNowRoute
   ApiAiV2SuggestionRoute: typeof ApiAiV2SuggestionRoute
+  ApiAtendimentoCopilotRoute: typeof ApiAtendimentoCopilotRoute
   ApiAtendimentoFollowupRoute: typeof ApiAtendimentoFollowupRoute
   ApiBusinessBrainSnapshotRoute: typeof ApiBusinessBrainSnapshotRoute
   ApiBusinessLearningSnapshotRoute: typeof ApiBusinessLearningSnapshotRoute
   ApiCoachAnalyzeRoute: typeof ApiCoachAnalyzeRoute
   ApiCoachSuggestRoute: typeof ApiCoachSuggestRoute
+  ApiDashboardAnalyzeRoute: typeof ApiDashboardAnalyzeRoute
   ApiExecutiveNarrativeRoute: typeof ApiExecutiveNarrativeRoute
   ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
@@ -2095,6 +2121,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiExecutiveNarrativeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/dashboard/analyze': {
+      id: '/api/dashboard/analyze'
+      path: '/api/dashboard/analyze'
+      fullPath: '/api/dashboard/analyze'
+      preLoaderRoute: typeof ApiDashboardAnalyzeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/coach/suggest': {
       id: '/api/coach/suggest'
       path: '/api/coach/suggest'
@@ -2128,6 +2161,13 @@ declare module '@tanstack/react-router' {
       path: '/api/atendimento/followup'
       fullPath: '/api/atendimento/followup'
       preLoaderRoute: typeof ApiAtendimentoFollowupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/atendimento/copilot': {
+      id: '/api/atendimento/copilot'
+      path: '/api/atendimento/copilot'
+      fullPath: '/api/atendimento/copilot'
+      preLoaderRoute: typeof ApiAtendimentoCopilotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ai/v2-suggestion': {
@@ -2457,11 +2497,13 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiSuggestReplyRoute: ApiAiSuggestReplyRoute,
   ApiAiTestNowRoute: ApiAiTestNowRoute,
   ApiAiV2SuggestionRoute: ApiAiV2SuggestionRoute,
+  ApiAtendimentoCopilotRoute: ApiAtendimentoCopilotRoute,
   ApiAtendimentoFollowupRoute: ApiAtendimentoFollowupRoute,
   ApiBusinessBrainSnapshotRoute: ApiBusinessBrainSnapshotRoute,
   ApiBusinessLearningSnapshotRoute: ApiBusinessLearningSnapshotRoute,
   ApiCoachAnalyzeRoute: ApiCoachAnalyzeRoute,
   ApiCoachSuggestRoute: ApiCoachSuggestRoute,
+  ApiDashboardAnalyzeRoute: ApiDashboardAnalyzeRoute,
   ApiExecutiveNarrativeRoute: ApiExecutiveNarrativeRoute,
   ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,

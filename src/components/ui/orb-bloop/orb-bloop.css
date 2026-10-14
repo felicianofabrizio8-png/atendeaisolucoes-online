@@ -1,0 +1,26 @@
+.lume-orb-fallback {
+  position: absolute;
+  inset: 8%;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #3b0764;
+}
+.lume-orb-fallback::before {
+  content: "";
+  position: absolute;
+  inset: -35%;
+  background:
+    radial-gradient(ellipse at 35% 30%, #e9d5ff, #a775ed 25%, transparent 55%),
+    conic-gradient(#581c87, #7e22ce, #c4a0f4, #3b0764, #581c87);
+  animation: lume-orb-flow 16s linear infinite;
+}
+@keyframes lume-orb-flow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lume-orb-fallback::before {
+    animation: none;
+  }
+}

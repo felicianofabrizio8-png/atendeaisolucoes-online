@@ -32,16 +32,8 @@ const FRAMES = [
   { label: "Story 9:16", ratio: 9 / 16 },
 ];
 
-export function FocalPointEditor({
-  open,
-  imageUrl,
-  initialFocal,
-  onCancel,
-  onSave,
-}: Props) {
-  const [focal, setFocal] = useState<FocalPointInput>(
-    initialFocal ?? { x: 0.5, y: 0.5, zoom: 1 },
-  );
+export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSave }: Props) {
+  const [focal, setFocal] = useState<FocalPointInput>(initialFocal ?? { x: 0.5, y: 0.5, zoom: 1 });
 
   // reset quando muda a imagem
   const keyRef = useRef(imageUrl);
@@ -65,12 +57,12 @@ export function FocalPointEditor({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="mkt-dialog max-w-3xl">
         <DialogHeader>
           <DialogTitle>Ajustar enquadramento</DialogTitle>
           <DialogDescription>
-            Clique e arraste sobre a imagem para escolher o ponto de foco. O
-            corte respeita esse ponto em todos os formatos.
+            Clique e arraste sobre a imagem para escolher o ponto de foco. O corte respeita esse
+            ponto em todos os formatos.
           </DialogDescription>
         </DialogHeader>
 

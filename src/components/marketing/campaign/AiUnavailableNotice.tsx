@@ -14,10 +14,7 @@ interface Props {
 
 export function AiUnavailableNotice({ kind, retrying, onRetry, onContinueManually }: Props) {
   return (
-    <div
-      role="alert"
-      className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 space-y-3"
-    >
+    <div role="alert" className="lume-error space-y-3">
       <div className="flex items-start gap-2">
         <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-600 shrink-0" />
         <div className="text-sm">

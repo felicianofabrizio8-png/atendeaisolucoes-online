@@ -1,3 +1,4 @@
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +9,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, RefreshCw, RotateCcw, ExternalLink, AlertCircle, History, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
+import {
+  RefreshCw,
+  RotateCcw,
+  ExternalLink,
+  AlertCircle,
+  History,
+  CheckCircle2,
+} from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
 import {
   listMarketingPublications,
   getPublisherStats,
@@ -61,7 +69,8 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
       setStats(s as PublisherStats & { scheduled: number });
       setPubs(p.publications as PublicationRow[]);
     } catch (e) {
-      if (!opts.silent) toast.error(e instanceof Error ? e.message : "Falha ao carregar publicações.");
+      if (!opts.silent)
+        toast.error(e instanceof Error ? e.message : "Falha ao carregar publicações.");
     } finally {
       if (!opts.silent) setLoading(false);
     }
@@ -97,26 +106,31 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div className="mkt-tool-toolbar flex items-center justify-between gap-2 flex-wrap">
         <div className="text-xs text-muted-foreground">
-          Publica automaticamente conteúdos aprovados e agendados. Nada é publicado sem aprovação humana.
+          Publica automaticamente conteúdos aprovados e agendados. Nada é publicado sem aprovação
+          humana.
         </div>
         <div className="flex items-center gap-2">
           <HistoryDialog />
           <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? "animate-spin" : ""}`} />
+            {loading ? (
+              <LumePulse className="h-4 w-4 mr-1" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1" />
+            )}
             Atualizar
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <StatCard label="Agendados" value={stats?.scheduled ?? 0} />
-        <StatCard label="Na fila" value={stats?.queued ?? 0} />
-        <StatCard label="Publicando" value={stats?.publishing ?? 0} />
-        <StatCard label="Publicados" value={stats?.published ?? 0} tone="success" />
-        <StatCard label="Falhas" value={stats?.failed ?? 0} tone="danger" />
-        <StatCard label="Cancelados" value={stats?.cancelled ?? 0} />
+        <StatCard label="Agendados" value={stats?.scheduled ?? null} />
+        <StatCard label="Na fila" value={stats?.queued ?? null} />
+        <StatCard label="Publicando" value={stats?.publishing ?? null} />
+        <StatCard label="Publicados" value={stats?.published ?? null} tone="success" />
+        <StatCard label="Falhas" value={stats?.failed ?? null} tone="danger" />
+        <StatCard label="Cancelados" value={stats?.cancelled ?? null} />
       </div>
 
       <Card>
@@ -126,7 +140,7 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
         <CardContent>
           {loading ? (
             <div className="text-xs text-muted-foreground flex items-center gap-2">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…
+              <LumePulse className="h-3.5 w-3.5 animate-spin" /> Carregando…
             </div>
           ) : operational.length === 0 ? (
             <div className="py-8 text-center space-y-1">
@@ -169,7 +183,7 @@ function PublicationItem({
   // Guarda: nunca oferecer reprocessar em publicação concluída ou já com platform_post_id.
   const showRetry = allowRetry && p.status === "failed" && !p.platform_post_id && !!onRetry;
   return (
-    <div className="py-3 flex items-start gap-3">
+    <div className="mkt-publication-row py-3 flex items-start gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span
@@ -209,7 +223,7 @@ function PublicationItem({
       {showRetry && (
         <Button variant="outline" size="sm" disabled={retrying} onClick={onRetry}>
           {retrying ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <LumePulse className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RotateCcw className="h-3.5 w-3.5 mr-1" />
           )}
@@ -256,25 +270,31 @@ function HistoryDialog() {
           Ver histórico
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="mkt-dialog max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-sm">Histórico de publicações</DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
           <select
+            aria-label="Filtrar histórico por canal"
             className="h-8 rounded-md border bg-background px-2"
             value={filters.channel ?? "all"}
-            onChange={(e) => setFilters((f) => ({ ...f, channel: e.target.value as HistoryFilters["channel"] }))}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, channel: e.target.value as HistoryFilters["channel"] }))
+            }
           >
             <option value="all">Todos canais</option>
             <option value="instagram">Instagram</option>
             <option value="facebook">Facebook</option>
           </select>
           <select
+            aria-label="Filtrar histórico por formato"
             className="h-8 rounded-md border bg-background px-2"
             value={filters.format ?? "all"}
-            onChange={(e) => setFilters((f) => ({ ...f, format: e.target.value as HistoryFilters["format"] }))}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, format: e.target.value as HistoryFilters["format"] }))
+            }
           >
             <option value="all">Todos formatos</option>
             <option value="feed">Feed</option>
@@ -283,18 +303,25 @@ function HistoryDialog() {
           </select>
           <input
             type="date"
+            aria-label="Início do período"
             className="h-8 rounded-md border bg-background px-2"
             onChange={(e) =>
-              setFilters((f) => ({ ...f, from: e.target.value ? new Date(e.target.value).toISOString() : undefined }))
+              setFilters((f) => ({
+                ...f,
+                from: e.target.value ? new Date(e.target.value).toISOString() : undefined,
+              }))
             }
           />
           <input
+            aria-label="Fim do período"
             type="date"
             className="h-8 rounded-md border bg-background px-2"
             onChange={(e) =>
               setFilters((f) => ({
                 ...f,
-                to: e.target.value ? new Date(`${e.target.value}T23:59:59`).toISOString() : undefined,
+                to: e.target.value
+                  ? new Date(`${e.target.value}T23:59:59`).toISOString()
+                  : undefined,
               }))
             }
           />
@@ -303,7 +330,7 @@ function HistoryDialog() {
         <div className="mt-2 overflow-y-auto pr-1">
           {loading ? (
             <div className="text-xs text-muted-foreground flex items-center gap-2 py-4">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando histórico…
+              <LumePulse className="h-3.5 w-3.5 animate-spin" /> Carregando histórico…
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-xs text-muted-foreground py-6 text-center">
@@ -328,7 +355,7 @@ function StatCard({
   tone = "default",
 }: {
   label: string;
-  value: number;
+  value: number | null;
   tone?: "default" | "success" | "danger";
 }) {
   const toneCls =
@@ -338,9 +365,9 @@ function StatCard({
         ? "text-destructive"
         : "text-foreground";
   return (
-    <div className="rounded-lg border bg-card p-3">
+    <div className="mkt-publish-stat rounded-lg border bg-card p-3">
       <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
-      <div className={`text-2xl font-semibold ${toneCls}`}>{value}</div>
+      <div className={`text-2xl font-semibold ${toneCls}`}>{value ?? "—"}</div>
     </div>
   );
 }

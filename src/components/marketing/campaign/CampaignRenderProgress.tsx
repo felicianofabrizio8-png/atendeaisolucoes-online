@@ -1,7 +1,10 @@
+import { LumePulse, LumeNumber, lumeSpring } from "../MarketingMotion";
+import { MarketingArtwork } from "../MarketingArtwork";
+import { motion, useReducedMotion } from "framer-motion";
 // Barra de progresso amigável para o render de uma campanha (Feed + Story).
 // Traduz stages do worker para PT-BR e mostra percentual quando disponível.
 
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { friendlyRenderError } from "@/lib/marketing/render-error-messages";
 import type { TrackedCampaign } from "@/lib/marketing/useCampaignRenderTracker";
@@ -31,9 +34,14 @@ function stageFromProgress(progress: number): string {
 export function CampaignRenderProgress({ tracked, onRetry }: Props) {
   if (!tracked) return null;
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
+    <div className="lume-render rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">Renderização</div>
+        <div>
+          <span className="mkt-eyebrow">DA IDEIA AO MOVIMENTO</span>
+          <h3 className="text-xl font-semibold mt-2">
+            {tracked.done ? "Sua criação ganhou forma." : "Dando vida à sua campanha."}
+          </h3>
+        </div>
         <div className="text-xs text-muted-foreground">
           {tracked.done
             ? tracked.hasFailure
@@ -79,11 +87,16 @@ function RoleProgress({
   done: boolean;
   onRetry: () => void;
 }) {
+  const reduced = useReducedMotion();
   const failed = status === "failed";
   const pct = Math.max(0, Math.min(100, progress ?? 0));
   const stageLabel = done ? "Vídeo pronto" : failed ? "Falhou" : stageFromProgress(pct);
   return (
-    <div className="rounded-md border p-3 space-y-2 min-w-0">
+    <div
+      className="lume-render-card space-y-2 min-w-0"
+      data-state={done ? "success" : failed ? "error" : "pending"}
+    >
+      <MarketingArtwork kind={done ? "signal" : failed ? "prism" : "capsule"} />
       <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="min-w-0">
           <div className="text-sm font-medium truncate">{label}</div>
@@ -95,16 +108,18 @@ function RoleProgress({
           ) : failed ? (
             <AlertTriangle className="h-5 w-5 text-destructive" />
           ) : (
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <LumePulse className="h-5 w-5 animate-spin text-primary" />
           )}
         </div>
       </div>
       {!done && !failed && (
         <div>
-          <div className="h-2 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all duration-500 ease-out"
-              style={{ width: `${pct}%` }}
+          <div className="lume-progress-track">
+            <motion.div
+              className="lume-progress-fill"
+              initial={false}
+              animate={{ scaleX: pct / 100 }}
+              transition={reduced ? { duration: 0 } : { type: "spring", ...lumeSpring }}
               aria-valuenow={pct}
               aria-valuemin={0}
               aria-valuemax={100}
@@ -112,14 +127,14 @@ function RoleProgress({
               aria-label={`Progresso ${label}`}
             />
           </div>
-          <div className="mt-1 text-right text-[11px] text-muted-foreground">{pct}%</div>
+          <div className="mt-1 text-right text-[11px] text-muted-foreground">
+            <LumeNumber value={pct} />%
+          </div>
         </div>
       )}
       {failed && (
         <div className="flex items-start justify-between gap-2">
-          <div className="text-xs text-destructive min-w-0">
-            {friendlyRenderError(errorCode)}
-          </div>
+          <div className="text-xs text-destructive min-w-0">{friendlyRenderError(errorCode)}</div>
           <Button type="button" size="sm" variant="outline" onClick={onRetry}>
             Tentar de novo
           </Button>

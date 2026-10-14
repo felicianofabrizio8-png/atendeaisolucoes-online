@@ -1,5 +1,6 @@
+import { LumePulse } from "../../MarketingMotion";
 // ============================================================================
-// CampaignVideoEditor — Editor Criativo IA (Onda 1).
+// CampaignVideoEditor — Seu estúdio de criação (Onda 1).
 //
 // Redesign com preview PROTAGONISTA (ocupa a maior parte da tela) e
 // controles em sidebar à direita. Preparado para futuras evoluções:
@@ -14,18 +15,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Loader2, Layers, Type, ImageIcon, LayoutTemplate } from "lucide-react";
-import { toast } from "sonner";
+import { CheckCircle2, Layers, Type, ImageIcon, LayoutTemplate } from "lucide-react";
+import { lumeToast as toast } from "../../MarketingFeedback";
 import {
   apiApproveCampaignAndRender,
   apiRegenerateCampaignTexts,
   type FocalPointInput,
 } from "@/data/marketingRepo";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
-import type {
-  TemplateId,
-  VideoLayout,
-} from "@/lib/marketing/video-editor/layout.types";
+import type { TemplateId, VideoLayout } from "@/lib/marketing/video-editor/layout.types";
 import { DEFAULT_TEMPLATE } from "@/lib/marketing/video-editor/layout.types";
 import { getScene } from "@/lib/marketing/video-editor/scenes/registry";
 import { useBrandLogo } from "@/hooks/useBrandLogo";
@@ -46,9 +44,10 @@ interface Props {
   onContentsUpdated?: (contents: MarketingContentRow[]) => void;
 }
 
-function readSavedLayout(
-  row: MarketingContentRow | null | undefined,
-): { layout: VideoLayout; template: TemplateId } {
+function readSavedLayout(row: MarketingContentRow | null | undefined): {
+  layout: VideoLayout;
+  template: TemplateId;
+} {
   const anyRow = row as unknown as {
     video_layout?: VideoLayout | null;
     video_template?: TemplateId | null;
@@ -87,8 +86,7 @@ export function CampaignVideoEditor({
 
   // Logo do Brand Center (com upload local como fallback).
   const brandLogo = useBrandLogo();
-  const effectiveLogoUrl =
-    logoUrlOverride !== undefined ? logoUrlOverride : brandLogo.logoUrl;
+  const effectiveLogoUrl = logoUrlOverride !== undefined ? logoUrlOverride : brandLogo.logoUrl;
 
   useEffect(() => {
     if (!feedRow) return;
@@ -156,13 +154,13 @@ export function CampaignVideoEditor({
   const sceneLabel = getScene(layout.template).label;
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden shadow-sm">
+    <div className="lume-editor rounded-xl border bg-card overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
+      <header className="px-4 py-3 border-b flex items-center justify-between gap-3 flex-wrap">
         <div className="min-w-0">
-          <div className="text-sm font-semibold">Editor Criativo IA</div>
+          <h3>Seu estúdio de criação</h3>
           <div className="text-xs text-muted-foreground truncate">
-            Template atual: <b>{sceneLabel}</b> · edições refletem no preview em tempo real.
+            Cena: <b>{sceneLabel}</b> · veja suas alterações na prévia.
           </div>
         </div>
         <label className="text-xs flex items-center gap-2 cursor-pointer select-none">
@@ -172,18 +170,15 @@ export function CampaignVideoEditor({
             onChange={(e) => setShowSafeArea(e.target.checked)}
             className="accent-primary"
           />
-          Safe area
+          Mostrar área segura
         </label>
-      </div>
+      </header>
 
       {/* Corpo: preview protagonista + sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
         {/* PREVIEW — ocupa a maior parte da tela */}
-        <div className="bg-gradient-to-br from-muted/30 to-muted/60 p-4 sm:p-6 min-h-[560px] flex items-center justify-center">
-          <div
-            className="w-full mx-auto"
-            style={{ maxWidth: "min(100%, 520px)" }}
-          >
+        <div className="lume-editor-stage p-4 sm:p-6 min-h-[560px] flex items-center justify-center">
+          <div className="w-full mx-auto" style={{ maxWidth: "min(100%, 520px)" }}>
             <SceneRenderer
               imageUrl={previewImageUrl}
               logoUrl={effectiveLogoUrl}
@@ -197,11 +192,12 @@ export function CampaignVideoEditor({
               fill={false}
             />
             <div className="mt-3 text-center text-[11px] text-muted-foreground">
-              Prévia 9:16 · {brandLogo.isPlaceholder && !logoUrlOverride
+              Prévia 9:16 ·{" "}
+              {brandLogo.isPlaceholder && !logoUrlOverride
                 ? "sem logo no Brand Center (clique no placeholder para adicionar)"
                 : brandLogo.isLocalOverride
-                ? "logo local · não persiste"
-                : "logo do Brand Center"}
+                  ? "logo local · não persiste"
+                  : "logo do Brand Center"}
               {brandLogo.isLocalOverride && (
                 <>
                   {" · "}
@@ -219,7 +215,7 @@ export function CampaignVideoEditor({
         </div>
 
         {/* SIDEBAR — controles */}
-        <div className="border-t lg:border-t-0 lg:border-l p-4 min-w-0">
+        <div className="lume-editor-controls border-t lg:border-t-0 lg:border-l min-w-0">
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="template" className="gap-1">
@@ -258,10 +254,7 @@ export function CampaignVideoEditor({
               />
             </TabsContent>
             <TabsContent value="logo" className="pt-4">
-              <TabLogo
-                value={layout.logo}
-                onChange={(logo) => setLayout({ ...layout, logo })}
-              />
+              <TabLogo value={layout.logo} onChange={(logo) => setLayout({ ...layout, logo })} />
             </TabsContent>
             <TabsContent value="textos" className="pt-4">
               <TabTextos layout={layout} onChange={setLayout} />
@@ -279,10 +272,10 @@ export function CampaignVideoEditor({
           size="lg"
           onClick={handleApprove}
           disabled={approving || regenerating || !headline.trim()}
-          className="min-w-[180px]"
+          className="mkt-primary min-w-[180px]"
         >
           {approving ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <LumePulse className="h-4 w-4 animate-spin mr-2" />
           ) : (
             <CheckCircle2 className="h-4 w-4 mr-2" />
           )}

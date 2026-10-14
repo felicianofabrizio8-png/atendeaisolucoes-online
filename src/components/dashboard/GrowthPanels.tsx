@@ -1,123 +1,130 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Facebook, Instagram } from "lucide-react";
+import { ArrowRight, CalendarDays, Facebook, Instagram } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { MarketingContentChannel } from "@/lib/marketing/marketing.types";
 import { ChartCard } from "./charts/ChartCard";
-import { num, stagger, useInView } from "./charts/primitives";
+import { num } from "./charts/primitives";
 import type { DashboardData } from "./useDashboardData";
-
-const SEMANA = 7 * 86_400_000;
-const SEMANAS = 8;
-
+const WEEK = 7 * 86400000;
+export function marketingWeeks(data: DashboardData, now = Date.now()) {
+  return Array.from({ length: 8 }, (_, i) => {
+    const end = now - (7 - i) * WEEK,
+      start = end - WEEK;
+    const count = (channel: string) =>
+      data.schedule.filter(
+        (p) =>
+          p.channel === channel &&
+          p.status === "published" &&
+          +new Date(p.scheduled_at) >= start &&
+          +new Date(p.scheduled_at) < end,
+      ).length;
+    return {
+      label: new Date(start).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+      instagram: count("instagram"),
+      facebook: count("facebook"),
+    };
+  });
+}
 export function MarketingPanel({ data }: { data: DashboardData }) {
+  const weeks = marketingWeeks(data),
+    total = weeks.reduce((s, w) => s + w.instagram + w.facebook, 0);
+  const pending = data.schedule.filter(
+    (p) =>
+      ["planned", "queued"].includes(p.status) && ["instagram", "facebook"].includes(p.channel),
+  );
+  const next = [...pending]
+    .filter((p) => +new Date(p.scheduled_at) >= Date.now())
+    .sort((a, b) => +new Date(a.scheduled_at) - +new Date(b.scheduled_at))[0];
   return (
     <ChartCard
       title="Marketing"
-      subtitle={`Ritmo de publicação nas últimas ${SEMANAS} semanas`}
-      className="col-span-12 lg:col-span-4"
-      delay="360ms"
+      subtitle="Sua presença nas últimas 8 semanas"
+      className="dash-marketing col-span-12 lg:col-span-4"
+      analysis={{
+        title: "Marketing",
+        period: "Últimas 8 semanas",
+        notes: `${pending.length} publicações programadas. Contagens de posts publicados, não alcance nem engajamento.`,
+        columns: ["Semana iniciada em", "Instagram", "Facebook"],
+        rows: weeks.map((w) => [w.label, num(w.instagram), num(w.facebook)]),
+      }}
     >
-      <div className="flex h-full flex-col">
-        <div className="space-y-3">
-          <NetworkRow channel="instagram" label="Instagram" icon={Instagram} data={data} />
-          <NetworkRow channel="facebook" label="Facebook" icon={Facebook} data={data} />
+      <div className="dash-marketing-layout">
+        <div className="dash-marketing-total">
+          <div>
+            <strong>{num(total)}</strong>
+            <p>publicações no período</p>
+          </div>
+          <span className="dash-marketing-badge">
+            <CalendarDays size={18} />
+            {num(weeks.filter((w) => w.instagram + w.facebook > 0).length)}/8 semanas ativas
+          </span>
         </div>
-        <Button asChild className="mt-5 w-full">
+        <div className="dash-network-grid">
+          {[
+            { key: "instagram" as const, label: "Instagram", Icon: Instagram },
+            { key: "facebook" as const, label: "Facebook", Icon: Facebook },
+          ].map(({ key, label, Icon }) => (
+            <div key={key} className={`dash-network dash-network-${key}`}>
+              <div className="flex items-center gap-2 text-xs font-medium">
+                <Icon size={16} />
+                {label}
+              </div>
+              <strong>{num(weeks.reduce((s, w) => s + w[key], 0))}</strong>
+              <span>{num(pending.filter((p) => p.channel === key).length)} programadas</span>
+            </div>
+          ))}
+        </div>
+        <div className="dash-publishing-trail">
+          <p className="mb-3 text-[10px] uppercase tracking-widest text-muted-foreground">
+            Trilha de publicações
+          </p>
+          <div className="dash-week-grid" role="list" aria-label="Publicações por semana">
+            {weeks.map((w) => (
+              <div
+                key={w.label}
+                role="listitem"
+                className={w.instagram + w.facebook > 0 ? "is-active" : ""}
+                title={`${w.label}: Instagram ${w.instagram}, Facebook ${w.facebook}`}
+              >
+                <span>{w.label}</span>
+                <strong>{num(w.instagram + w.facebook)}</strong>
+                <i
+                  aria-hidden
+                  style={{
+                    background:
+                      w.instagram + w.facebook > 0
+                        ? "linear-gradient(90deg,#fa69b8,#6eb5ff)"
+                        : "var(--dash-track)",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            {total
+              ? "Cada semana mostra o total publicado nos dois canais."
+              : "Sua próxima publicação inicia uma nova sequência. Os espaços se acendem conforme você publica."}
+          </p>
+        </div>
+        <div className="dash-publishing-next">
+          <CalendarDays size={17} />
+          <div>
+            <strong>{next ? "Próxima publicação" : "Seu próximo passo"}</strong>
+            <p>
+              {next
+                ? new Date(next.scheduled_at).toLocaleString("pt-BR", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })
+                : "Planeje um conteúdo para manter sua marca presente."}
+            </p>
+          </div>
+        </div>
+        <Button asChild className="w-full">
           <Link to="/marketing">
             Criar publicação <ArrowRight />
           </Link>
         </Button>
       </div>
     </ChartCard>
-  );
-}
-
-/**
- * Ritmo: uma coluna por semana, altura pelo número de publicações.
- *
- * O painel prometia "ritmo de conteúdo" e mostrava um número e uma data.
- * Ritmo é uma propriedade do TEMPO — só aparece numa sequência. Oito colunas
- * dizem em um olhar se a conta está publicando de forma constante ou aos
- * trancos, que é a pergunta de quem cuida da rede.
- */
-function Cadencia({ contagens, color }: { contagens: number[]; color: string }) {
-  const [ref, inView] = useInView<HTMLDivElement>();
-  const max = Math.max(...contagens, 1);
-
-  return (
-    <div ref={ref} className="mt-2.5 flex h-8 items-end gap-1" aria-hidden>
-      {contagens.map((c, i) => (
-        <span
-          key={i}
-          className="min-w-0 flex-1 rounded-[2px] transition-[height,opacity] duration-500 ease-out"
-          style={{
-            height: inView ? `${Math.max((c / max) * 100, 8)}%` : "8%",
-            background: c > 0 ? color : "var(--viz-track)",
-            opacity: inView ? 1 : 0,
-            transitionDelay: stagger(i, 50, 400),
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function NetworkRow({
-  channel,
-  label,
-  icon: Icon,
-  data,
-}: {
-  channel: MarketingContentChannel;
-  label: string;
-  icon: typeof Instagram;
-  data: DashboardData;
-}) {
-  const doCanal = data.schedule.filter((item) => item.channel === channel);
-  const scheduled = doCanal.filter((item) => ["planned", "queued"].includes(item.status)).length;
-  const published = doCanal
-    .filter((item) => item.status === "published")
-    .sort((a, b) => +new Date(b.scheduled_at) - +new Date(a.scheduled_at))[0];
-
-  // Baldes semanais, do mais antigo para o mais recente.
-  const agora = Date.now();
-  const contagens = Array.from({ length: SEMANAS }, (_, i) => {
-    const fim = agora - (SEMANAS - 1 - i) * SEMANA;
-    const inicio = fim - SEMANA;
-    return doCanal.filter((item) => {
-      if (item.status !== "published") return false;
-      const t = new Date(item.scheduled_at).getTime();
-      return Number.isFinite(t) && t >= inicio && t < fim;
-    }).length;
-  });
-  const publicadas = contagens.reduce((s, c) => s + c, 0);
-
-  return (
-    <div className="rounded-xl border border-border p-3">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-        <span className="flex min-w-0 items-center gap-2 text-xs font-semibold">
-          <Icon
-            className="h-4 w-4 shrink-0"
-            style={{ color: `var(--channel-${channel})` }}
-            aria-hidden
-          />
-          {label}
-        </span>
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          {num(scheduled)} programada{scheduled === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      <Cadencia contagens={contagens} color={`var(--channel-${channel})`} />
-
-      <p className="mt-2 text-[10px] text-muted-foreground">
-        {publicadas > 0
-          ? `${num(publicadas)} publicada${publicadas === 1 ? "" : "s"} no período`
-          : "Nenhuma publicação no período"}
-        {published
-          ? ` · última em ${new Date(published.scheduled_at).toLocaleDateString("pt-BR")}`
-          : ""}
-      </p>
-    </div>
   );
 }

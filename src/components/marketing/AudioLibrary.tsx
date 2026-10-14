@@ -1,16 +1,15 @@
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Music2, Upload } from "lucide-react";
-import { toast } from "sonner";
+import { Music2, Upload } from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
+import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import {
   getAudioLibraryQuota,
   listAudioLibrary,
   updateAudioMetadata,
 } from "@/lib/audio-library/audio-library-service";
-import type {
-  AudioLibraryRow,
-  AudioQuotaInfo,
-} from "@/lib/audio-library/audio-library.types";
+import type { AudioLibraryRow, AudioQuotaInfo } from "@/lib/audio-library/audio-library.types";
 import { AudioCard } from "./audio-library/AudioCard";
 import { AudioDeleteDialog } from "./audio-library/AudioDeleteDialog";
 import { AudioEditDialog } from "./audio-library/AudioEditDialog";
@@ -100,7 +99,7 @@ export function AudioLibrary({ companyId }: Props) {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-start justify-between gap-3 flex-wrap">
+      <header className="mkt-upload-panel flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Music2 className="h-5 w-5" /> Biblioteca de Áudio
@@ -108,9 +107,7 @@ export function AudioLibrary({ companyId }: Props) {
           <p className="text-xs text-muted-foreground">
             Músicas próprias para uso em vídeos e conteúdos da sua empresa.
             {quotaLabel ? (
-              <span className="ml-1 font-medium text-foreground">
-                • {quotaLabel}
-              </span>
+              <span className="ml-1 font-medium text-foreground">• {quotaLabel}</span>
             ) : null}
           </p>
         </div>
@@ -127,16 +124,20 @@ export function AudioLibrary({ companyId }: Props) {
 
       {loading ? (
         <div className="flex items-center justify-center py-12 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando…
+          <LumePulse className="h-5 w-5 animate-spin mr-2" /> Carregando…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 border rounded-xl bg-muted/20">
-          <Music2 className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">
-            {rows.length === 0
-              ? "Nenhuma música na biblioteca ainda."
-              : "Nenhum áudio corresponde aos filtros."}
+        <div className="mkt-empty-state">
+          <MarketingArtwork kind="wave" />
+          <h3>{rows.length ? "Outro ritmo, talvez?" : "Toda campanha tem um ritmo."}</h3>
+          <p>
+            {rows.length
+              ? "Nenhum áudio corresponde aos filtros. Experimente outras combinações."
+              : "Adicione suas músicas e encontre a trilha que combina com sua próxima história."}
           </p>
+          <Button variant="outline" onClick={() => setUploadOpen(true)}>
+            <Upload size={15} /> Adicionar música
+          </Button>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -163,16 +164,8 @@ export function AudioLibrary({ companyId }: Props) {
         quota={quota}
         onUploaded={reload}
       />
-      <AudioEditDialog
-        row={editing}
-        onClose={() => setEditing(null)}
-        onUpdated={reload}
-      />
-      <AudioDeleteDialog
-        row={deleting}
-        onClose={() => setDeleting(null)}
-        onDeleted={reload}
-      />
+      <AudioEditDialog row={editing} onClose={() => setEditing(null)} onUpdated={reload} />
+      <AudioDeleteDialog row={deleting} onClose={() => setDeleting(null)} onDeleted={reload} />
     </div>
   );
 }

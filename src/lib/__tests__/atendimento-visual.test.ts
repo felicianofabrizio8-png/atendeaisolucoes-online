@@ -595,8 +595,8 @@ describe("Atendimento 2.0 runtime", () => {
     expect(screen.getByRole("button", { name: "Fechar venda" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Mais ações" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: "IA" }));
-    expect(screen.getByTestId("coach-panel")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Lume" }));
+    expect(await screen.findByTestId("coach-panel")).toBeTruthy();
   });
 
   it("fora da janela de 24h oferece template aprovado em vez de só falhar", async () => {

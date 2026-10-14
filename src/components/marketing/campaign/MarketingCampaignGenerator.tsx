@@ -1,3 +1,4 @@
+import { LumePulse, LumeThinking } from "../MarketingMotion";
 // Gerador de Campanha (Fase C.2).
 //
 // Evoluções vs. C.1:
@@ -5,19 +6,19 @@
 // - Focal point real por imagem via FocalPointEditor (aplicado no render).
 // - Progresso desacoplado da tela via useCampaignRenderTracker (o polling
 //   segue rodando mesmo se o usuário navegar de aba).
-// - Barra de ação sticky (visível o tempo todo em mobile e desktop).
+// - Criação guiada em etapas, com a ação principal junto ao formulário.
 // - Preview WYSIWYG do focal point sobre Feed 4:5 e Story 9:16.
 //
 // Retrocompatível: se apenas 1 imagem for selecionada, o backend continua
 // enviando `primary_image` no payload legado; caso contrário envia `images`.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, Loader2, PencilRuler } from "lucide-react";
-import { toast } from "sonner";
+import { Sparkles, PencilRuler } from "lucide-react";
+import { lumeToast as toast } from "../MarketingFeedback";
 import { cn } from "@/lib/utils";
 import {
   apiListPromotions,
@@ -31,11 +32,8 @@ import {
 import { getSignedImageUrl } from "@/lib/storage";
 import type { MarketingPromotionRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { MarketingLibrary } from "../MarketingLibrary";
-import {
-  type MediaSelection,
-  selectionKey,
-  sameSelection,
-} from "@/lib/marketing/media-selection";
+import { MarketingArtwork } from "../MarketingArtwork";
+import { type MediaSelection, selectionKey, sameSelection } from "@/lib/marketing/media-selection";
 import { CampaignAudioPicker } from "./CampaignAudioPicker";
 import { CampaignFramingPreview } from "./CampaignFramingPreview";
 import { CampaignImageList, type CampaignImageItem } from "./CampaignImageList";
@@ -74,14 +72,17 @@ interface Slot {
 export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [promotions, setPromotions] = useState<MarketingPromotionRow[]>([]);
   const [promotionId, setPromotionId] = useState<string>("");
-  const [tone, setTone] =
-    useState<"amigável" | "profissional" | "descontraído" | "urgente">("amigável");
+  const [tone, setTone] = useState<"amigável" | "profissional" | "descontraído" | "urgente">(
+    "amigável",
+  );
   const [audience, setAudience] = useState("");
   const [extra, setExtra] = useState("");
   // Seleção de formatos no modo IA — mesmo contrato canônico do modo manual.
   const [aiFormats, setAiFormats] = useState<CampaignFormatSelection>("feed_story");
 
   const [slots, setSlots] = useState<Slot[]>([]);
+  const mounted = useRef(false);
+  const previewRequests = useRef(new Set<string>());
   const [editingKey, setEditingKey] = useState<string | null>(null);
 
   const [audio, setAudio] = useState<AudioLibraryRow | null>(null);
@@ -89,6 +90,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const [duration, setDuration] = useState<Duration>(15);
 
   const [generating, setGenerating] = useState(false);
+  const [creationStep, setCreationStep] = useState(0);
   // Modo de criação: IA (padrão) ou manual (sem IA, sem créditos).
   const [mode, setMode] = useState<"ai" | "manual">("ai");
   // Falha da IA → oferecemos o modo manual sem bloquear o usuário.
@@ -105,15 +107,27 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   const tracked = useTrackedCampaign(campaignId);
 
   useEffect(() => {
-    void apiListPromotions().then(setPromotions).catch(() => {});
+    void apiListPromotions()
+      .then(setPromotions)
+      .catch(() => {});
   }, [companyId]);
 
   // Resolve preview URL para cada slot novo.
   useEffect(() => {
-    let cancelled = false;
-    slots.forEach((slot, idx) => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    slots.forEach((slot) => {
       if (slot.previewUrl || slot.loading || slot.failed) return;
-      setSlots((cur) => cur.map((s, i) => (i === idx ? { ...s, loading: true } : s)));
+      const key = selectionKey(slot.selection);
+      if (previewRequests.current.has(key)) return;
+      previewRequests.current.add(key);
+      setSlots((cur) =>
+        cur.map((s) => (sameSelection(s.selection, slot.selection) ? { ...s, loading: true } : s)),
+      );
       (async () => {
         try {
           let url: string | null = null;
@@ -122,7 +136,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
           } else if (slot.selection.origin === "product") {
             url = await getSignedImageUrl(slot.selection.imagePath).catch(() => null);
           }
-          if (cancelled) return;
+          if (!mounted.current) return;
           setSlots((cur) =>
             cur.map((s) =>
               sameSelection(s.selection, slot.selection)
@@ -131,7 +145,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             ),
           );
         } catch {
-          if (cancelled) return;
+          if (!mounted.current) return;
           setSlots((cur) =>
             cur.map((s) =>
               sameSelection(s.selection, slot.selection)
@@ -139,12 +153,11 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
                 : s,
             ),
           );
+        } finally {
+          previewRequests.current.delete(key);
         }
       })();
     });
-    return () => {
-      cancelled = true;
-    };
   }, [slots]);
 
   const selectedMediaSelections = useMemo(() => slots.map((s) => s.selection), [slots]);
@@ -185,7 +198,10 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
         toast.error(`Você pode adicionar até ${MAX_IMAGES} imagens por campanha.`);
         return cur;
       }
-      return [...cur, { selection: sel, focal: null, previewUrl: null, loading: false, failed: false }];
+      return [
+        ...cur,
+        { selection: sel, focal: null, previewUrl: null, loading: false, failed: false },
+      ];
     });
   }, []);
 
@@ -213,14 +229,13 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   }, []);
 
   const saveFocal = useCallback((key: string, focal: FocalPointInput | null) => {
-    setSlots((cur) =>
-      cur.map((s) => (selectionKey(s.selection) === key ? { ...s, focal } : s)),
-    );
+    setSlots((cur) => cur.map((s) => (selectionKey(s.selection) === key ? { ...s, focal } : s)));
     setEditingKey(null);
   }, []);
 
   const editingSlot = useMemo(
-    () => (editingKey ? slots.find((s) => selectionKey(s.selection) === editingKey) ?? null : null),
+    () =>
+      editingKey ? (slots.find((s) => selectionKey(s.selection) === editingKey) ?? null) : null,
     [editingKey, slots],
   );
 
@@ -314,7 +329,6 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     }
   }
 
-
   async function handleRetry(role: "feed" | "story") {
     if (!campaignId) return;
     try {
@@ -325,262 +339,406 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
     }
   }
 
+  const guided = !pendingReview && !campaignId;
   return (
-    <div className="space-y-4">
-      {/* Modo de criação — IA (acelerador) ou Manual (sempre disponível) */}
-      {!pendingReview && !campaignId && (
-        <div className="rounded-lg border bg-card p-4">
-          <div className="text-sm font-semibold mb-2">Como você quer criar?</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setMode("ai")}
-              className={cn(
-                "rounded-md border p-3 text-left text-sm transition-colors",
-                mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted",
-              )}
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <Sparkles className="h-4 w-4" /> Gerar com IA
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                A IA sugere títulos, legenda e CTA — você edita antes de renderizar.
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("manual")}
-              className={cn(
-                "rounded-md border p-3 text-left text-sm transition-colors",
-                mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted",
-              )}
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <PencilRuler className="h-4 w-4" /> Criar manualmente
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                Sem IA e sem consumo de créditos. Você escreve os textos.
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Fallback automático quando a IA falha */}
-      {aiFailure && mode === "ai" && !pendingReview && (
-        <AiUnavailableNotice
-          kind={aiFailure}
-          retrying={generating}
-          onRetry={() => void generate()}
-          onContinueManually={() => {
-            setAiFailure(null);
-            setMode("manual");
-          }}
-        />
-      )}
-
-      {/* Contexto */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <Label>Promoção (opcional)</Label>
-            <select
-              className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-              value={promotionId}
-              onChange={(e) => setPromotionId(e.target.value)}
-            >
-              <option value="">— Sem promoção específica —</option>
-              {promotions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Tom da comunicação</Label>
-            <select
-              className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-              value={tone}
-              onChange={(e) => setTone(e.target.value as typeof tone)}
-            >
-              <option value="amigável">Amigável</option>
-              <option value="profissional">Profissional</option>
-              <option value="descontraído">Descontraído</option>
-              <option value="urgente">Urgente</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <Label>Público-alvo</Label>
-            <Input
-              value={audience}
-              onChange={(e) => setAudience(e.target.value)}
-              placeholder="Ex.: famílias com crianças, moradores da região"
-            />
-          </div>
-          <div className="md:col-span-2">
-            {/* Mesmo componente do modo manual — escolha visível e editável
-                ANTES de "Gerar campanha". */}
-            <CampaignFormatsField
-              id="ai-campaign-formats"
-              value={aiFormats}
-              onChange={setAiFormats}
-              disabled={generating}
-              hint="A IA gera e o render/publicação usam somente os formatos escolhidos."
-            />
-          </div>
-          <div className="md:col-span-2">
-            <Label>Instruções extras (opcional)</Label>
-            <Textarea
-              value={extra}
-              onChange={(e) => setExtra(e.target.value)}
-              rows={2}
-              placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Imagens da campanha */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
-          <div className="text-sm font-semibold">
-            Imagens da campanha ({slots.length}/{MAX_IMAGES})
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Arraste para reordenar · a 1ª é a principal
-          </div>
-        </div>
-        <CampaignImageList
-          items={items}
-          onReorder={reorder}
-          onRemove={removeByKey}
-          onMakePrimary={makePrimary}
-          onEditFocal={(key) => setEditingKey(key)}
-        />
-        {primarySlot && (
-          <div className="pt-2">
-            <div className="text-xs font-medium text-muted-foreground mb-1">
-              Prévia do enquadramento (imagem principal)
-            </div>
-            <CampaignFramingPreview
-              imageUrl={primarySlot.previewUrl}
-              focalPoint={primarySlot.focal}
-            />
-          </div>
+    <div className="mkt-creation-shell">
+      <div className="mkt-creation-form">
+        {guided && (
+          <nav className="mkt-creation-nav" aria-label="Etapas da criação">
+            {["Mensagem", "Imagens", "Trilha e criação"].map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                aria-current={creationStep === index ? "step" : undefined}
+                disabled={generating || (index === 2 && slots.length === 0)}
+                title={
+                  index === 2 && slots.length === 0
+                    ? "Escolha uma imagem para continuar"
+                    : undefined
+                }
+                onClick={() => setCreationStep(index)}
+              >
+                <span>0{index + 1}</span>
+                {label}
+              </button>
+            ))}
+          </nav>
         )}
-      </div>
+        <div className="mkt-campaign-builder space-y-4" data-creation-step={creationStep}>
+          {generating && (
+            <LumeThinking
+              label={
+                mode === "ai" ? "A Lume está conectando suas ideias." : "Preparando sua campanha."
+              }
+            />
+          )}
+          {/* Modo de criação — IA (acelerador) ou Manual (sempre disponível) */}
+          {!pendingReview && !campaignId && creationStep === 0 && (
+            <div className="mkt-method-choice rounded-lg border bg-card p-4">
+              <div className="text-sm font-semibold mb-2">Como você quer criar?</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  aria-pressed={mode === "ai"}
+                  onClick={() => setMode("ai")}
+                  className={cn(
+                    "rounded-md border p-3 text-left text-sm transition-colors",
+                    mode === "ai" ? "border-primary bg-primary/10" : "hover:bg-muted",
+                  )}
+                >
+                  <span className="flex items-center gap-2 font-medium">
+                    <Sparkles className="h-4 w-4" /> Criar com Lume
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Conte sua ideia. A Lume sugere os textos e você revisa antes de criar o vídeo.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={mode === "manual"}
+                  onClick={() => setMode("manual")}
+                  className={cn(
+                    "rounded-md border p-3 text-left text-sm transition-colors",
+                    mode === "manual" ? "border-primary bg-primary/10" : "hover:bg-muted",
+                  )}
+                >
+                  <span className="flex items-center gap-2 font-medium">
+                    <PencilRuler className="h-4 w-4" /> Criar manualmente
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Prefere escrever? Você escolhe cada frase, sem usar créditos de IA.
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
 
-      {/* Biblioteca (seleção) */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="text-sm font-semibold">Escolher da biblioteca</div>
-        <MarketingLibrary
-          companyId={companyId}
-          selectable
-          selected={selectedMediaSelections}
-          onToggleSelect={toggleSelection}
-        />
-      </div>
+          {/* Fallback automático quando a IA falha */}
+          {aiFailure && mode === "ai" && !pendingReview && (
+            <AiUnavailableNotice
+              kind={aiFailure}
+              retrying={generating}
+              onRetry={() => void generate()}
+              onContinueManually={() => {
+                setAiFailure(null);
+                setMode("manual");
+              }}
+            />
+          )}
 
-      {/* Áudio */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="text-sm font-semibold">Áudio da campanha</div>
-        <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
-        {audio && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label>Início no áudio (segundos)</Label>
-              <Input
-                type="number"
-                min={0}
-                max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))}
-                value={audioStart}
-                onChange={(e) => setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))}
+          {/* Contexto */}
+          <div
+            hidden={guided && creationStep !== 0}
+            className="rounded-lg border bg-card p-4 space-y-3"
+          >
+            <h3 className="mkt-builder-step">
+              <span>01</span> O que você quer contar?
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="mkt-promotion">Quer divulgar uma oferta? (opcional)</Label>
+                <select
+                  id="mkt-promotion"
+                  className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                  value={promotionId}
+                  onChange={(e) => setPromotionId(e.target.value)}
+                >
+                  <option value="">— Sem promoção específica —</option>
+                  {promotions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="mkt-tone">Como sua marca fala?</Label>
+                <select
+                  id="mkt-tone"
+                  className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value as typeof tone)}
+                >
+                  <option value="amigável">Amigável</option>
+                  <option value="profissional">Profissional</option>
+                  <option value="descontraído">Descontraído</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <Label htmlFor="mkt-audience">Para quem é essa mensagem?</Label>
+                <Input
+                  id="mkt-audience"
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                  placeholder="Ex.: famílias com crianças, moradores da região"
+                />
+              </div>
+              <div className="md:col-span-2">
+                {/* Mesmo componente do modo manual — escolha visível e editável
+                ANTES de "Gerar campanha". */}
+                <CampaignFormatsField
+                  id="ai-campaign-formats"
+                  value={aiFormats}
+                  onChange={setAiFormats}
+                  disabled={generating}
+                  hint="Sua campanha será criada nos formatos que você escolher."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Label htmlFor="mkt-extra">O que não pode faltar? (opcional)</Label>
+                <Textarea
+                  id="mkt-extra"
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value)}
+                  rows={2}
+                  placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Imagens da campanha */}
+          <div
+            hidden={guided && creationStep !== 1}
+            className="rounded-lg border bg-card p-4 space-y-3"
+          >
+            <div className="flex items-baseline justify-between flex-wrap gap-2">
+              <h3 className="mkt-builder-step">
+                <span>02</span> Escolha suas imagens ({slots.length}/{MAX_IMAGES})
+              </h3>
+              <div className="text-xs text-muted-foreground">
+                Arraste para reordenar · a 1ª é a principal
+              </div>
+            </div>
+            <CampaignImageList
+              items={items}
+              onReorder={reorder}
+              onRemove={removeByKey}
+              onMakePrimary={makePrimary}
+              onEditFocal={(key) => setEditingKey(key)}
+            />
+            {primarySlot && (
+              <div className="pt-2">
+                <div className="text-xs font-medium text-muted-foreground mb-1">
+                  Prévia do enquadramento (imagem principal)
+                </div>
+                <CampaignFramingPreview
+                  imageUrl={primarySlot.previewUrl}
+                  focalPoint={primarySlot.focal}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Biblioteca (seleção) */}
+          <div
+            hidden={guided && creationStep !== 1}
+            className="rounded-lg border bg-card p-4 space-y-3"
+          >
+            <div className="text-sm font-semibold">Escolher da biblioteca</div>
+            <MarketingLibrary
+              companyId={companyId}
+              selectable
+              selected={selectedMediaSelections}
+              onToggleSelect={toggleSelection}
+            />
+          </div>
+
+          {/* Áudio */}
+          <div
+            hidden={guided && creationStep !== 2}
+            className="rounded-lg border bg-card p-4 space-y-3"
+          >
+            <h3 className="mkt-builder-step">
+              <span>03</span> Escolha uma trilha para o vídeo
+            </h3>
+            <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
+            {audio && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="lume-audio-start">Início no áudio (segundos)</Label>
+                  <Input
+                    id="lume-audio-start"
+                    type="number"
+                    min={0}
+                    max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))}
+                    value={audioStart}
+                    onChange={(e) =>
+                      setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="lume-video-duration">Duração do vídeo</Label>
+                  <select
+                    className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                    id="lume-video-duration"
+                    value={duration}
+                    onChange={(e) => setDuration(Number(e.target.value) as Duration)}
+                  >
+                    {[8, 10, 15, 30, 60].map((d) => (
+                      <option key={d} value={d}>
+                        {d}s
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modo manual — formulário completo, sem IA */}
+          {mode === "manual" && !pendingReview && !campaignId && (
+            <div hidden={creationStep !== 2}>
+              <CampaignManualForm
+                submitting={generating}
+                disabled={!baseReady}
+                disabledReason="Selecione ao menos 1 imagem e um áudio para continuar."
+                onSubmit={(payload) => void generateManual(payload)}
               />
             </div>
-            <div>
-              <Label>Duração do vídeo</Label>
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value) as Duration)}
+          )}
+
+          {/* Revisão de texto (approval-gate) — sem job de render ainda */}
+          {pendingReview && !campaignId && (
+            <CampaignVideoEditor
+              campaignId={pendingReview.campaignId}
+              contents={pendingReview.contents}
+              previewImageUrl={primarySlot?.previewUrl ?? null}
+              focalPoint={primarySlot?.focal ?? null}
+              onContentsUpdated={(fresh: MarketingContentRow[]) =>
+                setPendingReview((cur) => (cur ? { ...cur, contents: fresh } : cur))
+              }
+              onApproved={() => {
+                const id = pendingReview.campaignId;
+                setPendingReview(null);
+                setCampaignId(id);
+                trackCampaign(id);
+              }}
+            />
+          )}
+
+          {/* Progresso da renderização (global) */}
+          {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
+
+          {/* Editor de focal point */}
+          <FocalPointEditor
+            open={!!editingSlot}
+            imageUrl={editingSlot?.previewUrl ?? null}
+            initialFocal={editingSlot?.focal ?? null}
+            onCancel={() => setEditingKey(null)}
+            onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
+          />
+
+          {/* Sticky action — só no modo IA (o manual tem seu próprio botão) */}
+          {mode === "ai" && !pendingReview && !campaignId && creationStep === 2 && (
+            <CampaignStickyActionBar>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mr-2">
+                {slots.length === 0
+                  ? "Selecione ao menos 1 imagem"
+                  : !audio
+                    ? "Selecione um áudio"
+                    : `${slots.length} imagem(ns) · ${duration}s`}
+              </div>
+              <Button
+                onClick={generate}
+                disabled={!canGenerate}
+                size="lg"
+                className="w-full md:w-auto"
               >
-                {[8, 10, 15, 30, 60].map((d) => (
-                  <option key={d} value={d}>
-                    {d}s
-                  </option>
-                ))}
-              </select>
+                {generating ? (
+                  <LumePulse className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-1" />
+                )}
+                Gerar campanha
+              </Button>
+            </CampaignStickyActionBar>
+          )}
+          {guided && (
+            <div className="mkt-creation-controls">
+              <Button
+                variant="ghost"
+                disabled={creationStep === 0 || generating}
+                onClick={() => setCreationStep((value) => value - 1)}
+              >
+                ← Voltar
+              </Button>
+              {creationStep < 2 ? (
+                <>
+                  <span>
+                    {creationStep === 0
+                      ? "Você pode ajustar tudo depois."
+                      : slots.length === 0
+                        ? "Escolha pelo menos uma imagem."
+                        : `${slots.length} ${slots.length === 1 ? "imagem escolhida" : "imagens escolhidas"}.`}
+                  </span>
+                  <Button
+                    className="mkt-primary"
+                    disabled={generating || (creationStep === 1 && slots.length === 0)}
+                    onClick={() => setCreationStep((value) => value + 1)}
+                  >
+                    Continuar →
+                  </Button>
+                </>
+              ) : (
+                <span>Revise os textos antes de gerar o vídeo.</span>
+              )}
             </div>
+          )}
+        </div>
+      </div>
+      <aside className="mkt-creation-guide" aria-label="Resumo da campanha" aria-live="polite">
+        <div className="mkt-brief-cover">
+          <span className="mkt-eyebrow">EM CONSTRUÇÃO / 0{creationStep + 1}</span>
+          <MarketingArtwork
+            kind={creationStep === 0 ? "capsule" : creationStep === 1 ? "bloom" : "wave"}
+          />
+          <strong>
+            {["Uma ideia.", "Seu olhar.", "Seu ritmo."][creationStep]}
+            <em>Mil possibilidades.</em>
+          </strong>
+        </div>
+        <span className="mkt-eyebrow">RESUMO DA CAMPANHA</span>
+        <h3>Está ficando com a sua cara.</h3>
+        <p>
+          {
+            [
+              "Escolha o jeito de criar e conte o que deseja comunicar.",
+              "Adicione suas fotos. A primeira imagem será o destaque da campanha.",
+              "Escolha uma trilha. Depois, revise os textos para deixar tudo com a sua cara.",
+            ][creationStep]
+          }
+        </p>
+        <ul>
+          <li>
+            <span>Tom de voz</span>
+            <strong>{tone}</strong>
+          </li>
+          <li>
+            <span>Criação</span>
+            <strong>{mode === "ai" ? "Com Lume" : "Manual"}</strong>
+          </li>
+          <li>
+            <span>Imagens</span>
+            <strong>
+              {slots.length} / {MAX_IMAGES}
+            </strong>
+          </li>
+          <li>
+            <span>Trilha</span>
+            <strong>{audio ? "Escolhida" : "A escolher"}</strong>
+          </li>
+        </ul>
+        {audience.trim() && (
+          <div className="mkt-brief-audience">
+            <span>PARA QUEM</span>
+            <p>{audience}</p>
           </div>
         )}
-      </div>
-
-      {/* Modo manual — formulário completo, sem IA */}
-      {mode === "manual" && !pendingReview && !campaignId && (
-        <CampaignManualForm
-          submitting={generating}
-          disabled={!baseReady}
-          disabledReason="Selecione ao menos 1 imagem e um áudio para continuar."
-          onSubmit={(payload) => void generateManual(payload)}
-        />
-      )}
-
-      {/* Revisão de texto (approval-gate) — sem job de render ainda */}
-      {pendingReview && !campaignId && (
-        <CampaignVideoEditor
-          campaignId={pendingReview.campaignId}
-          contents={pendingReview.contents}
-          previewImageUrl={primarySlot?.previewUrl ?? null}
-          focalPoint={primarySlot?.focal ?? null}
-          onContentsUpdated={(fresh: MarketingContentRow[]) =>
-            setPendingReview((cur) =>
-              cur ? { ...cur, contents: fresh } : cur,
-            )
-          }
-          onApproved={() => {
-            const id = pendingReview.campaignId;
-            setPendingReview(null);
-            setCampaignId(id);
-            trackCampaign(id);
-          }}
-        />
-      )}
-
-      {/* Progresso da renderização (global) */}
-      {campaignId && <CampaignRenderProgress tracked={tracked} onRetry={handleRetry} />}
-
-      {/* Editor de focal point */}
-      <FocalPointEditor
-        open={!!editingSlot}
-        imageUrl={editingSlot?.previewUrl ?? null}
-        initialFocal={editingSlot?.focal ?? null}
-        onCancel={() => setEditingKey(null)}
-        onSave={(fp) => editingKey && saveFocal(editingKey, fp)}
-      />
-
-      {/* Sticky action — só no modo IA (o manual tem seu próprio botão) */}
-      {mode === "ai" && !pendingReview && !campaignId && (
-        <CampaignStickyActionBar>
-          <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground mr-2">
-            {slots.length === 0
-              ? "Selecione ao menos 1 imagem"
-              : !audio
-                ? "Selecione um áudio"
-                : `${slots.length} imagem(ns) · ${duration}s`}
-          </div>
-          <Button onClick={generate} disabled={!canGenerate} size="lg" className="w-full md:w-auto">
-            {generating ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-1" />
-            )}
-            Gerar campanha (Feed + Story)
-          </Button>
-        </CampaignStickyActionBar>
-      )}
-
+        <small>O conteúdo passa pela sua revisão. Agendar e publicar são as próximas etapas.</small>
+      </aside>
     </div>
   );
 }

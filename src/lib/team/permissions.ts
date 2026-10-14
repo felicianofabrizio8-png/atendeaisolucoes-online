@@ -67,6 +67,8 @@ export function canOpenPage(access: TeamAccess | undefined, path: string): boole
 
 /** Private API routes default to administration; new routes do not inherit operator access. */
 export function apiPermission(path: string): Permission | "admin" {
+  if (path === "/api/dashboard/analyze") return "dashboard.view";
+  if (path === "/api/atendimento/copilot") return "conversations.read";
   if (path === "/api/atendimento/followup" || path === "/api/ai/followup-status")
     return "conversations.read";
   if (/^\/api\/whatsapp\/(send(?:-|$)|forward-message|templates\/send)/.test(path))

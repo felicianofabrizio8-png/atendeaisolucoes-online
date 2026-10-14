@@ -9,7 +9,7 @@ const ROTATION_MS = 7000;
  *
  * Troca de métrica a cada 7s no mesmo cartão. Decisões que valem
  * comentário:
- * - Os gradientes CSS permanecem montados e só a opacidade/escala muda. Assim
+ * - Os gradientes CSS permanecem montados e só a opacidade muda. Assim
  *   a cor flui entre métricas sem deslocar o cartão nem recalcular layout.
  * - O relógio pausa no hover, no foco do teclado e quando a aba está oculta.
  *   Nada pior do que voltar para a aba e o cartão ter passado 40 vezes.
@@ -73,7 +73,7 @@ export function StatCarousel({
 
   return (
     <div
-      className={cn("@container/stat-card min-w-0 shrink-0 select-none", className)}
+      className={cn("at-stat @container/stat-card min-w-0 shrink-0 select-none", className)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -89,17 +89,15 @@ export function StatCarousel({
         }
       }}
     >
-      <div className="relative overflow-hidden rounded-[28px] bg-[#07070b]">
+      <div className="at-stat-surface relative overflow-hidden rounded-[28px] bg-[#07070b]">
         {stats.map((stat, i) => (
           <span
             key={stat.key}
             aria-hidden="true"
             className={cn(
-              "pointer-events-none absolute inset-0 origin-center",
-              reduceMotion
-                ? "transition-none"
-                : "transition-[opacity,transform] duration-[1000ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-              i === currentIndex ? "scale-100 opacity-100" : "scale-110 opacity-0",
+              "at-stat-gradient pointer-events-none absolute inset-0 origin-center",
+              reduceMotion ? "transition-none" : "transition-opacity duration-500 ease-out",
+              i === currentIndex ? "opacity-100" : "opacity-0",
             )}
             style={{ background: stat.gradient }}
           />
@@ -127,20 +125,21 @@ export function StatCarousel({
             key={current.key}
             className="relative"
             style={
-              reduceMotion
-                ? undefined
-                : { animation: "atendimento-stat-content 550ms ease-out both" }
+              reduceMotion ? undefined : { animation: "atendimento-stat-content 180ms ease-out" }
             }
           >
-            <span className="block text-base font-bold leading-none text-white drop-shadow-sm @min-[280px]/stat-card:text-xl">
-              {current.label}:
+            <span className="at-stat-label block text-base font-bold leading-none text-white drop-shadow-sm @min-[280px]/stat-card:text-xl">
+              {current.label}
             </span>
-            <span className="mt-1 block text-[48px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow @min-[280px]/stat-card:text-[64px]">
+            <span className="at-stat-number mt-1 block text-[48px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow @min-[280px]/stat-card:text-[64px]">
               {current.count}
+            </span>
+            <span className="at-stat-caption mt-3 block max-w-[24ch] text-[11px] leading-relaxed text-white/80">
+              {current.caption}
             </span>
           </span>
           {selected && (
-            <span className="absolute bottom-4 left-6 rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+            <span className="absolute right-3 top-10 rounded-full border border-white/30 bg-black px-2 py-0.5 text-[10px] font-semibold text-white">
               filtrando
             </span>
           )}

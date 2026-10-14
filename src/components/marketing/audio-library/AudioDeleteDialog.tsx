@@ -1,6 +1,6 @@
+import { LumePulse } from "../MarketingMotion";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { lumeToast as toast } from "../MarketingFeedback";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,12 +42,12 @@ export function AudioDeleteDialog({
 
   return (
     <AlertDialog open={!!row} onOpenChange={(v) => (v ? null : onClose())}>
-      <AlertDialogContent>
+      <AlertDialogContent className="mkt-dialog">
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir áudio?</AlertDialogTitle>
           <AlertDialogDescription>
-            Esta ação removerá o arquivo do storage e o registro da biblioteca.
-            Não pode ser desfeita.
+            Esta ação removerá o arquivo do storage e o registro da biblioteca. Não pode ser
+            desfeita.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -61,7 +61,7 @@ export function AudioDeleteDialog({
           >
             {busy ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Excluindo…
+                <LumePulse className="h-4 w-4 mr-2 animate-spin" /> Excluindo…
               </>
             ) : (
               "Excluir"

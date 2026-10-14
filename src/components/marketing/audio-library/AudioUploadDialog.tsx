@@ -1,6 +1,7 @@
+import { LumePulse } from "../MarketingMotion";
 import { useState } from "react";
-import { Loader2, Upload, X } from "lucide-react";
-import { toast } from "sonner";
+import { Upload, X } from "lucide-react";
+import { lumeToast as toast } from "../MarketingFeedback";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -79,17 +80,11 @@ export function AudioUploadDialog({
   const [energy, setEnergy] = useState<AudioEnergy | "">("");
   const [vocalType, setVocalType] = useState<AudioVocalType | "">("");
   const [recommendedFor, setRecommendedFor] = useState<AudioRecommendedFor[]>([]);
-  const [marketingObjectives, setMarketingObjectives] = useState<
-    AudioMarketingObjective[]
-  >([]);
+  const [marketingObjectives, setMarketingObjectives] = useState<AudioMarketingObjective[]>([]);
   const [brandStyles, setBrandStyles] = useState<AudioBrandStyle[]>([]);
   const [seasons, setSeasons] = useState<AudioSeason[]>([]);
-  const [targetAudiences, setTargetAudiences] = useState<AudioTargetAudience[]>(
-    [],
-  );
-  const [bestVideoDurations, setBestVideoDurations] = useState<
-    AudioVideoDuration[]
-  >([]);
+  const [targetAudiences, setTargetAudiences] = useState<AudioTargetAudience[]>([]);
+  const [bestVideoDurations, setBestVideoDurations] = useState<AudioVideoDuration[]>([]);
   const [startSec, setStartSec] = useState<string>("");
   const [endSec, setEndSec] = useState<string>("");
   const [source, setSource] = useState("");
@@ -236,7 +231,7 @@ export function AudioUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? null : handleClose())}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="mkt-dialog max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar música</DialogTitle>
         </DialogHeader>
@@ -412,8 +407,8 @@ export function AudioUploadDialog({
               className="mt-0.5"
             />
             <span>
-              Confirmo que possuo autorização para utilizar comercialmente este
-              áudio. Sem esta confirmação, o upload não é permitido.
+              Confirmo que possuo autorização para utilizar comercialmente este áudio. Sem esta
+              confirmação, o upload não é permitido.
             </span>
           </label>
         </div>
@@ -422,13 +417,10 @@ export function AudioUploadDialog({
           <Button variant="ghost" onClick={handleClose} disabled={saving}>
             <X className="h-4 w-4 mr-1" /> Cancelar
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={saving || !confirmed || !file || quotaReached}
-          >
+          <Button onClick={handleSubmit} disabled={saving || !confirmed || !file || quotaReached}>
             {saving ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando…
+                <LumePulse className="h-4 w-4 mr-2 animate-spin" /> Enviando…
               </>
             ) : (
               <>

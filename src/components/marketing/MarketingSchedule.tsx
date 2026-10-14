@@ -1,20 +1,24 @@
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useState } from "react";
+import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
-import { Loader2, X } from "lucide-react";
-import { toast } from "sonner";
-import {
-  apiListSchedule,
-  apiListContents,
-  apiCancelSchedule,
-} from "@/data/marketingRepo";
-import type {
-  MarketingScheduleRow,
-  MarketingContentRow,
-} from "@/lib/marketing/marketing.types";
+import { X } from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
+import { apiListSchedule, apiListContents, apiCancelSchedule } from "@/data/marketingRepo";
+import type { MarketingScheduleRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
 
 interface Props {
   companyId: string;
 }
+
+const scheduleStatusLabel: Record<MarketingScheduleRow["status"], string> = {
+  planned: "Planejado",
+  queued: "Na fila",
+  publishing: "Publicando",
+  published: "Publicado",
+  failed: "Falha no envio",
+  cancelled: "Cancelado",
+};
 
 export function MarketingSchedule({ companyId }: Props) {
   const [schedule, setSchedule] = useState<MarketingScheduleRow[]>([]);
@@ -41,7 +45,8 @@ export function MarketingSchedule({ companyId }: Props) {
   const grouped = useMemo(() => {
     const map = new Map<string, MarketingScheduleRow[]>();
     for (const s of schedule) {
-      const day = s.scheduled_at.slice(0, 10);
+      const date = new Date(s.scheduled_at);
+      const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
       const arr = map.get(day) ?? [];
       arr.push(s);
       map.set(day, arr);
@@ -63,32 +68,41 @@ export function MarketingSchedule({ companyId }: Props) {
   if (loading) {
     return (
       <div className="text-sm text-muted-foreground flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+        <LumePulse className="h-4 w-4 animate-spin" /> Carregando…
       </div>
     );
   }
 
   if (grouped.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Nenhum conteúdo agendado. Aprove um conteúdo e agende na aba <strong>Aprovação</strong>.
+      <div className="mkt-empty-state">
+        <MarketingArtwork kind="orbit" />
+        <h3>Sua próxima história tem lugar aqui.</h3>
+        <p>
+          Aprove um conteúdo e escolha uma data em <strong>Revisar conteúdos</strong>. Seus próximos
+          envios aparecerão nesta agenda.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-muted-foreground">
-        Fase 1: apenas planejamento. A publicação automática não está ativa.
+      <div className="mkt-tool-toolbar text-xs text-muted-foreground">
+        Acompanhe datas e canais. Consulte a fila e o resultado dos envios em Publicações.
       </div>
       {grouped.map(([day, items]) => (
-        <div key={day} className="rounded-lg border bg-card overflow-hidden">
-          <div className="px-3 py-2 bg-muted text-xs font-semibold uppercase">
-            {new Date(day).toLocaleDateString("pt-BR", {
-              weekday: "long",
-              day: "2-digit",
-              month: "long",
-            })}
+        <div key={day} className="mkt-schedule-day rounded-lg border bg-card overflow-hidden">
+          <div className="mkt-schedule-date px-3 py-2 bg-muted text-xs font-semibold uppercase">
+            <strong>
+              {new Date(`${day}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit" })}
+            </strong>
+            <span>
+              {new Date(`${day}T12:00:00`).toLocaleDateString("pt-BR", {
+                weekday: "long",
+                month: "long",
+              })}
+            </span>
           </div>
           <div className="divide-y">
             {items.map((s) => {
@@ -110,7 +124,7 @@ export function MarketingSchedule({ companyId }: Props) {
                         {s.channel}
                       </span>
                       <span className="uppercase text-[10px] text-muted-foreground">
-                        {s.status}
+                        {scheduleStatusLabel[s.status]}
                       </span>
                     </div>
                     <div className="text-sm mt-1 line-clamp-2">

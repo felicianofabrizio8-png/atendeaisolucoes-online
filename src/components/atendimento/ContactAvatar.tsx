@@ -27,7 +27,7 @@ export function ContactAvatar({
     .join("");
 
   return (
-    <span className={cn("relative inline-flex shrink-0", className)}>
+    <span className={cn("at-avatar relative inline-flex shrink-0", className)}>
       <span
         className="inline-flex items-center justify-center rounded-full font-semibold text-white"
         style={{

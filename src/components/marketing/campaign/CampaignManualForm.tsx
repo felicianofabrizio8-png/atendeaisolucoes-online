@@ -1,26 +1,24 @@
+import { LumePulse } from "../MarketingMotion";
 // Modo Manual — formulário completo de campanha (sem IA).
 //
 // Preenche os mesmos campos que a IA geraria. Ao enviar, chamamos
 // `apiGenerateManualCampaign`, que cria as linhas feed/story e devolve o
 // controle para o MESMO editor de aprovação usado no modo IA.
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CampaignFormatsField } from "./CampaignFormatsField";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, PencilRuler } from "lucide-react";
+import { PencilRuler } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   THEME_PRESETS,
   getThemePreset,
   type ThemeId,
 } from "@/lib/marketing/video-editor/theme-presets";
-import type {
-  ManualCampaignFields,
-  ManualCampaignFormats,
-} from "@/lib/marketing/manual-campaign";
+import type { ManualCampaignFields, ManualCampaignFormats } from "@/lib/marketing/manual-campaign";
 
 export interface ManualSubmitPayload {
   fields: ManualCampaignFields;
@@ -57,6 +55,7 @@ export function CampaignManualForm({
   onSubmit,
 }: Props) {
   const [v, setV] = useState({ ...EMPTY });
+  const fieldId = useId();
   const [theme, setTheme] = useState<ThemeId>("promocao");
   const [formats, setFormats] = useState<ManualCampaignFormats>("feed_story");
 
@@ -88,66 +87,134 @@ export function CampaignManualForm({
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-4">
+    <div className="mkt-manual-form rounded-lg border bg-card p-4 space-y-4">
       <div className="flex items-center gap-2">
         <PencilRuler className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">Criar manualmente (sem IA)</span>
+        <span className="text-sm font-semibold">Escreva os textos da sua campanha</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="md:col-span-2">
-          <Label>Título *</Label>
-          <Input value={v.title} onChange={set("title")} maxLength={80} placeholder="Ex.: Piscina 3x2 com instalação" />
+          <Label htmlFor={fieldId + "-title"}>Título *</Label>
+          <Input
+            id={fieldId + "-title"}
+            value={v.title}
+            onChange={set("title")}
+            maxLength={80}
+            placeholder="Ex.: Piscina 3x2 com instalação"
+          />
         </div>
         <div>
-          <Label>Subtítulo</Label>
-          <Input value={v.subtitle} onChange={set("subtitle")} maxLength={120} placeholder="Ex.: Entrega em 7 dias" />
+          <Label htmlFor={fieldId + "-subtitle"}>Subtítulo</Label>
+          <Input
+            id={fieldId + "-subtitle"}
+            value={v.subtitle}
+            onChange={set("subtitle")}
+            maxLength={120}
+            placeholder="Ex.: Entrega em 7 dias"
+          />
         </div>
         <div>
-          <Label>Preço (opcional)</Label>
-          <Input value={v.price} onChange={set("price")} maxLength={40} placeholder="Ex.: R$ 8.990" />
+          <Label htmlFor={fieldId + "-price"}>Preço (opcional)</Label>
+          <Input
+            id={fieldId + "-price"}
+            value={v.price}
+            onChange={set("price")}
+            maxLength={40}
+            placeholder="Ex.: R$ 8.990"
+          />
         </div>
         <div className="md:col-span-2">
-          <Label>Descrição</Label>
-          <Textarea value={v.description} onChange={set("description")} rows={3} maxLength={2000} />
+          <Label htmlFor={fieldId + "-description"}>Descrição</Label>
+          <Textarea
+            id={fieldId + "-description"}
+            value={v.description}
+            onChange={set("description")}
+            rows={3}
+            maxLength={2000}
+          />
         </div>
         <div className="md:col-span-2">
-          <Label>Texto promocional</Label>
-          <Input value={v.promo_text} onChange={set("promo_text")} maxLength={300} placeholder="Ex.: 20% off até domingo" />
+          <Label htmlFor={fieldId + "-promo_text"}>Texto promocional</Label>
+          <Input
+            id={fieldId + "-promo_text"}
+            value={v.promo_text}
+            onChange={set("promo_text")}
+            maxLength={300}
+            placeholder="Ex.: 20% off até domingo"
+          />
         </div>
         <div>
-          <Label>Botão (CTA)</Label>
-          <Input value={v.cta_text} onChange={set("cta_text")} maxLength={60} placeholder={preset.suggestedCta} />
+          <Label htmlFor={fieldId + "-cta_text"}>Texto do botão</Label>
+          <Input
+            id={fieldId + "-cta_text"}
+            value={v.cta_text}
+            onChange={set("cta_text")}
+            maxLength={60}
+            placeholder={preset.suggestedCta}
+          />
         </div>
         <div>
-          <Label>Hashtags</Label>
-          <Input value={v.hashtags} onChange={set("hashtags")} placeholder="#piscina #verao" />
+          <Label htmlFor={fieldId + "-hashtags"}>Hashtags</Label>
+          <Input
+            id={fieldId + "-hashtags"}
+            value={v.hashtags}
+            onChange={set("hashtags")}
+            placeholder="#piscina #verao"
+          />
         </div>
-        <div>
-          <Label>Telefone</Label>
-          <Input value={v.phone} onChange={set("phone")} maxLength={40} />
-        </div>
-        <div>
-          <Label>WhatsApp</Label>
-          <Input value={v.whatsapp} onChange={set("whatsapp")} maxLength={40} />
-        </div>
-        <div>
-          <Label>Instagram</Label>
-          <Input value={v.instagram} onChange={set("instagram")} maxLength={80} placeholder="@suaempresa" />
-        </div>
-        <div>
-          <Label>Site</Label>
-          <Input value={v.website} onChange={set("website")} maxLength={200} />
-        </div>
+        <details className="mkt-extra-fields md:col-span-2">
+          <summary>Contatos e redes sociais (opcional)</summary>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor={fieldId + "-phone"}>Telefone</Label>
+              <Input
+                id={fieldId + "-phone"}
+                value={v.phone}
+                onChange={set("phone")}
+                maxLength={40}
+              />
+            </div>
+            <div>
+              <Label htmlFor={fieldId + "-whatsapp"}>WhatsApp</Label>
+              <Input
+                id={fieldId + "-whatsapp"}
+                value={v.whatsapp}
+                onChange={set("whatsapp")}
+                maxLength={40}
+              />
+            </div>
+            <div>
+              <Label htmlFor={fieldId + "-instagram"}>Instagram</Label>
+              <Input
+                id={fieldId + "-instagram"}
+                value={v.instagram}
+                onChange={set("instagram")}
+                maxLength={80}
+                placeholder="@suaempresa"
+              />
+            </div>
+            <div>
+              <Label htmlFor={fieldId + "-website"}>Site</Label>
+              <Input
+                id={fieldId + "-website"}
+                value={v.website}
+                onChange={set("website")}
+                maxLength={200}
+              />
+            </div>
+          </div>
+        </details>
       </div>
 
       <div className="space-y-2">
-        <Label>Template / tema</Label>
+        <Label>Estilo do vídeo</Label>
         <div className="flex flex-wrap gap-2">
           {THEME_PRESETS.map((t) => (
             <button
               key={t.id}
               type="button"
+              aria-pressed={theme === t.id}
               onClick={() => setTheme(t.id)}
               className={cn(
                 "rounded-md border px-3 py-2 text-xs text-left transition-colors",
@@ -167,8 +234,7 @@ export function CampaignManualForm({
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          Logo, posição da logo e ajustes finos de cor ficam disponíveis no editor,
-          na etapa seguinte.
+          Você pode ajustar as cores e a identidade visual na próxima etapa.
         </p>
       </div>
 
@@ -184,7 +250,7 @@ export function CampaignManualForm({
       )}
 
       <Button onClick={submit} disabled={!canSubmit} className="w-full md:w-auto">
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+        {submitting ? <LumePulse className="h-4 w-4 animate-spin mr-1" /> : null}
         Criar campanha manualmente
       </Button>
     </div>

@@ -1,9 +1,10 @@
+import { LumePulse } from "../MarketingMotion";
 // Grid de imagens da campanha com drag-and-drop nativo HTML5.
 // Sem dependências extras. Suporta reorder, remover, marcar principal e
 // abrir o editor de focal point.
 
 import { useCallback, useState } from "react";
-import { GripVertical, Star, StarOff, X, Crop, Loader2 } from "lucide-react";
+import { GripVertical, Star, StarOff, X, Crop } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FocalPointInput } from "@/data/marketingRepo";
 
@@ -95,7 +96,7 @@ export function CampaignImageList({
           >
             {it.loadingPreview && !it.previewUrl ? (
               <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <LumePulse className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : it.previewUrl ? (
               <img

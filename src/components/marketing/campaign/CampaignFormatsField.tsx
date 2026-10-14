@@ -32,7 +32,7 @@ export function CampaignFormatsField({
   id = "campaign-formats",
 }: CampaignFormatsFieldProps) {
   return (
-    <div className="space-y-1.5">
+    <div className="mkt-format-field space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <select
         id={id}
@@ -51,6 +51,18 @@ export function CampaignFormatsField({
           ),
         )}
       </select>
+      <div className="mkt-format-visuals" aria-hidden="true">
+        <span className={value !== "story" ? "is-selected" : ""}>
+          <i className="mkt-ratio-feed" />
+          <b>Feed</b>
+          <small>4:5 · na sua página</small>
+        </span>
+        <span className={value !== "feed" ? "is-selected" : ""}>
+          <i className="mkt-ratio-story" />
+          <b>Story</b>
+          <small>9:16 · tela inteira</small>
+        </span>
+      </div>
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );

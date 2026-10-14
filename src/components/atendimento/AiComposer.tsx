@@ -1,178 +1,159 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, FileText, ImagePlus, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-/**
- * Campo de pergunta para a IA.
- *
- * Superfície neutra de propósito: borda fina, fundo igual ao da página, sem
- * gradiente. O gradiente anterior competia com a orbe pelo mesmo olhar — num
- * painel que só tem dois elementos, o segundo aceso vira ruído.
- *
- * Três formas de anexar, porque atendente manda print de três jeitos:
- * botão, colar (Ctrl+V) e arrastar. A de colar é a mais usada e a que
- * costuma faltar.
- */
+import {
+  CHAT_LIMITS,
+  IMAGE_TYPES,
+  DOCUMENT_TYPES,
+  attachmentError,
+} from "@/lib/atendimento/copilot-chat";
 
 export interface Attachment {
   id: string;
   file: File;
-  /** objectURL para imagem; null para os demais tipos. */
   previewUrl: string | null;
 }
-
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_ATTACHMENTS = 5;
-const ACCEPTED = "image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv";
-
-function isImage(file: File): boolean {
-  return file.type.startsWith("image/");
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+const release = (items: Attachment[]) =>
+  items.forEach((a) => {
+    if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+  });
 
 export function AiComposer({
   value,
   onChange,
   onSubmit,
   disabled = false,
-  placeholder = "Perguntar",
+  placeholder = "Pergunte à Lume…",
+  allowAttachments = true,
+  label = "Pergunte para a IA sobre esta conversa",
 }: {
   value: string;
-  onChange: (v: string) => void;
-  onSubmit: (text: string, attachments: Attachment[]) => void;
+  onChange: (value: string) => void;
+  onSubmit: (text: string, attachments: Attachment[]) => Promise<boolean> | boolean | void;
   disabled?: boolean;
   placeholder?: string;
+  allowAttachments?: boolean;
+  label?: string;
 }) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const current = useRef<Attachment[]>([]);
+  const busy = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
+  const documentRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // objectURL é um recurso do documento, não do React: sem revoke o navegador
-  // segura o blob até a aba fechar.
+  const locked = disabled || submitting;
+  useEffect(() => () => release(current.current), []);
   useEffect(() => {
-    return () => {
-      for (const a of attachments) {
-        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-      }
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const resize = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só na desmontagem
-  }, []);
-
-  // Altura acompanha o conteúdo, com teto. Reseta para "auto" antes de medir,
-  // senão o scrollHeight nunca diminui ao apagar texto.
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    resize();
+    // A lateral animada muda de largura mesmo quando o texto permanece igual.
+    if (typeof ResizeObserver === "undefined") return;
+    let width = textarea.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      resize();
+    });
+    observer.observe(textarea);
+    return () => observer.disconnect();
   }, [value]);
-
-  const addFiles = useCallback((files: FileList | File[]) => {
-    setError(null);
-    const incoming = Array.from(files);
-    const accepted: Attachment[] = [];
-
-    for (const file of incoming) {
-      if (file.size > MAX_FILE_BYTES) {
-        setError(`"${file.name}" passa de ${formatSize(MAX_FILE_BYTES)}`);
+  function update(items: Attachment[]) {
+    current.current = items;
+    setAttachments(items);
+  }
+  function addFiles(files: FileList | File[]) {
+    if (locked || !allowAttachments) return;
+    let message: string | null = null;
+    const next = [...current.current];
+    for (const file of Array.from(files)) {
+      const invalid = attachmentError(file);
+      if (invalid) {
+        message = invalid;
         continue;
       }
-      accepted.push({
-        id: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
+      if (next.length >= CHAT_LIMITS.files) {
+        message = "Envie até 5 anexos.";
+        break;
+      }
+      if (next.reduce((sum, a) => sum + a.file.size, 0) + file.size > CHAT_LIMITS.totalBytes) {
+        message = "Os anexos juntos podem ter até 10 MB.";
+        continue;
+      }
+      next.push({
+        id: crypto.randomUUID(),
         file,
-        previewUrl: isImage(file) ? URL.createObjectURL(file) : null,
+        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
       });
     }
-
-    setAttachments((prev) => {
-      const room = MAX_ATTACHMENTS - prev.length;
-      if (accepted.length > room) {
-        setError(`Máximo de ${MAX_ATTACHMENTS} anexos`);
-      }
-      // Os excedentes já criaram objectURL; revoga agora para não vazar.
-      for (const extra of accepted.slice(Math.max(room, 0))) {
-        if (extra.previewUrl) URL.revokeObjectURL(extra.previewUrl);
-      }
-      return [...prev, ...accepted.slice(0, Math.max(room, 0))];
-    });
-  }, []);
-
-  const removeAttachment = useCallback((id: string) => {
-    setAttachments((prev) => {
-      const target = prev.find((a) => a.id === id);
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((a) => a.id !== id);
-    });
-  }, []);
-
-  const submit = useCallback(() => {
-    const text = value.trim();
-    if (disabled || (!text && attachments.length === 0)) return;
-    onSubmit(text, attachments);
-    setAttachments([]);
+    update(next);
+    setError(message);
+  }
+  async function submit() {
+    if (locked || busy.current || (!value.trim() && !current.current.length)) return;
+    busy.current = true;
+    setSubmitting(true);
     setError(null);
-  }, [attachments, disabled, onSubmit, value]);
-
-  /** Print colado chega como item de imagem no clipboard, sem nome de arquivo. */
-  const handlePaste = useCallback(
-    (event: React.ClipboardEvent) => {
-      const files = Array.from(event.clipboardData.files);
-      if (files.length === 0) return;
-      event.preventDefault();
-      addFiles(files);
-    },
-    [addFiles],
-  );
-
-  const canSend = !disabled && (value.trim().length > 0 || attachments.length > 0);
-
+    try {
+      const accepted = await onSubmit(value.trim(), current.current);
+      if (accepted !== false) {
+        release(current.current);
+        update([]);
+      }
+    } catch {
+      setError("Não foi possível enviar. Seus anexos foram mantidos.");
+    } finally {
+      busy.current = false;
+      setSubmitting(false);
+    }
+  }
   return (
     <div
-      className="shrink-0"
       onDragOver={(e) => {
         e.preventDefault();
-        setDragging(true);
+        if (!locked && allowAttachments) setDragging(true);
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => {
         e.preventDefault();
         setDragging(false);
-        if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+        addFiles(e.dataTransfer.files);
       }}
+      className="min-w-0"
     >
-      {/* Anexos ficam FORA da pílula. Dentro, eles esticariam a altura e a
-          borda arredondada viraria uma cápsula deformada. */}
       {attachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {attachments.map((a) => (
             <div
               key={a.id}
-              className="group relative flex items-center gap-2 rounded-xl border border-border bg-secondary py-1.5 pl-1.5 pr-7"
+              className="relative flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-border bg-background p-1.5 pr-7"
             >
               {a.previewUrl ? (
                 <img
                   src={a.previewUrl}
                   alt={a.file.name}
-                  className="h-8 w-8 rounded-lg object-cover"
+                  className="h-10 w-10 rounded-lg object-cover"
                 />
               ) : (
-                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                </span>
+                <FileText className="m-2 h-5 w-5 shrink-0 text-muted-foreground" />
               )}
-              <span className="max-w-[110px] truncate text-[11px] font-medium">{a.file.name}</span>
+              <span className="max-w-28 truncate text-xs">{a.file.name}</span>
               <button
                 type="button"
-                onClick={() => removeAttachment(a.id)}
+                disabled={locked}
                 aria-label={`Remover ${a.file.name}`}
-                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="absolute right-1 top-1 rounded-full p-1 hover:bg-accent disabled:opacity-40"
+                onClick={() => {
+                  release([a]);
+                  update(current.current.filter((item) => item.id !== a.id));
+                }}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -180,85 +161,97 @@ export function AiComposer({
           ))}
         </div>
       )}
-
       <div
         className={cn(
-          // Pílula: clipe, campo e enviar na mesma linha.
-          // `items-end` em vez de `items-center` para os botões ficarem
-          // ancorados na base quando o campo cresce em várias linhas — com
-          // center eles flutuariam no meio do bloco de texto.
-          "flex items-end gap-1.5 rounded-full border bg-background px-2 py-1.5 transition-colors",
-          dragging ? "border-foreground/40 bg-accent/30" : "border-border",
+          "flex items-end gap-1 rounded-[24px] border bg-secondary/40 py-1 pl-4 pr-1.5 shadow-sm transition-colors focus-within:border-foreground/30",
+          dragging ? "border-violet-400 bg-violet-500/10" : "border-border",
         )}
       >
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          aria-label="Anexar arquivo ou imagem"
-          title="Anexar arquivo, imagem ou print (também aceita colar e arrastar)"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Paperclip className="h-4 w-4" />
-        </button>
-
         <textarea
           ref={textareaRef}
+          rows={1}
           value={value}
+          disabled={locked}
+          maxLength={CHAT_LIMITS.question}
           onChange={(e) => onChange(e.target.value)}
-          onPaste={handlePaste}
-          onKeyDown={(e) => {
-            // Enter envia, Shift+Enter quebra linha — convenção de chat.
-            // `isComposing` protege teclado de IME (acento, emoji): durante a
-            // composição o Enter confirma o caractere, não envia.
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          placeholder={placeholder}
+          aria-label={label}
+          onPaste={(e) => {
+            if (e.clipboardData.files.length) {
               e.preventDefault();
-              submit();
+              addFiles(e.clipboardData.files);
             }
           }}
-          rows={1}
-          placeholder={placeholder}
-          aria-label="Pergunte para a IA sobre esta conversa"
-          // min-w-0: item flex tem `min-width: auto` e o campo se recusaria a
-          // encolher abaixo do próprio placeholder, empurrando os botões para
-          // fora da pílula.
-          className="block max-h-40 min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-1.5 text-[15px] leading-tight outline-none placeholder:text-muted-foreground"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void submit();
+            }
+          }}
+          className="block max-h-36 min-h-8 min-w-0 flex-1 resize-none self-center bg-transparent py-1.5 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:opacity-60"
         />
-
+        {allowAttachments && (
+          <>
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => imageRef.current?.click()}
+              aria-label="Anexar imagem"
+              title="Imagens PNG, JPG, WEBP ou GIF — até 5 MB"
+              className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+            >
+              <ImagePlus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => documentRef.current?.click()}
+              aria-label="Anexar documento"
+              title="Documentos PDF, TXT ou CSV — até 5 MB"
+              className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+          </>
+        )}
         <button
           type="button"
-          onClick={submit}
-          disabled={!canSend}
+          onClick={() => void submit()}
+          disabled={locked || (!value.trim() && !attachments.length)}
           aria-label="Enviar pergunta"
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
-            canSend
-              ? "bg-foreground text-background hover:opacity-90"
-              : "bg-secondary text-muted-foreground",
-          )}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80 disabled:opacity-30"
         >
-          {disabled ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <ArrowUp className="h-4 w-4" />
-          )}
+          {locked ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
         </button>
-
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept={ACCEPTED}
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) addFiles(e.target.files);
-            // Zera para o mesmo arquivo poder ser escolhido duas vezes.
-            e.target.value = "";
-          }}
-        />
       </div>
-
+      <input
+        ref={imageRef}
+        type="file"
+        aria-label="Selecionar imagens"
+        multiple
+        accept={IMAGE_TYPES.join(",")}
+        className="hidden"
+        disabled={locked}
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={documentRef}
+        type="file"
+        aria-label="Selecionar documentos"
+        multiple
+        accept={DOCUMENT_TYPES.join(",")}
+        className="hidden"
+        disabled={locked}
+        onChange={(e) => {
+          if (e.target.files) addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
       {error && (
-        <p role="alert" className="mt-1.5 px-1 text-[11px] text-destructive">
+        <p role="alert" className="mt-2 text-xs text-destructive">
           {error}
         </p>
       )}

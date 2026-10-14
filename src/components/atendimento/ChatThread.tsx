@@ -375,8 +375,8 @@ export function ChatThread({
         : "Mandar mensagem";
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-x-hidden">
-      <header className="flex items-center gap-3 px-4 py-3 sm:px-5">
+    <div className="at-thread flex h-full min-h-0 flex-col overflow-x-hidden">
+      <header className="at-thread-header flex items-center gap-3 px-4 py-3 sm:px-5">
         {onBack && (
           <button
             type="button"
@@ -475,7 +475,7 @@ export function ChatThread({
           </div>
         )}
 
-      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
+      <div ref={scrollerRef} className="at-messages min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
         <MessagesContext.Provider value={messages}>
           <ReplyComposeContext.Provider value={replyCompose}>
             <div className="flex w-full min-w-0 flex-col gap-2">
