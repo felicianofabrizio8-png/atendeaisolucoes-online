@@ -2276,3 +2276,41 @@ gh pr view --json number,state   # se o #44 ainda estiver aberto, os commits ent
 ```
 
 Se for abrir um PR novo: `gh pr create --base main --head isaque3`, com o resumo das Tasks 1–8, a verificação e o roteiro de ativação.
+
+---
+
+## Revisão 2 (16/10) — prevalece sobre as Tasks 2 e 5
+
+Pedido do usuário: quem não tem conta **cria a conta normalmente** (com as verificações) e só depois entra pelo link; o popup do link mostra o nome do time, uma frase de confirmação e os botões Entrar / Agora não; animações suaves como no Marketing IA.
+
+**Task 2 (SQL), simplificada:**
+- `handle_new_user` **não muda**. O cadastro pelo link é o cadastro normal, que cria a equipe própria.
+- Sem `join_confirmation_pending` e sem `team_decline_link_join`.
+- `team_join_via_link(_token text)` faz só a troca de equipe:
+  - valida o link (`team_link_usable`, com `FOR UPDATE`);
+  - recusa se a conta tiver colegas na equipe atual;
+  - move o perfil (marca `lume.team_move`);
+  - conta o uso;
+  - respeita a aprovação.
+- `team_my_pending_join()` devolve só o estado `waiting` (aguardando aprovação).
+- `team_invite_link_info`, para quem está logado, acrescenta `currentTeam`, `alreadyMember`, `canSwitch` e `currentTeamHasData` (há leads, conversas, orçamentos ou compromissos na equipe atual).
+- Testes:
+  - conta nova sozinha entra pelo link (troca de equipe e conta o uso);
+  - limite de usos;
+  - aprovação;
+  - conta com colegas é recusada;
+  - o perfil continua sem poder trocar de empresa direto.
+
+**Task 5 (tela), simplificada:**
+- `/convite?link=` guarda o token.
+  - Sem login: popup "Você foi convidado para **X**" com a frase "Crie sua conta ou entre para aceitar o convite." e os botões Criar conta / Entrar, que abrem o login/cadastro **normal**.
+  - Com login: popup de confirmação.
+- **Popup de confirmação** (`JoinTeamDialog`):
+  - título: o nome do time;
+  - frase: "Você foi convidado para fazer parte da equipe X. Deseja entrar?";
+  - aviso de aprovação, quando o link exigir;
+  - aviso de troca, só se `currentTeamHasData`;
+  - botões **Entrar na equipe** e **Agora não**.
+- `PendingInviteGate`: depois do login, se houver token guardado, abre o popup; se `team_my_pending_join` = `waiting`, mostra "Aguardando aprovação".
+- `WelcomeTeamDialog` não abre enquanto houver token guardado.
+- **Animações** (`LumePopup`): `framer-motion` com `AnimatePresence`; fundo com fade (0,2 s) e painel com `opacity 0→1`, `y 12→0` e `scale 0.98→1`, `ease [0.22, 1, 0.36, 1]`, 0,35 s; saída em 0,18 s. Com `useReducedMotion`, sem deslocamento.
