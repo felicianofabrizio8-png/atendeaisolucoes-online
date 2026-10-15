@@ -80,6 +80,9 @@ import { Route as ApiOnboardingHealthRouteImport } from './routes/api.onboarding
 import { Route as ApiOnboardingChecklistRouteImport } from './routes/api.onboarding.checklist'
 import { Route as ApiMetaDisconnectRouteImport } from './routes/api.meta.disconnect'
 import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
+import { Route as ApiLumeStatusRouteImport } from './routes/api.lume.status'
+import { Route as ApiLumeChatRouteImport } from './routes/api.lume.chat'
+import { Route as ApiLumeActionRouteImport } from './routes/api.lume.action'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
 import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
@@ -521,6 +524,21 @@ const ApiMetaConfigRoute = ApiMetaConfigRouteImport.update({
   path: '/api/meta/config',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLumeStatusRoute = ApiLumeStatusRouteImport.update({
+  id: '/api/lume/status',
+  path: '/api/lume/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLumeChatRoute = ApiLumeChatRouteImport.update({
+  id: '/api/lume/chat',
+  path: '/api/lume/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLumeActionRoute = ApiLumeActionRouteImport.update({
+  id: '/api/lume/action',
+  path: '/api/lume/action',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
   id: '/api/executive/snapshot',
   path: '/api/executive/snapshot',
@@ -829,6 +847,9 @@ export interface FileRoutesByFullPath {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/lume/action': typeof ApiLumeActionRoute
+  '/api/lume/chat': typeof ApiLumeChatRoute
+  '/api/lume/status': typeof ApiLumeStatusRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/meta/disconnect': typeof ApiMetaDisconnectRoute
   '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
@@ -947,6 +968,9 @@ export interface FileRoutesByTo {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/lume/action': typeof ApiLumeActionRoute
+  '/api/lume/chat': typeof ApiLumeChatRoute
+  '/api/lume/status': typeof ApiLumeStatusRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/meta/disconnect': typeof ApiMetaDisconnectRoute
   '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
@@ -1067,6 +1091,9 @@ export interface FileRoutesById {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/lume/action': typeof ApiLumeActionRoute
+  '/api/lume/chat': typeof ApiLumeChatRoute
+  '/api/lume/status': typeof ApiLumeStatusRoute
   '/api/meta/config': typeof ApiMetaConfigRoute
   '/api/meta/disconnect': typeof ApiMetaDisconnectRoute
   '/api/onboarding/checklist': typeof ApiOnboardingChecklistRoute
@@ -1188,6 +1215,9 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/lume/action'
+    | '/api/lume/chat'
+    | '/api/lume/status'
     | '/api/meta/config'
     | '/api/meta/disconnect'
     | '/api/onboarding/checklist'
@@ -1306,6 +1336,9 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/lume/action'
+    | '/api/lume/chat'
+    | '/api/lume/status'
     | '/api/meta/config'
     | '/api/meta/disconnect'
     | '/api/onboarding/checklist'
@@ -1425,6 +1458,9 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/lume/action'
+    | '/api/lume/chat'
+    | '/api/lume/status'
     | '/api/meta/config'
     | '/api/meta/disconnect'
     | '/api/onboarding/checklist'
@@ -1540,6 +1576,9 @@ export interface RootRouteChildren {
   ApiExecutiveNarrativeRoute: typeof ApiExecutiveNarrativeRoute
   ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
+  ApiLumeActionRoute: typeof ApiLumeActionRoute
+  ApiLumeChatRoute: typeof ApiLumeChatRoute
+  ApiLumeStatusRoute: typeof ApiLumeStatusRoute
   ApiMetaConfigRoute: typeof ApiMetaConfigRoute
   ApiMetaDisconnectRoute: typeof ApiMetaDisconnectRoute
   ApiOnboardingChecklistRoute: typeof ApiOnboardingChecklistRoute
@@ -2100,6 +2139,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMetaConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/lume/status': {
+      id: '/api/lume/status'
+      path: '/api/lume/status'
+      fullPath: '/api/lume/status'
+      preLoaderRoute: typeof ApiLumeStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/lume/chat': {
+      id: '/api/lume/chat'
+      path: '/api/lume/chat'
+      fullPath: '/api/lume/chat'
+      preLoaderRoute: typeof ApiLumeChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/lume/action': {
+      id: '/api/lume/action'
+      path: '/api/lume/action'
+      fullPath: '/api/lume/action'
+      preLoaderRoute: typeof ApiLumeActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/executive/snapshot': {
       id: '/api/executive/snapshot'
       path: '/api/executive/snapshot'
@@ -2507,6 +2567,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExecutiveNarrativeRoute: ApiExecutiveNarrativeRoute,
   ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
+  ApiLumeActionRoute: ApiLumeActionRoute,
+  ApiLumeChatRoute: ApiLumeChatRoute,
+  ApiLumeStatusRoute: ApiLumeStatusRoute,
   ApiMetaConfigRoute: ApiMetaConfigRoute,
   ApiMetaDisconnectRoute: ApiMetaDisconnectRoute,
   ApiOnboardingChecklistRoute: ApiOnboardingChecklistRoute,
