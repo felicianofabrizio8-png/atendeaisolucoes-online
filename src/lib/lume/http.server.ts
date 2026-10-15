@@ -16,7 +16,7 @@ import {
  *   POST /api/lume/chat    — texto ou áudio; devolve resposta e ações
  *   POST /api/lume/action  — confirmar, cancelar ou desfazer uma ação
  *   GET  /api/lume/status  — se a chave e o áudio estão configurados
- * A permissão de equipe ("Gerenciar agenda") é aplicada antes, pelo middleware de API.
+ * A permissão de equipe ("Usar a agenda") é aplicada antes, pelo middleware de API.
  */
 
 const DOMAINS: LumeDomain[] = [agendaDomain];

@@ -5,7 +5,8 @@ export const PERMISSIONS = {
   "conversations.view_all": "Visualizar atendimentos de toda a equipe",
   "conversations.assign": "Transferir atendimentos entre usuários",
   "quotes.manage": "Criar e gerenciar orçamentos",
-  "agenda.manage": "Gerenciar agenda",
+  "agenda.manage": "Usar a agenda (pessoal)",
+  "agenda.team": "Gerenciar agenda da equipe",
   "products.view": "Consultar catálogo de produtos",
   "products.manage": "Editar produtos e preços",
   "reports.view": "Visualizar relatórios",
@@ -92,4 +93,54 @@ export function apiPermission(path: string): Permission | "admin" {
     return "ai.manage";
   if (/^\/api\/(meta|whatsapp|onboarding)/.test(path)) return "settings.manage";
   return "admin";
+}
+
+export const PERMISSION_GROUPS: Array<{ module: string; items: Array<{ key: Permission; hint: string }> }> = [
+  { module: "Painel", items: [{ key: "dashboard.view", hint: "Vê os números da empresa." }] },
+  {
+    module: "Atendimento",
+    items: [
+      { key: "conversations.read", hint: "Vê a fila e os próprios atendimentos." },
+      { key: "conversations.reply", hint: "Assume e responde clientes." },
+      { key: "conversations.view_all", hint: "Acompanha os atendimentos de todos." },
+      { key: "conversations.assign", hint: "Transfere atendimentos entre pessoas." },
+    ],
+  },
+  {
+    module: "Agenda",
+    items: [
+      { key: "agenda.manage", hint: "Tem a própria agenda: clientes, lembretes e tarefas." },
+      { key: "agenda.team", hint: "Cria compromissos da equipe e vê a agenda de todos." },
+    ],
+  },
+  { module: "Orçamentos", items: [{ key: "quotes.manage", hint: "Cria e envia orçamentos." }] },
+  {
+    module: "Catálogo",
+    items: [
+      { key: "products.view", hint: "Consulta produtos e preços." },
+      { key: "products.manage", hint: "Edita produtos e preços." },
+    ],
+  },
+  { module: "Relatórios", items: [{ key: "reports.view", hint: "Vê relatórios." }] },
+  { module: "Marketing", items: [{ key: "campaigns.manage", hint: "Só administradores." }] },
+  { module: "IA", items: [{ key: "ai.manage", hint: "Só administradores." }] },
+  { module: "Configurações", items: [{ key: "settings.manage", hint: "Só administradores." }] },
+];
+
+export const PROFILE_PRESETS = {
+  funcionario: [...DEFAULT_ATTENDANT],
+  gestor_agenda: [...DEFAULT_ATTENDANT, "agenda.team"],
+} satisfies Record<string, Permission[]>;
+
+export function presetOf(permissions: Permission[], role: TeamRole | null) {
+  if (role === "admin") return "admin" as const;
+  const same = (a: Permission[], b: Permission[]) =>
+    a.length === b.length && a.every((item) => b.includes(item));
+  if (same(permissions, PROFILE_PRESETS.gestor_agenda)) return "gestor_agenda" as const;
+  if (same(permissions, PROFILE_PRESETS.funcionario)) return "funcionario" as const;
+  return "personalizado" as const;
+}
+
+export function canManageTeamAgenda(access: TeamAccess | undefined): boolean {
+  return can(access, "agenda.team");
 }
