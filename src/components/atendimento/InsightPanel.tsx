@@ -93,9 +93,11 @@ function CoachTab({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <ConversationAiChat contact={contact} onUseSuggestion={onUseSuggestion} />
-      <details className="shrink-0 rounded-2xl border border-border">
+      {/* Aberto por padrão: aqui moram a aprovação do modo assistido, a resposta
+          automática e a devolução para a IA — fechado, a Vendedora fica parada. */}
+      <details open className="shrink-0 rounded-2xl border border-border">
         <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
-          Automação e aprovações
+          Automações e aprovações
         </summary>
         <div className="max-h-[35vh] overflow-y-auto">
           <CoachPanel

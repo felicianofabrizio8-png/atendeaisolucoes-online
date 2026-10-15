@@ -88,6 +88,11 @@ vi.mock("@/hooks/useIsAdmin", () => ({
   useIsAdmin: () => ({ isAdmin: adminState.isAdmin, isLoading: false }),
 }));
 
+// Empresa no fluxo do Coach: o CoachPanel só monta o painel depois de conhecer o modo.
+vi.mock("@/hooks/useSalesAgentPanelMode", () => ({
+  useSalesAgentPanelMode: () => ({ mode: "coach", retry: () => {} }),
+}));
+
 // Import após mocks.
 import { CoachPanel } from "@/components/coach/CoachPanel";
 import { FeatureDisabledScreen as InterpreterFeatureDisabledScreen } from "@/lib/coach-interpreter/admin/feature-disabled-screen";

@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   scope: true,
   found: true,
   provider: true,
+  sales: "CONHECIMENTO-VENDEDORA" as string | null,
+  salesCalls: [] as unknown[],
   from: vi.fn(),
   rpc: vi.fn(),
   fetch: vi.fn(),
@@ -38,6 +40,12 @@ vi.mock("@/lib/sales-agent-config.server", () => ({
         }
       : { ok: false },
 }));
+vi.mock("@/lib/atendimento/copilot-sales-intelligence.server", () => ({
+  buildCopilotSalesIntelligence: async (params: unknown) => {
+    mocks.salesCalls.push(params);
+    return mocks.sales;
+  },
+}));
 import {
   handleCopilotChat,
   attachmentPart,
@@ -62,7 +70,15 @@ function request(body = form(), token = true) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.assign(mocks, { auth: true, allowed: true, scope: true, found: true, provider: true });
+  Object.assign(mocks, {
+    auth: true,
+    allowed: true,
+    scope: true,
+    found: true,
+    provider: true,
+    sales: "CONHECIMENTO-VENDEDORA",
+    salesCalls: [],
+  });
   mocks.rpc.mockImplementation(async () => ({ data: mocks.scope, error: null }));
   mocks.from.mockImplementation((table: string) => {
     const data =
@@ -235,5 +251,27 @@ describe("copiloto consultivo autorizado", () => {
     const response = await handleCopilotChat(request());
     expect(response.status).toBe(502);
     expect(await response.text()).not.toContain("secret");
+  });
+  it("usa a inteligência da Vendedora com o histórico da conversa", async () => {
+    expect((await handleCopilotChat(request())).status).toBe(200);
+    expect(mocks.salesCalls).toEqual([
+      {
+        companyId: "company-a",
+        conversationId: id,
+        history: [{ role: "lead", text: "Preciso de orçamento" }],
+        question: "Resumo",
+      },
+    ]);
+    const sent = JSON.parse(mocks.fetch.mock.calls[0][1].body);
+    expect(sent.messages[0].content).toContain("CONHECIMENTO DA VENDEDORA");
+    expect(sent.messages[0].content).toContain("CONHECIMENTO-VENDEDORA");
+    expect(sent.messages[0].content).toContain("Catálogo aprovado da empresa");
+  });
+  it("segue respondendo com o contexto da empresa quando a Vendedora não carrega", async () => {
+    mocks.sales = null;
+    expect((await handleCopilotChat(request())).status).toBe(200);
+    const sent = JSON.parse(mocks.fetch.mock.calls[0][1].body);
+    expect(sent.messages[0].content).not.toContain("CONHECIMENTO DA VENDEDORA");
+    expect(sent.messages[0].content).toContain("Catálogo aprovado da empresa");
   });
 });
