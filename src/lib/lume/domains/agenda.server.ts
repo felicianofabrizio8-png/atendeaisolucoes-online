@@ -604,6 +604,9 @@ const remind: LumeTool<{ id: string; minutos_antes: number; canal?: "app" | "ema
       return {
         output: { erro: "Lembretes ficam disponíveis após publicar a atualização da Agenda." },
       };
+    // Só lembra de compromisso que esta pessoa enxerga na própria empresa.
+    const [event] = await loadEvents(ctx, [args.id]).catch(() => []);
+    if (!event) return { output: { erro: "Compromisso não encontrado." } };
     const { data, error } = await ctx.client
       .from("agenda_reminders")
       .insert({

@@ -185,74 +185,109 @@ function validUndo(value: unknown): value is LumeUndo {
   return typeof undo.table === "string" && Array.isArray(undo.ids);
 }
 
+interface StoredAction {
+  id: string;
+  tool: string;
+  summary: string;
+  input: Record<string, unknown> | null;
+  status: string;
+  undo: unknown;
+}
+
+/** Com auditoria ativa, as ações ficam guardadas no servidor e são a única fonte de verdade. */
+function auditEnabled(ctx: LumeContext) {
+  return ctx.extended && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+}
+
+async function storedAction(ctx: LumeContext, id: string): Promise<StoredAction | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await supabaseAdmin
+    .from("lume_actions" as never)
+    .select("id,tool,summary,input,status,undo")
+    .eq("id", id)
+    .eq("company_id", ctx.companyId)
+    .eq("user_id", ctx.userId)
+    .maybeSingle();
+  return (data as StoredAction | null) ?? null;
+}
+
+async function updateAction(ctx: LumeContext, id: string, patch: Record<string, unknown>) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await supabaseAdmin
+    .from("lume_actions" as never)
+    .update({ ...patch, decided_at: new Date().toISOString() } as never)
+    .eq("id", id)
+    .eq("company_id", ctx.companyId)
+    .eq("user_id", ctx.userId);
+}
+
 export async function handleLumeAction(request: Request): Promise<Response> {
   try {
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) throw new LumeError("Pedido inválido.");
     const ctx = await contextFor(request, typeof body.timezone === "string" ? body.timezone : null);
-    const id = typeof body.id === "string" ? body.id : crypto.randomUUID();
+    const decision = body.decision;
+    if (decision !== "confirm" && decision !== "cancel" && decision !== "undo")
+      throw new LumeError("Decisão inválida.");
 
-    if (body.decision === "cancel") {
-      await audit(ctx, [
-        {
-          id,
-          tool: String(body.tool ?? ""),
-          summary: String(body.summary ?? ""),
-          status: "cancelada",
-        },
-      ]);
+    // Com auditoria: tudo vem da ação guardada (id + pessoa + empresa), nunca do pedido.
+    // Sem auditoria (antes da migração), não há registro a forjar: a ação roda pelo pedido,
+    // sempre com a sessão e as permissões de quem pede.
+    const audited = auditEnabled(ctx);
+    let tool = String(body.tool ?? "");
+    let args =
+      body.args && typeof body.args === "object" ? (body.args as Record<string, unknown>) : null;
+    let undo: unknown = body.undo;
+    let id: string = crypto.randomUUID();
+    if (audited) {
+      if (typeof body.id !== "string") throw new LumeError("Ação não encontrada.", 404);
+      const stored = await storedAction(ctx, body.id);
+      if (!stored) throw new LumeError("Ação não encontrada.", 404);
+      const expected = decision === "undo" ? ["executada", "confirmada"] : ["pendente"];
+      if (!expected.includes(stored.status)) throw new LumeError("Esta ação já foi decidida.", 409);
+      id = stored.id;
+      tool = stored.tool;
+      args = stored.input;
+      undo = stored.undo;
+    }
+
+    if (decision === "cancel") {
+      if (audited) await updateAction(ctx, id, { status: "cancelada" });
       return json({ status: "cancelada" });
     }
 
-    if (body.decision === "undo") {
-      if (!validUndo(body.undo)) throw new LumeError("Não há o que desfazer.");
+    if (decision === "undo") {
+      if (!validUndo(undo)) throw new LumeError("Não há o que desfazer.");
       const domain = DOMAINS.find((item) => item.id === "agenda")!;
-      await domain.undo(body.undo, ctx);
-      await audit(ctx, [
-        {
-          id: crypto.randomUUID(),
-          tool: "desfazer",
-          summary: `Desfez: ${String(body.summary ?? "")}`,
-          status: "desfeita",
-        },
-      ]);
+      await domain.undo(undo, ctx);
+      if (audited) await updateAction(ctx, id, { status: "desfeita" });
       return json({ status: "desfeita" });
     }
 
-    if (body.decision === "confirm") {
-      const found = findTool(DOMAINS, String(body.tool ?? ""));
-      const args =
-        body.args && typeof body.args === "object" ? (body.args as Record<string, unknown>) : null;
-      if (!found || !args) throw new LumeError("Ação desconhecida.");
-      if (riskOf(found.tool, args) !== "confirm")
-        throw new LumeError("Esta ação não precisa de confirmação.");
-      const summary = await Promise.resolve(found.tool.summarize(args as never, ctx)).catch(
-        () => found.tool.name,
-      );
-      const result = await found.tool.execute(args as never, ctx);
-      const failure = (result.output as { erro?: string } | null)?.erro;
-      await audit(ctx, [
-        {
-          id,
-          tool: found.tool.name,
-          summary,
-          input: args,
-          status: failure ? "falhou" : "confirmada",
-          undo: result.undo ?? null,
-          error: failure ?? null,
-          decided_at: new Date().toISOString(),
-        },
-      ]);
-      if (failure) return json({ status: "falhou", error: failure }, 422);
-      return json({
-        status: "confirmada",
-        summary,
+    const found = findTool(DOMAINS, tool);
+    if (!found || !args) throw new LumeError("Ação desconhecida.");
+    if (riskOf(found.tool, args) !== "confirm")
+      throw new LumeError("Esta ação não precisa de confirmação.");
+    const summary = await Promise.resolve(found.tool.summarize(args as never, ctx)).catch(
+      () => found.tool.name,
+    );
+    const result = await found.tool.execute(args as never, ctx);
+    const failure = (result.output as { erro?: string } | null)?.erro;
+    if (audited)
+      await updateAction(ctx, id, {
+        status: failure ? "falhou" : "confirmada",
         undo: result.undo ?? null,
-        touched: result.touched ?? [],
-        output: result.output,
+        result: result.output ?? null,
+        error: failure ?? null,
       });
-    }
-    throw new LumeError("Decisão inválida.");
+    if (failure) return json({ status: "falhou", error: failure }, 422);
+    return json({
+      status: "confirmada",
+      summary,
+      undo: result.undo ?? null,
+      touched: result.touched ?? [],
+      output: result.output,
+    });
   } catch (error) {
     return fail(error);
   }

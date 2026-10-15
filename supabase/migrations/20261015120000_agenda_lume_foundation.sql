@@ -321,6 +321,29 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Itens de um compromisso só podem apontar para um compromisso da MESMA empresa.
+-- Gatilho (e não só RLS): vale também para gravações do servidor.
+CREATE OR REPLACE FUNCTION public.agenda_guard_event_company()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.visits v WHERE v.id = NEW.event_id AND v.company_id = NEW.company_id
+  ) THEN
+    RAISE EXCEPTION 'Compromisso de outra empresa' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END; $$;
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'agenda_event_participants', 'agenda_checklist_items', 'agenda_field_logs', 'agenda_reminders'
+  ] LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS agenda_guard_event_company ON public.%I', t);
+    EXECUTE format('CREATE TRIGGER agenda_guard_event_company BEFORE INSERT OR UPDATE OF event_id, company_id ON public.%I FOR EACH ROW EXECUTE FUNCTION public.agenda_guard_event_company()', t);
+  END LOOP;
+END $$;
+
 -- Histórico: leitura para quem acessa a agenda; escrita só pelo gatilho.
 ALTER TABLE public.agenda_event_history ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS agenda_history_read ON public.agenda_event_history;
