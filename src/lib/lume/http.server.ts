@@ -51,7 +51,10 @@ async function contextFor(request: Request, timeZone?: string | null): Promise<L
     .eq("id", identity.user.id)
     .maybeSingle();
   if (!profile?.company_id) throw new LumeError("Empresa não encontrada.", 403);
-  const { error: schemaError } = await client.from("agenda_event_types").select("id").limit(1);
+  const [{ error: schemaError }, { error: tagsError }] = await Promise.all([
+    client.from("agenda_event_types").select("id").limit(1),
+    client.from("agenda_tags").select("id").limit(1),
+  ]);
   return {
     client,
     companyId: profile.company_id,
@@ -60,6 +63,7 @@ async function contextFor(request: Request, timeZone?: string | null): Promise<L
     timeZone: safeTimeZone(timeZone),
     now: new Date(),
     extended: !schemaError,
+    hierarchy: !tagsError,
   };
 }
 

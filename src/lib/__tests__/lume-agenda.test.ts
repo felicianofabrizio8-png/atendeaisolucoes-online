@@ -7,6 +7,7 @@ function fakeClient(rows: Record<string, Array<Record<string, unknown>>> = {}) {
   const writes: Array<{ table: string; op: string; payload: unknown }> = [];
   const client = {
     writes,
+    failInsert: null as string | null,
     from(table: string) {
       const data = rows[table] ?? [];
       let op = "select";
@@ -21,7 +22,10 @@ function fakeClient(rows: Record<string, Array<Record<string, unknown>>> = {}) {
           writes.push({ table, op, payload });
           return builder;
         };
-      builder.single = async () => ({ data: op === "insert" ? { id: "novo-1" } : data[0], error: null });
+      builder.single = async () =>
+        op === "insert" && table === "visits" && client.failInsert
+          ? { data: null, error: { message: client.failInsert } }
+          : { data: op === "insert" ? { id: "novo-1" } : data[0], error: null };
       builder.maybeSingle = async () => ({ data: data[0] ?? null, error: null });
       builder.then = (resolve: (value: unknown) => unknown) =>
         Promise.resolve({ data: op === "select" ? data : [{ id: "n1" }], error: null }).then(resolve);
@@ -156,4 +160,28 @@ describe("Lume na Agenda", () => {
       agendaDomain.undo({ op: "delete_rows", table: "leads", ids: ["x"] }, context(fakeClient())),
     ).rejects.toThrow();
   });
+
+it("cria de equipe com participantes e tags pelo nome", async () => {
+  const client = fakeClient({
+    agenda_tags: [{ id: "t1", name: "Comercial", owner_id: null }],
+    profiles: [{ id: "u2", display_name: "Bruno" }],
+  });
+  await tool("agenda_criar").execute(
+    { titulo: "Treino", inicio: "2026-10-16T09:00", alcance: "equipe", participantes: ["bruno"], tags: ["comercial"] } as never,
+    context(client),
+  );
+  const visit = client.writes.find((w) => w.table === "visits")!.payload as Record<string, unknown>;
+  expect(visit).toMatchObject({ scope: "equipe", everyone: false });
+  expect(client.writes.some((w) => w.table === "agenda_event_participants")).toBe(true);
+  expect(client.writes.some((w) => w.table === "agenda_event_tags")).toBe(true);
+});
+it("explica quando o banco recusa compromisso de equipe", async () => {
+  const client = fakeClient();
+  client.failInsert = "Só a gestão da agenda cria compromissos da equipe";
+  const result = await tool("agenda_criar").execute(
+    { titulo: "Geral", inicio: "2026-10-16T09:00", alcance: "equipe" } as never,
+    context(client),
+  );
+  expect((result.output as { erro: string }).erro).toMatch(/gestão da agenda/);
+});
 });

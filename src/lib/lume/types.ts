@@ -16,6 +16,8 @@ export interface LumeContext {
   now: Date;
   /** A estrutura nova da Agenda já está no banco. */
   extended: boolean;
+  /** Migração de hierarquia (alcance, participantes, tags). Ausente = segue extended. */
+  hierarchy?: boolean;
 }
 
 /**
