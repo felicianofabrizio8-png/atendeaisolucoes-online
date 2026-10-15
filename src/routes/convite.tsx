@@ -1,16 +1,50 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { teamRpc } from "@/lib/team/client";
 import { LumeLogo } from "@/components/brand/LumeLogo";
+import { AuthDialog } from "@/components/auth/AuthDialog";
+import { InviteLanding } from "@/components/team/InviteLanding";
+import { savePendingInvite } from "@/lib/team/invite-link";
 
 export const Route = createFileRoute("/convite")({
   validateSearch: (search: Record<string, unknown>) => ({
     token: typeof search.token === "string" ? search.token : "",
+    link: typeof search.link === "string" ? search.link : "",
   }),
-  component: InvitePage,
+  component: InviteRoute,
 });
+
+/** ?link= é o convite por link (popup de confirmação); ?token= é o convite por e-mail. */
+function InviteRoute() {
+  const { link } = Route.useSearch();
+  return link ? <InviteLinkPage token={link} /> : <InvitePage />;
+}
+
+function InviteLinkPage({ token }: { token: string }) {
+  const { user, loading } = useAuth();
+  const [auth, setAuth] = useState<"signup" | "signin" | null>(null);
+  useEffect(() => {
+    // Já logado: guarda o convite e o popup global pergunta se quer entrar.
+    if (!loading && user) {
+      savePendingInvite(token);
+      window.location.assign("/");
+    }
+  }, [loading, user, token]);
+  if (loading || user) return <div className="min-h-dvh bg-black" />;
+  return (
+    <>
+      <InviteLanding token={token} onAuth={setAuth} />
+      <AuthDialog
+        open={auth !== null}
+        mode={auth ?? "signup"}
+        onOpenChange={(open) => !open && setAuth(null)}
+      />
+    </>
+  );
+}
+
 function InvitePage() {
   const { token } = Route.useSearch();
   const { user, refreshProfile, signOut } = useAuth();
