@@ -445,7 +445,7 @@ function TypeChip({
       type="button"
       className="ag-chip !py-1.5"
       aria-pressed={active}
-      style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${hue})` }}
+      style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${hue})` }}
       onClick={onClick}
     >
       <span className="ag-dot" />

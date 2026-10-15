@@ -14,15 +14,13 @@
   --ag-faint: #6d6879;
   --ag-violet: #7b5cff;
   --ag-orchid: #c352ff;
-  --ag-lime: #b6ff3b;
+  /* Acento da paleta Lume (mesmo lilás do Dashboard). */
+  --ag-accent: #b594ff;
   --ag-cyan: #49d6ff;
   --ag-hour: 56px;
   --ag-ease: cubic-bezier(0.22, 1, 0.36, 1);
   color: var(--ag-ink);
-  background:
-    radial-gradient(ellipse 60% 40% at 85% -10%, rgb(123 92 255 / 0.18), transparent 70%),
-    radial-gradient(ellipse 40% 30% at 0% 100%, rgb(182 255 59 / 0.06), transparent 70%),
-    var(--ag-bg);
+  background: var(--ag-bg);
   min-height: 100%;
 }
 .lume-agenda ::selection {
@@ -63,7 +61,7 @@
 }
 .ag-hero-title span {
   display: block;
-  background: linear-gradient(90deg, #f3f0f8 10%, #c6b6ff 55%, #b6ff3b 110%);
+  background: linear-gradient(90deg, #f3f0f8 10%, #c6b6ff 70%, #9d84e8 110%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -98,64 +96,65 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Vidro canelado: gradiente vivo atrás de lâminas verticais. */
-.ag-fluted {
+/* Mostrador do dia: anel de 24 h, um arco por compromisso, o agora marcado. */
+.ag-dial {
   position: relative;
-  min-height: 220px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  min-height: 260px;
   border-radius: 22px;
-  overflow: hidden;
-  isolation: isolate;
-  background: #07060a;
   border: 1px solid var(--ag-edge);
+  background: #09080c;
+  overflow: hidden;
 }
-.ag-fluted::before {
-  content: "";
-  position: absolute;
-  inset: -20%;
-  z-index: -2;
-  background:
-    radial-gradient(ellipse 30% 45% at 30% 30%, #49d6ff 0%, transparent 70%),
-    radial-gradient(ellipse 35% 55% at 45% 70%, #b6ff3b 0%, transparent 70%),
-    radial-gradient(ellipse 45% 60% at 70% 40%, #5b3bff 0%, transparent 70%),
-    radial-gradient(ellipse 30% 40% at 85% 85%, #c352ff 0%, transparent 70%);
-  filter: blur(18px) saturate(1.2);
-  animation: ag-drift 18s var(--ag-ease) infinite alternate;
+.ag-dial svg {
+  width: min(250px, 78%);
+  height: auto;
+  overflow: visible;
 }
-.ag-fluted::after {
-  content: "";
+.ag-dial-track {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.07);
+}
+.ag-dial-work {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.14);
+}
+.ag-dial-tick {
+  stroke: rgb(255 255 255 / 0.22);
+}
+.ag-dial-arc {
+  fill: none;
+  stroke-linecap: round;
+  stroke: oklch(0.72 0.08 var(--ag-hue, 300));
+}
+.ag-dial-arc[data-past="true"] {
+  stroke: oklch(0.5 0.03 var(--ag-hue, 300));
+}
+.ag-dial-now {
+  fill: var(--ag-ink);
+}
+.ag-dial-hour {
+  fill: var(--ag-faint);
+  font: 9px ui-monospace, Menlo, monospace;
+  letter-spacing: 0.06em;
+}
+.ag-dial-center {
   position: absolute;
   inset: 0;
-  z-index: -1;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgb(0 0 0 / 0.55) 0 2px,
-      rgb(255 255 255 / 0.08) 2px 3px,
-      transparent 3px 9px,
-      rgb(0 0 0 / 0.25) 9px 11px
-    ),
-    linear-gradient(180deg, transparent 55%, rgb(5 5 7 / 0.85));
-  backdrop-filter: blur(2px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24%;
+  text-align: center;
+  pointer-events: none;
 }
-@keyframes ag-drift {
-  to {
-    transform: translate3d(-6%, 4%, 0) rotate(6deg) scale(1.08);
-  }
-}
-.ag-fluted-label {
+.ag-dial-corner {
   position: absolute;
-  right: 14px;
+  left: 16px;
   top: 14px;
-  writing-mode: vertical-rl;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: rgb(255 255 255 / 0.75);
-}
-.ag-fluted-next {
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 16px;
 }
 
 /* ---------- Superfícies e controles ---------- */
@@ -269,12 +268,11 @@
   width: 7px;
   border-radius: 999px;
   background: var(--ag-type, var(--ag-violet));
-  box-shadow: 0 0 10px var(--ag-type, var(--ag-violet));
 }
 
 /* ---------- Bloco de evento (luz do tipo) ---------- */
 .ag-event {
-  --ag-type: oklch(0.72 0.19 var(--ag-hue, 300));
+  --ag-type: oklch(0.7 0.08 var(--ag-hue, 300));
   position: relative;
   overflow: hidden;
   border-radius: 14px;
@@ -296,8 +294,6 @@
 .ag-event:hover,
 .ag-event:focus-visible {
   border-color: var(--ag-type);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--ag-type) 40%, transparent),
-    0 10px 30px -12px var(--ag-type);
   outline: none;
   z-index: 3;
 }
@@ -309,7 +305,6 @@
   bottom: 0;
   width: 3px;
   background: var(--ag-type);
-  box-shadow: 0 0 12px var(--ag-type);
 }
 .ag-event[data-status="cancelada"] {
   opacity: 0.45;
@@ -341,8 +336,7 @@
   position: sticky;
   top: 0;
   z-index: 5;
-  background: color-mix(in oklch, var(--ag-surface) 92%, transparent);
-  backdrop-filter: blur(12px);
+  background: var(--ag-surface);
   border-bottom: 1px solid var(--ag-edge);
 }
 .ag-day-head {
@@ -350,9 +344,8 @@
   text-align: left;
 }
 .ag-day-head[data-today="true"] .ag-day-num {
-  background: var(--ag-lime);
-  color: #0b0b0c;
-  box-shadow: 0 0 18px rgb(182 255 59 / 0.55);
+  background: var(--ag-accent);
+  color: #120d1f;
 }
 .ag-day-num {
   display: inline-flex;
@@ -382,9 +375,6 @@
     transparent 1px var(--ag-hour)
   );
 }
-.ag-day-col[data-today="true"] {
-  background-color: rgb(182 255 59 / 0.025);
-}
 .ag-day-col[data-drop="true"] {
   background-color: rgb(123 92 255 / 0.08);
 }
@@ -394,8 +384,7 @@
   right: 0;
   height: 2px;
   z-index: 4;
-  background: var(--ag-lime);
-  box-shadow: 0 0 12px var(--ag-lime);
+  background: var(--ag-accent);
   pointer-events: none;
 }
 .ag-now::before {
@@ -406,7 +395,7 @@
   height: 10px;
   width: 10px;
   border-radius: 999px;
-  background: var(--ag-lime);
+  background: var(--ag-accent);
 }
 
 /* ---------- Mês ---------- */
@@ -429,7 +418,7 @@
   opacity: 0.38;
 }
 .ag-month-cell[data-today="true"] .ag-day-num {
-  background: var(--ag-lime);
+  background: var(--ag-accent);
   color: #0b0b0c;
 }
 @media (max-width: 767px) {
@@ -471,11 +460,10 @@
     90deg,
     transparent,
     color-mix(in oklch, var(--ag-type) 55%, transparent) 18%,
-    color-mix(in oklch, var(--ag-type) 85%, white 15%) 50%,
+    color-mix(in oklch, var(--ag-type) 80%, transparent) 50%,
     color-mix(in oklch, var(--ag-type) 55%, transparent) 82%,
     transparent
   );
-  box-shadow: 0 0 28px -6px var(--ag-type);
   border: 0;
 }
 .ag-streak::before {
@@ -483,9 +471,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ag-fluted::before {
-    animation: none;
-  }
   .ag-event,
   .ag-pill,
   .ag-btn {

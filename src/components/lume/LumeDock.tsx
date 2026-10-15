@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, KeyRound, Loader2, Mic, Square, Undo2, X } from "lucide-react";
+import { ArrowUp, Check, KeyRound, Loader2, Mic, Sparkles, Square, Undo2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { OrbBloop } from "@/components/ui/orb-bloop";
 import { RichText } from "@/components/atendimento/RichText";
@@ -147,72 +148,63 @@ export function LumeDock({
 
   const notConfigured = status && !status.chat;
 
+  const orbState = thinking ? "think" : voice.recording ? "listen" : "idle";
+
   return (
     <>
       <button
         type="button"
-        className="lume-capsule"
-        data-open={open}
+        className="lume-launcher"
         aria-expanded={open}
         aria-controls="lume-dock-panel"
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="lume-capsule-orb" aria-hidden>
-          <OrbBloop size={34} state={thinking ? "think" : voice.recording ? "listen" : "idle"} />
-        </span>
-        <span className="lume-capsule-label">{open ? "Fechar Lume" : "Pergunte à Lume"}</span>
+        {open ? <X className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+        <span className="lume-launcher-label">{open ? "Fechar Lume" : "Pergunte à Lume"}</span>
       </button>
 
       {open && (
-        <section id="lume-dock-panel" className="lume-panel" aria-label="Assistente Lume">
-          <header className="lume-panel-head">
-            <OrbBloop size={64} state={thinking ? "think" : voice.recording ? "listen" : "idle"} />
+        <section id="lume-dock-panel" className="lume-window" aria-label="Assistente Lume">
+          <header className="lume-window-head">
             <div className="min-w-0">
-              <p className="lume-kicker">Lume · {page}</p>
-              <h2 className="lume-title">{greeting}</h2>
+              <h3 className="text-sm font-semibold">Lume · {page}</h3>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Peça por texto ou voz. Alterações pedem sua confirmação.
+              </p>
             </div>
             <button
               type="button"
               className="lume-icon"
-              aria-label="Fechar"
+              aria-label="Fechar Lume"
               onClick={() => setOpen(false)}
             >
               <X className="h-4 w-4" />
             </button>
           </header>
 
-          {(notConfigured || statusError) && (
-            <div className="lume-setup" role="status">
-              <KeyRound className="h-4 w-4 shrink-0" />
-              <p>
-                {statusError ??
-                  "A Lume está pronta, só falta a chave do modelo. Configure LUME_AI_ENDPOINT, LUME_AI_MODEL e LUME_AI_API_KEY no servidor (ou use a mesma da Vendedora)."}
-              </p>
-            </div>
-          )}
-
-          <div className="lume-log" role="log" aria-live="polite">
+          <div className="lume-log" role="log" aria-live="polite" aria-label="Conversa com a Lume">
             {!entries.length && (
-              <div className="lume-suggestions">
-                {suggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="lume-suggestion"
-                    disabled={thinking || !!notConfigured}
-                    onClick={() => void send(suggestion)}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
+              <div className="lume-welcome">
+                <OrbBloop size={130} state={orbState} />
+                <h4 className="text-lg font-semibold">{greeting}</h4>
+              </div>
+            )}
+            {(notConfigured || statusError) && (
+              <div className="lume-setup" role="status">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  {statusError ??
+                    "A Lume está pronta, só falta a chave do modelo. Configure LUME_AI_ENDPOINT, LUME_AI_MODEL e LUME_AI_API_KEY no servidor (ou use a mesma da Vendedora)."}
+                </p>
               </div>
             )}
             {entries.map((entry) => (
-              <article key={entry.id} className="lume-entry" data-role={entry.role}>
-                <div className="lume-bubble">
-                  {entry.voice && <Mic className="mr-1 inline h-3 w-3 opacity-70" />}
-                  <RichText text={entry.text} />
-                </div>
+              <article
+                key={entry.id}
+                className={entry.role === "user" ? "lume-user" : "lume-answer"}
+              >
+                {entry.voice && <Mic className="mr-1 inline h-3 w-3 opacity-70" />}
+                <RichText text={entry.text} />
                 {entry.actions?.map((action) => (
                   <ActionCard
                     key={action.id}
@@ -223,77 +215,103 @@ export function LumeDock({
               </article>
             ))}
             {thinking && (
-              <p className="lume-thinking">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Lume pensando…
+              <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Lume organizando…
               </p>
             )}
             <div ref={endRef} />
           </div>
 
-          <form
-            className="lume-composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void send(input);
-            }}
-          >
-            {voice.recording ? (
-              <div className="lume-recording">
-                <span
-                  className="lume-rec-dot"
-                  style={{ transform: `scale(${1 + voice.level * 1.6})` }}
+          <div className="space-y-3 pt-3">
+            <form
+              className="lume-composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void send(input);
+              }}
+            >
+              {voice.recording ? (
+                <div className="lume-recording">
+                  <span
+                    className="lume-rec-dot"
+                    style={{ transform: `scale(${1 + voice.level * 1.6})` }}
+                  />
+                  Ouvindo… {Math.floor(voice.seconds / 60)}:
+                  {String(voice.seconds % 60).padStart(2, "0")}
+                  <button type="button" className="lume-link" onClick={voice.cancel}>
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <textarea
+                  rows={1}
+                  value={input}
+                  maxLength={4000}
+                  placeholder={notConfigured ? "Aguardando a chave da IA…" : "Pergunte à Lume…"}
+                  aria-label="Mensagem para a Lume"
+                  disabled={thinking}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      void send(input);
+                    }
+                  }}
                 />
-                Ouvindo… {String(Math.floor(voice.seconds / 60)).padStart(1, "0")}:
-                {String(voice.seconds % 60).padStart(2, "0")}
-                <button type="button" className="lume-link" onClick={voice.cancel}>
-                  Cancelar
+              )}
+              {status?.voice !== false && (
+                <button
+                  type="button"
+                  className="lume-icon"
+                  data-active={voice.recording}
+                  aria-label={voice.recording ? "Enviar áudio" : "Falar com a Lume"}
+                  disabled={thinking}
+                  onClick={() => void (voice.recording ? voice.stop() : voice.start())}
+                >
+                  {voice.recording ? (
+                    <Square className="h-3.5 w-3.5" />
+                  ) : (
+                    <Mic className="h-4 w-4" />
+                  )}
                 </button>
-              </div>
-            ) : (
-              <textarea
-                rows={1}
-                value={input}
-                maxLength={4000}
-                placeholder={
-                  notConfigured
-                    ? "Aguardando a chave da IA…"
-                    : "Peça algo: “marque reunião amanhã às 10h”"
-                }
-                aria-label="Mensagem para a Lume"
-                disabled={thinking}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    void send(input);
-                  }
-                }}
-              />
+              )}
+              {!voice.recording && (
+                <button
+                  type="submit"
+                  className="lume-send"
+                  aria-label="Enviar"
+                  disabled={thinking || !input.trim()}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+              )}
+            </form>
+            {voice.error && (
+              <p role="alert" className="text-xs text-destructive">
+                {voice.error}
+              </p>
             )}
-            {status?.voice !== false && (
-              <button
-                type="button"
-                className="lume-icon"
-                data-active={voice.recording}
-                aria-label={voice.recording ? "Enviar áudio" : "Falar com a Lume"}
-                disabled={thinking}
-                onClick={() => void (voice.recording ? voice.stop() : voice.start())}
-              >
-                {voice.recording ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
-              </button>
-            )}
-            {!voice.recording && (
-              <button
-                type="submit"
-                className="lume-send"
-                aria-label="Enviar"
-                disabled={thinking || !input.trim()}
-              >
-                <ArrowUp className="h-4 w-4" />
-              </button>
-            )}
-          </form>
-          {voice.error && <p className="lume-error">{voice.error}</p>}
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((suggestion) => (
+                <Button
+                  key={suggestion}
+                  size="sm"
+                  disabled={thinking || !!notConfigured}
+                  onClick={() => void send(suggestion)}
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              A Lume age com a sua permissão. Criar dá para desfazer; alterar e excluir pedem
+              confirmação.
+            </p>
+          </div>
         </section>
       )}
     </>

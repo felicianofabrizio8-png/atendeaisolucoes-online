@@ -92,13 +92,13 @@ export function EventDrawer({
             <header
               className="relative overflow-hidden border-b border-[var(--ag-edge)] px-6 pb-6 pt-12"
               style={{
-                background: `radial-gradient(ellipse 90% 80% at 100% 0%, oklch(0.55 0.2 ${hue} / 0.45), transparent 70%), #0b0a10`,
+                background: `radial-gradient(ellipse 90% 80% at 100% 0%, oklch(0.42 0.07 ${hue} / 0.35), transparent 70%), #0b0a10`,
               }}
             >
               <p className="ag-mono flex items-center gap-2 !text-white/70">
                 <span
                   className="ag-dot"
-                  style={{ ["--ag-type" as string]: `oklch(0.75 0.19 ${hue})` }}
+                  style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${hue})` }}
                 />
                 {typeName}
               </p>

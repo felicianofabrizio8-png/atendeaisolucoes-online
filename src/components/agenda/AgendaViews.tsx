@@ -6,6 +6,7 @@ import {
   eventsOnDay,
   layoutDay,
   STATUS_LABEL,
+  teamLoad,
   TYPE_HUE,
   TYPE_LABEL,
   type AgendaEvent,
@@ -244,7 +245,7 @@ export function MonthView({
                   </p>
                 )}
                 {items.length > 0 && (
-                  <span className="hidden text-[11px] font-semibold text-[var(--ag-lime)] max-md:block">
+                  <span className="hidden text-[11px] font-semibold text-[var(--ag-accent)] max-md:block">
                     {items.length}
                   </span>
                 )}
@@ -284,7 +285,9 @@ export function TimelineView({ days, events, conflicts, onOpen }: ViewProps & { 
               <div className="flex w-[120px] shrink-0 flex-col justify-center border-b border-r border-[var(--ag-edge)] px-3">
                 <p className="ag-mono">{format(day, "EEEE", { locale: ptBR })}</p>
                 <p
-                  className={isToday(day) ? "font-semibold text-[var(--ag-lime)]" : "font-semibold"}
+                  className={
+                    isToday(day) ? "font-semibold text-[var(--ag-accent)]" : "font-semibold"
+                  }
                 >
                   {format(day, "d MMM", { locale: ptBR })}
                 </p>
@@ -318,6 +321,92 @@ export function TimelineView({ days, events, conflicts, onOpen }: ViewProps & { 
                   </p>
                 )}
               </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Equipe: pessoas × dias, com a carga de horas da semana de cada um. */
+export function TeamView({
+  days,
+  events,
+  conflicts,
+  onOpen,
+  weeklyHours = 44,
+}: ViewProps & { days: Date[]; weeklyHours?: number }) {
+  const rows = teamLoad(events, days);
+  if (!rows.length)
+    return (
+      <p className="p-10 text-center text-sm text-[var(--ag-muted)]">
+        Ninguém com compromisso nesta semana. Preencha técnico ou responsável nos compromissos para
+        ver a carga de cada pessoa.
+      </p>
+    );
+  return (
+    <div className="overflow-x-auto">
+      <div
+        className="grid min-w-[880px]"
+        style={{ gridTemplateColumns: `200px repeat(${days.length}, minmax(0, 1fr))` }}
+      >
+        <div className="border-b border-[var(--ag-edge)]" />
+        {days.map((day) => (
+          <div
+            key={day.toISOString()}
+            className="ag-day-head border-b border-[var(--ag-edge)]"
+            data-today={isToday(day)}
+          >
+            <p className="ag-mono">{format(day, "EEE", { locale: ptBR })}</p>
+            <span className="ag-day-num mt-1 !h-7 !min-w-7 text-[13px]">{format(day, "d")}</span>
+          </div>
+        ))}
+        {rows.map((row) => {
+          const hours = row.minutes / 60;
+          const load = Math.min(1, hours / weeklyHours);
+          return (
+            <div key={row.person} className="contents">
+              <div className="border-b border-r border-[var(--ag-edge)] p-3">
+                <p className="truncate text-sm font-semibold" title={row.person}>
+                  {row.person}
+                </p>
+                <p className="mt-0.5 text-[11.5px] text-[var(--ag-muted)]">
+                  {hours.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h na semana
+                </p>
+                <div className="mt-2 h-1 overflow-hidden rounded-full bg-[rgb(255_255_255/0.08)]">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${load * 100}%`,
+                      background:
+                        load > 0.9 ? "#ff6b6b" : load > 0.7 ? "#ffb547" : "var(--ag-accent)",
+                    }}
+                  />
+                </div>
+              </div>
+              {row.byDay.map((items, index) => (
+                <div
+                  key={index}
+                  className="min-h-[76px] space-y-1 border-b border-l border-[var(--ag-edge)] p-1.5"
+                  data-today={isToday(days[index])}
+                >
+                  {items.map((event) => (
+                    <button
+                      key={event.id}
+                      type="button"
+                      className="ag-event block w-full truncate py-1 pl-2.5 pr-1.5 text-[11px] font-medium"
+                      data-status={event.status}
+                      data-conflict={conflicts.has(event.id)}
+                      style={hueStyle(event)}
+                      title={describe(event)}
+                      onClick={() => onOpen(event)}
+                    >
+                      {format(new Date(event.scheduled_at), "HH:mm")} {event.title}
+                    </button>
+                  ))}
+                </div>
+              ))}
             </div>
           );
         })}

@@ -55,9 +55,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { AgendaHero } from "@/components/agenda/AgendaHero";
 import { AgendaToolbar } from "@/components/agenda/AgendaToolbar";
-import { MonthView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
+import { MonthView, TeamView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
 import { useAgendaEvents } from "@/components/agenda/useAgendaEvents";
 import { EventDrawer } from "@/components/agenda/EventDrawer";
+import { EventFieldSection } from "@/components/agenda/EventFieldSection";
 import { EventFormModal } from "@/components/agenda/EventFormModal";
 import { useEventTypes } from "@/components/agenda/useEventTypes";
 import { AgendaCustomize } from "@/components/agenda/AgendaCustomize";
@@ -65,6 +66,7 @@ import { LumeDock } from "@/components/lume/LumeDock";
 import {
   applyFilters,
   daysOf,
+  eventsOnDay,
   EMPTY_FILTERS,
   findConflicts,
   peopleOf,
@@ -233,6 +235,14 @@ function AgendaPage() {
     [eventTypes.types],
   );
   const pulse = useMemo(() => pulseOf(events), [events]);
+  const todayEvents = useMemo(
+    () =>
+      eventsOnDay(events, new Date()).map((event) => {
+        const type = event.event_type_id ? typeById.get(event.event_type_id) : undefined;
+        return type ? { ...event, type_hue: type.hue, type_name: type.name } : event;
+      }),
+    [events, typeById],
+  );
   const people = useMemo(() => peopleOf(events), [events]);
   const inRange = useMemo(
     () =>
@@ -308,6 +318,7 @@ function AgendaPage() {
       <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <AgendaHero
           pulse={pulse}
+          today={todayEvents}
           onCreate={() => openCreate()}
           onAskLume={() => setLumeSignal((n) => n + 1)}
         />
@@ -368,6 +379,13 @@ function AgendaPage() {
             />
           ) : view === "linha" ? (
             <TimelineView days={days} events={inRange} conflicts={conflicts} onOpen={(event) => setSelectedId(event.id)} />
+          ) : view === "equipe" ? (
+            <TeamView
+              days={days}
+              events={inRange}
+              conflicts={conflicts}
+              onOpen={(event) => setSelectedId(event.id)}
+            />
           ) : (
             <ListView
               events={inRange}
@@ -386,10 +404,10 @@ function AgendaPage() {
         greeting="O que vamos organizar?"
         openSignal={lumeSignal}
         suggestions={[
-          "O que eu tenho amanhã?",
-          "Marque uma reunião de equipe sexta às 10h",
-          "Ache um horário livre de 1h nesta semana",
-          "Me avise 30 minutos antes de cada visita",
+          "O que tenho amanhã?",
+          "Reunião de equipe sexta às 10h",
+          "Achar 1h livre nesta semana",
+          "Lembrar 30 min antes das visitas",
         ]}
         onChanged={(touched) => {
           void reload();
@@ -420,7 +438,11 @@ function AgendaPage() {
         onDuplicate={() => selected && void handleDuplicate(selected)}
         onDelete={() => selected && void handleDelete(selected)}
         onSendTechnician={() => selected && setSendTarget(selected)}
-      />
+      >
+        {selected && extended && (
+          <EventFieldSection key={selected.id} eventId={selected.id} companyId={companyId} />
+        )}
+      </EventDrawer>
 
       {openForm && (
         <EventFormModal

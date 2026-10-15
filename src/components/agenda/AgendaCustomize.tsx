@@ -116,7 +116,7 @@ export function AgendaCustomize({
                 <span
                   className="ag-dot"
                   style={
-                    { ["--ag-type" as string]: `oklch(0.72 0.19 ${type.hue})` } as CSSProperties
+                    { ["--ag-type" as string]: `oklch(0.7 0.08 ${type.hue})` } as CSSProperties
                   }
                 />
                 <button
@@ -248,7 +248,7 @@ function TypeEditor({
           Cor da luz
           <span
             className="ag-dot"
-            style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${draft.hue})` } as CSSProperties}
+            style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${draft.hue})` } as CSSProperties}
           />
         </span>
         <input
@@ -259,7 +259,7 @@ function TypeEditor({
           onChange={(e) => set("hue", Number(e.target.value))}
           className="w-full"
           style={{
-            accentColor: `oklch(0.72 0.19 ${draft.hue})`,
+            accentColor: `oklch(0.7 0.08 ${draft.hue})`,
             background:
               "linear-gradient(90deg, oklch(0.7 0.2 0), oklch(0.7 0.2 60), oklch(0.7 0.2 120), oklch(0.7 0.2 180), oklch(0.7 0.2 240), oklch(0.7 0.2 300), oklch(0.7 0.2 360))",
             height: 6,

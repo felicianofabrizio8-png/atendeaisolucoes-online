@@ -1,212 +1,148 @@
-/* Lume Dock — cápsula de vidro e painel da assistente (escuro em qualquer tema). */
-.lume-capsule {
+/*
+ * Lume Dock — botão no canto e janela da Lume. A janela segue a do Dashboard
+ * (análise de gráfico): fundo do tema, borda fina, cantos de 28px e conversa limpa.
+ */
+.lume-launcher {
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
   bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 60;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 18px 6px 6px;
+  gap: 6px;
+  padding: 9px 16px;
   border-radius: 999px;
-  color: #f3f0f8;
-  font-size: 13.5px;
+  border: 0;
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.03)),
-    rgb(14 12 20 / 0.72);
-  border: 1px solid rgb(255 255 255 / 0.16);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.22),
-    0 18px 40px -16px rgb(123 92 255 / 0.65),
-    0 0 0 1px rgb(0 0 0 / 0.4);
-  backdrop-filter: blur(18px) saturate(1.4);
-  transition:
-    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.25s;
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+  transition: filter 0.2s;
 }
-.lume-capsule:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.25),
-    0 22px 50px -14px rgb(123 92 255 / 0.85),
-    0 0 0 1px rgb(0 0 0 / 0.4);
+.lume-launcher:hover {
+  filter: brightness(1.08);
 }
-.lume-capsule-orb {
-  display: inline-flex;
-  height: 34px;
-  width: 34px;
-  border-radius: 999px;
-  overflow: hidden;
+.lume-launcher:focus-visible {
+  outline: 2px solid #b594ff;
+  outline-offset: 2px;
 }
 @media (max-width: 767px) {
-  .lume-capsule {
+  .lume-launcher {
     bottom: calc(76px + env(safe-area-inset-bottom));
-  }
-  .lume-capsule-label {
-    display: none;
-  }
-  .lume-capsule {
-    padding: 6px;
   }
 }
 
-.lume-panel {
+.lume-window {
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
-  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 58px);
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 52px);
   z-index: 60;
   display: flex;
   flex-direction: column;
   width: min(420px, calc(100vw - 32px));
-  height: min(640px, calc(100dvh - 120px));
+  height: min(680px, calc(100dvh - 110px));
+  padding: 24px;
+  border: 1px solid var(--border);
   border-radius: 28px;
-  color: #f3f0f8;
-  background:
-    radial-gradient(ellipse 80% 50% at 100% 0%, rgb(123 92 255 / 0.28), transparent 70%),
-    radial-gradient(ellipse 60% 40% at 0% 100%, rgb(182 255 59 / 0.08), transparent 70%),
-    rgb(10 9 14 / 0.94);
-  border: 1px solid rgb(255 255 255 / 0.12);
-  box-shadow: 0 40px 90px -30px rgb(0 0 0 / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.1);
-  backdrop-filter: blur(24px);
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 0 30px 120px #0008;
   overflow: hidden;
-  animation: lume-rise 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: lume-window-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dark .lume-window,
+:root:not(.light) .lume-window {
+  background: #000;
 }
 @media (max-width: 767px) {
-  .lume-panel {
-    right: 8px;
+  .lume-window {
     left: 8px;
+    right: 8px;
     width: auto;
-    bottom: calc(132px + env(safe-area-inset-bottom));
-    height: min(560px, calc(100dvh - 180px));
+    bottom: calc(124px + env(safe-area-inset-bottom));
+    height: min(600px, calc(100dvh - 170px));
+    padding: 18px;
   }
 }
-@keyframes lume-rise {
+@keyframes lume-window-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    transform: translateY(10px);
   }
 }
-.lume-panel-head {
+.lume-window-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid rgb(255 255 255 / 0.07);
-}
-.lume-kicker {
-  font: 10.5px ui-monospace, Menlo, monospace;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #8b85a0;
-}
-.lume-title {
-  margin-top: 2px;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-.lume-panel-head .lume-icon {
-  margin-left: auto;
-}
-.lume-setup {
-  display: flex;
-  gap: 10px;
-  margin: 12px 16px 0;
-  padding: 12px;
-  border-radius: 16px;
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: #e7dcff;
-  background: rgb(123 92 255 / 0.14);
-  border: 1px solid rgb(123 92 255 / 0.35);
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 .lume-log {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 14px 16px;
+  padding: 20px 2px;
+}
+.lume-welcome {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  text-align: center;
+  padding-top: 20px;
 }
-.lume-suggestions {
+.lume-setup {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
-}
-.lume-suggestion {
-  text-align: left;
-  padding: 10px 14px;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px;
   border-radius: 16px;
-  font-size: 13px;
-  color: #d9d3e8;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.03);
-  transition: background 0.2s, border-color 0.2s;
-}
-.lume-suggestion:hover {
-  background: rgb(123 92 255 / 0.12);
-  border-color: rgb(123 92 255 / 0.45);
-}
-.lume-suggestion:disabled {
-  opacity: 0.4;
-}
-.lume-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.lume-entry[data-role="user"] {
-  align-items: flex-end;
-}
-.lume-bubble {
-  max-width: 88%;
-  font-size: 13.5px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  font-size: 12px;
   line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.lume-user,
+.lume-answer {
+  font-size: 13px;
+  line-height: 1.7;
   overflow-wrap: anywhere;
+  margin-bottom: 20px;
 }
-.lume-entry[data-role="user"] .lume-bubble {
-  padding: 9px 13px;
-  border-radius: 18px 18px 4px 18px;
-  background: rgb(255 255 255 / 0.1);
-}
-.lume-entry[data-role="assistant"] .lume-bubble {
-  padding: 2px 2px;
+.lume-user {
+  margin-left: 24px;
+  padding: 12px 16px;
+  border-radius: 20px 20px 6px 20px;
+  background: var(--secondary);
 }
 .lume-action {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-top: 10px;
   padding: 10px 12px;
   border-radius: 16px;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  background: rgb(255 255 255 / 0.04);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  line-height: 1.4;
 }
 .lume-action[data-status="pendente"] {
-  border-color: rgb(123 92 255 / 0.55);
-  background: rgb(123 92 255 / 0.12);
-  box-shadow: 0 0 24px -12px rgb(123 92 255);
-}
-.lume-action[data-status="executada"],
-.lume-action[data-status="confirmada"] {
-  border-color: rgb(182 255 59 / 0.35);
+  border-color: color-mix(in oklch, #9b7bf0 55%, var(--border));
 }
 .lume-action[data-status="cancelada"],
 .lume-action[data-status="desfeita"] {
   opacity: 0.55;
 }
 .lume-action[data-status="falhou"] {
-  border-color: rgb(255 107 107 / 0.5);
+  border-color: color-mix(in oklch, var(--destructive) 50%, var(--border));
 }
 .lume-action-status {
   font: 10px ui-monospace, Menlo, monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #a29db0;
+  color: var(--muted-foreground);
 }
 .lume-action-summary {
   margin-top: 2px;
@@ -221,121 +157,113 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid rgb(255 255 255 / 0.16);
-  color: #f3f0f8;
+  border: 1px solid var(--border);
   white-space: nowrap;
 }
 .lume-chip:hover {
-  background: rgb(255 255 255 / 0.08);
+  background: var(--accent);
 }
 .lume-chip-primary {
-  background: #fff;
-  color: #0b0b0c;
-  border-color: #fff;
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
 }
 .lume-chip-primary:hover {
-  background: #e8e6ec;
+  filter: brightness(1.08);
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
 }
-.lume-thinking {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #a29db0;
-}
+/* Mesma pílula do campo da IA no Atendimento e no Dashboard. */
 .lume-composer {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
-  margin: 0 12px 12px;
-  padding: 6px 6px 6px 14px;
-  border-radius: 22px;
-  border: 1px solid rgb(255 255 255 / 0.12);
-  background: rgb(255 255 255 / 0.05);
+  gap: 4px;
+  padding: 4px 6px 4px 16px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--secondary) 40%, transparent);
 }
 .lume-composer:focus-within {
-  border-color: rgb(123 92 255 / 0.6);
+  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 .lume-composer textarea {
   flex: 1;
   min-width: 0;
-  max-height: 120px;
+  min-height: 32px;
+  max-height: 144px;
   resize: none;
+  align-self: center;
   background: transparent;
   outline: none;
-  padding: 7px 0;
+  padding: 6px 0;
   font-size: 14px;
-  color: #f3f0f8;
+  line-height: 20px;
 }
 .lume-composer textarea::placeholder {
-  color: #77718a;
+  color: var(--muted-foreground);
 }
 .lume-icon {
   display: inline-flex;
-  height: 34px;
-  width: 34px;
+  height: 32px;
+  width: 32px;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  color: #c9c3d8;
+  color: var(--muted-foreground);
 }
 .lume-icon:hover {
-  background: rgb(255 255 255 / 0.08);
-  color: #fff;
+  background: var(--accent);
+  color: var(--foreground);
 }
 .lume-icon[data-active="true"] {
-  background: #ff5d6c;
+  background: var(--destructive);
   color: #fff;
 }
 .lume-icon:disabled,
 .lume-send:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
 }
 .lume-send {
   display: inline-flex;
-  height: 34px;
-  width: 34px;
+  height: 32px;
+  width: 32px;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: #fff;
-  color: #0b0b0c;
+  background: var(--foreground);
+  color: var(--background);
 }
 .lume-recording {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
+  padding: 6px 0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .lume-rec-dot {
-  height: 10px;
-  width: 10px;
+  height: 9px;
+  width: 9px;
   border-radius: 999px;
-  background: #ff5d6c;
-  box-shadow: 0 0 12px #ff5d6c;
+  background: var(--destructive);
   transition: transform 0.08s linear;
 }
 .lume-link {
   margin-left: auto;
   font-size: 12px;
-  color: #a29db0;
+  color: var(--muted-foreground);
   text-decoration: underline;
 }
 .lume-error {
-  margin: -6px 16px 10px;
   font-size: 12px;
-  color: #ff9a9a;
+  color: var(--destructive);
 }
 @media (prefers-reduced-motion: reduce) {
-  .lume-panel {
+  .lume-window {
     animation: none;
   }
-  .lume-capsule,
   .lume-rec-dot {
     transition: none;
   }

@@ -14,7 +14,7 @@ import {
   type AgendaView,
 } from "./agenda-model";
 
-const VIEWS: AgendaView[] = ["dia", "semana", "mes", "linha", "lista"];
+const VIEWS: AgendaView[] = ["dia", "semana", "mes", "linha", "equipe", "lista"];
 
 function periodLabel(view: AgendaView, focus: Date): string {
   if (view === "dia") return format(focus, "EEEE, d 'de' MMMM", { locale: ptBR });
@@ -131,7 +131,7 @@ export function AgendaToolbar({
                   type="button"
                   className="ag-chip"
                   aria-pressed={filters.typeIds.includes(type.id)}
-                  style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${type.hue})` }}
+                  style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${type.hue})` }}
                   onClick={() =>
                     onFilters({ ...filters, typeIds: toggle(filters.typeIds, type.id) })
                   }
@@ -146,7 +146,7 @@ export function AgendaToolbar({
                   type="button"
                   className="ag-chip"
                   aria-pressed={filters.types.includes(type)}
-                  style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${TYPE_HUE[type]})` }}
+                  style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${TYPE_HUE[type]})` }}
                   onClick={() => onFilters({ ...filters, types: toggle(filters.types, type) })}
                 >
                   <span className="ag-dot" />

@@ -232,7 +232,7 @@ export const TYPE_HUE: Record<AppointmentType, number> = {
   manutencao: 345,
 };
 
-export type AgendaView = "dia" | "semana" | "mes" | "linha" | "lista";
+export type AgendaView = "dia" | "semana" | "mes" | "linha" | "equipe" | "lista";
 
 /** Preferências de visão de cada pessoa (ficam no navegador). */
 export interface AgendaPreferences {
@@ -247,6 +247,7 @@ export const VIEW_LABEL: Record<AgendaView, string> = {
   semana: "Semana",
   mes: "Mês",
   linha: "Linha do tempo",
+  equipe: "Equipe",
   lista: "Lista",
 };
 
@@ -278,6 +279,7 @@ export function viewRange(view: AgendaView, focus: Date): { from: Date; to: Date
       return { from: startOfDay(focus), to: endOfDay(focus) };
     case "semana":
     case "linha":
+    case "equipe":
       return { from: startOfWeek(focus, WEEK), to: endOfWeek(focus, WEEK) };
     case "mes":
       // A grade do mês mostra semanas inteiras, inclusive dias dos meses vizinhos.
@@ -296,6 +298,7 @@ export function shiftFocus(view: AgendaView, focus: Date, direction: 1 | -1): Da
       return addDays(focus, direction);
     case "semana":
     case "linha":
+    case "equipe":
       return addWeeks(focus, direction);
     case "mes":
       return addMonths(focus, direction);
@@ -474,3 +477,50 @@ export function pulseOf(events: readonly AgendaEvent[], now = new Date()): Agend
     next: upcoming[0] ?? null,
   };
 }
+
+export interface TeamRow<T> {
+  person: string;
+  /** Minutos agendados no intervalo (sem cancelados). */
+  minutes: number;
+  byDay: T[][];
+}
+
+/**
+ * Carga da equipe: uma linha por pessoa (técnico ou responsável), com os compromissos de
+ * cada dia e o total de horas. "Sem responsável" agrupa o que ninguém pegou ainda.
+ */
+export function teamLoad<T extends AgendaEvent>(
+  events: readonly T[],
+  days: readonly Date[],
+): TeamRow<T>[] {
+  const rows = new Map<string, TeamRow<T>>();
+  const row = (person: string) => {
+    let current = rows.get(person);
+    if (!current) {
+      current = { person, minutes: 0, byDay: days.map(() => []) };
+      rows.set(person, current);
+    }
+    return current;
+  };
+  for (const event of events) {
+    const people = [
+      ...new Set([event.technician, event.salesperson].map((name) => name?.trim()).filter(Boolean)),
+    ] as string[];
+    const index = days.findIndex((day) => isSameDay(day, eventStart(event)));
+    if (index < 0) continue;
+    for (const person of people.length ? people : [UNASSIGNED]) {
+      const target = row(person);
+      target.byDay[index].push(event);
+      if (event.status !== "cancelada") target.minutes += eventDurationMin(event);
+    }
+  }
+  return [...rows.values()].sort((a, b) =>
+    a.person === UNASSIGNED
+      ? 1
+      : b.person === UNASSIGNED
+        ? -1
+        : b.minutes - a.minutes || a.person.localeCompare(b.person, "pt-BR"),
+  );
+}
+
+export const UNASSIGNED = "Sem responsável";
