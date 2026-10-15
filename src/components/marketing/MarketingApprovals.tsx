@@ -24,7 +24,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { toast } from "sonner";
+import { lumeToast as toast } from "./MarketingFeedback";
 import { openSettings } from "@/lib/settings-dialog";
 import {
   apiListPublishContents,
@@ -649,7 +649,7 @@ export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props
           if (!o) closeVideoEditor();
         }}
       >
-        <DialogContent className="w-[98vw] max-w-[1600px] h-[95dvh] max-h-[95dvh] overflow-hidden flex flex-col gap-0 p-2 [&_[data-studio-header]]:pr-10">
+        <DialogContent className="mkt-dialog w-[98vw] max-w-[1600px] h-[95dvh] max-h-[95dvh] overflow-hidden flex flex-col gap-0 p-2 [&_[data-studio-header]]:pr-10">
           {/* O estúdio já tem cabeçalho próprio; o título fica só para leitores de tela. */}
           <DialogHeader className="sr-only">
             <DialogTitle>Editor Visual do Vídeo IA</DialogTitle>
@@ -761,11 +761,11 @@ function ContentCard({
   const [dest, setDest] = useState(row.cta_destination ?? "");
 
   const statusColor: Record<string, string> = {
-    draft: "bg-muted text-foreground",
-    pending: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300",
-    approved: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
-    rejected: "bg-destructive/20 text-destructive",
-    archived: "bg-muted text-muted-foreground",
+    draft: "mkt-tone-neutral",
+    pending: "mkt-tone-warn",
+    approved: "mkt-tone-ok",
+    rejected: "mkt-tone-danger",
+    archived: "mkt-tone-neutral",
   };
 
   const isVideo = isVideoContent(row);

@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Sparkles, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { LumeLogo } from "@/components/brand/LumeLogo";
 
 export const Route = createFileRoute("/reset-password")({
   component: ResetPasswordPage,
@@ -73,11 +74,13 @@ function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="h-5 w-5" />
-          </div>
+          <LumeLogo variant="mark" aria-hidden="true" className="h-10 w-10 text-foreground" />
           <div>
-            <div className="text-lg font-semibold">Atende Ai!</div>
+            <LumeLogo
+              variant="wordmark"
+              aria-label="Lume"
+              className="h-6 w-[74px] text-foreground"
+            />
             <div className="text-xs text-muted-foreground">Redefinir senha</div>
           </div>
         </div>
@@ -87,9 +90,7 @@ function ResetPasswordPage() {
             <div className="flex flex-col items-center text-center py-4">
               <CheckCircle2 className="h-10 w-10 text-primary mb-3" />
               <h2 className="text-sm font-semibold mb-1">Senha atualizada!</h2>
-              <p className="text-xs text-muted-foreground">
-                Redirecionando para o login...
-              </p>
+              <p className="text-xs text-muted-foreground">Redirecionando para o login...</p>
             </div>
           ) : validRecovery === false ? (
             <div className="text-center py-4">
@@ -109,15 +110,11 @@ function ResetPasswordPage() {
             <form onSubmit={submit} className="space-y-3">
               <div>
                 <h2 className="text-sm font-semibold mb-1">Defina sua nova senha</h2>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Use ao menos 6 caracteres.
-                </p>
+                <p className="text-xs text-muted-foreground mb-3">Use ao menos 6 caracteres.</p>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Nova senha
-                </label>
+                <label className="text-xs font-medium text-muted-foreground">Nova senha</label>
                 <div className="relative mt-1">
                   <input
                     type={show ? "text" : "password"}
@@ -141,9 +138,7 @@ function ResetPasswordPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Confirmar senha
-                </label>
+                <label className="text-xs font-medium text-muted-foreground">Confirmar senha</label>
                 <div className="relative mt-1">
                   <input
                     type={showConfirm ? "text" : "password"}
@@ -161,11 +156,7 @@ function ResetPasswordPage() {
                     tabIndex={-1}
                     className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent"
                   >
-                    {showConfirm ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
               </div>

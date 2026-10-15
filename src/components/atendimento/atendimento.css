@@ -1,0 +1,403 @@
+/* Visual do Atendimento 2.0. Escopo local: Inbox e regras comerciais permanecem iguais. */
+.lume-atendimento {
+  --at-purple: #a55cff;
+  --at-lilac: #e4baff;
+  --at-lime: #c3f75d;
+  --at-surface: var(--card);
+  --at-edge: var(--border);
+  --at-soft: var(--secondary);
+  --at-field: var(--background);
+  --at-ink: var(--foreground);
+  --at-selected: linear-gradient(115deg, #792bdd35, var(--at-surface));
+  color: var(--foreground);
+  background: var(--background);
+}
+/* Os tokens globais acompanham a preferência salva; só o tema Preto usa #000. */
+:root.black .lume-atendimento {
+  --at-surface: #000;
+  --at-edge: #ffffff24;
+  --at-soft: #111;
+  --at-field: #0c0c0c;
+  --at-selected: linear-gradient(115deg, #792bdd35, #140d1c);
+}
+:root.light .lume-atendimento {
+  --at-purple: #793bdf;
+  --at-lilac: #793bdf;
+  --at-selected: linear-gradient(115deg, #792bdd14, var(--at-surface));
+}
+.lume-atendimento .at-workspace {
+  gap: 12px;
+  padding: 12px;
+}
+.lume-atendimento .at-queue,
+.lume-atendimento .at-conversation,
+.lume-atendimento .at-sidebar {
+  border: 1px solid var(--at-edge);
+  border-radius: 28px;
+  background: var(--at-surface);
+  overflow: hidden;
+}
+.lume-atendimento .at-queue {
+  padding: 12px;
+}
+.lume-atendimento .at-sidebar {
+  padding: 18px;
+}
+.lume-atendimento .at-stat-surface {
+  border: 1px solid #ffffff26;
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 #ffffff0d;
+}
+.lume-atendimento .at-stat-surface > button {
+  justify-content: flex-end;
+  padding: 48px 22px 20px;
+  min-height: 192px;
+}
+.lume-atendimento .at-stat-surface::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  width: 180px;
+  height: 180px;
+  border: 1px solid #ffffff20;
+  border-radius: 50%;
+  right: -76px;
+  bottom: -80px;
+  box-shadow:
+    0 0 0 22px #ffffff05,
+    0 0 0 44px #ffffff04;
+}
+.lume-atendimento .at-stat-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.lume-atendimento .at-stat-number {
+  margin-top: 10px;
+  font-size: clamp(56px, 4.5vw, 72px);
+  font-weight: 650;
+  letter-spacing: -0.06em;
+}
+.lume-atendimento .at-rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 0;
+}
+.lume-atendimento .at-rail-heading h1 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.lume-atendimento .at-rail-heading > span {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  padding-inline: 6px;
+  border: 1px solid #a678e640;
+  border-radius: 999px;
+  background: var(--at-soft);
+  color: var(--at-ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.lume-atendimento .at-search input {
+  border: 1px solid var(--at-edge);
+  background: var(--at-field);
+  font-size: 12px;
+  height: 42px;
+  transition:
+    border-color 200ms,
+    box-shadow 200ms,
+    background 200ms;
+}
+.lume-atendimento .at-search input:focus {
+  border-color: #a97bf570;
+  box-shadow: 0 0 0 3px #9755e810;
+}
+.lume-atendimento .at-rail ul {
+  gap: 6px;
+}
+.lume-atendimento .at-contact {
+  position: relative;
+  border: 1px solid transparent;
+  padding: 12px 10px;
+  border-radius: 18px;
+  transition:
+    background 220ms,
+    border-color 220ms,
+    box-shadow 220ms;
+}
+.lume-atendimento .at-contact:hover {
+  border-color: var(--at-edge);
+  background: var(--at-soft);
+}
+.lume-atendimento .at-contact[aria-current="true"] {
+  border-color: #a55cff70;
+  background: var(--at-selected);
+}
+.lume-atendimento .at-avatar > span:first-child {
+  box-shadow:
+    inset 0 1px 1px #ffffff38,
+    0 0 0 3px var(--at-surface);
+}
+.lume-atendimento .at-unread {
+  min-width: 19px;
+  line-height: 19px;
+  background: var(--at-lime);
+  color: #18200b;
+  text-align: center;
+}
+.lume-atendimento .at-thread {
+  background: var(--at-surface);
+}
+.lume-atendimento .at-thread-header {
+  min-height: 88px;
+  border-bottom: 1px solid var(--at-edge);
+  margin-bottom: 12px;
+  background: var(--at-surface);
+}
+.lume-atendimento .at-thread-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.lume-atendimento .at-thread-header > .at-avatar > span:first-child {
+  width: 44px !important;
+  height: 44px !important;
+  font-size: 16px !important;
+}
+.lume-atendimento .at-messages {
+  padding-top: 4px;
+  scrollbar-gutter: stable;
+}
+.lume-atendimento .at-bubble {
+  border-radius: 20px;
+  box-shadow: 0 2px 6px #00000006;
+}
+.lume-atendimento .at-bubble-in {
+  background: var(--at-soft);
+  border: 1px solid var(--at-edge);
+  border-bottom-left-radius: 6px;
+}
+.lume-atendimento .at-bubble-out {
+  background: linear-gradient(125deg, #793bdf, #5825ab);
+  color: #fff;
+  border: 1px solid #b98cff38;
+  border-bottom-right-radius: 6px;
+}
+.lume-atendimento .at-composer {
+  padding-top: 14px;
+  background: var(--at-surface);
+}
+.lume-atendimento .at-composer-pill {
+  border-radius: 28px;
+  border-color: var(--at-edge);
+  background: var(--at-soft);
+  transition:
+    border-color 220ms,
+    box-shadow 220ms;
+}
+.lume-atendimento .at-composer-pill:focus-within {
+  border-color: #a878e55c;
+  box-shadow: 0 0 0 3px #9755e80a;
+}
+.lume-atendimento .at-composer-pill button.bg-primary {
+  background: var(--at-purple);
+  color: #fff;
+}
+.lume-atendimento .at-insight {
+  gap: 20px;
+  padding-left: 0;
+}
+.lume-atendimento .at-tabs {
+  width: 100%;
+  background: var(--at-soft);
+  border: 1px solid var(--at-edge);
+  padding: 5px;
+}
+.lume-atendimento .at-tabs > span {
+  background: var(--foreground);
+  border: 1px solid var(--foreground);
+  box-shadow: none;
+}
+.lume-atendimento .at-tabs button {
+  width: 50%;
+  font-size: 12px;
+}
+.lume-atendimento .at-tabs button[aria-selected="true"] {
+  color: var(--background);
+}
+.lume-atendimento .at-tabs button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+.at-tab-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.lume-atendimento .at-panel-title {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.045em;
+}
+.lume-atendimento .at-panel-title + p {
+  font-size: 11px;
+  font-weight: 400;
+}
+.lume-atendimento .at-info-scroll {
+  gap: 18px;
+}
+.lume-atendimento .at-fact {
+  min-width: 0;
+}
+.lume-atendimento .at-fact > div {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lume-atendimento .at-fact > div > span {
+  overflow-wrap: anywhere;
+}
+.lume-atendimento .at-fact[data-field="Resumo"] .at-info-field {
+  background: radial-gradient(ellipse at 100% 100%, #793bdf18, transparent 80%), var(--at-field);
+  border-color: #be8cff50;
+  line-height: 1.7;
+}
+.lume-atendimento .at-fact[data-field="Próxima ação"] .at-info-field {
+  border-color: #c3f75d50;
+  background: radial-gradient(ellipse at 0% 100%, #c3f75d18, transparent 80%), var(--at-field);
+}
+.lume-atendimento .at-info-field {
+  border-radius: 15px;
+  background: var(--at-field);
+  border-color: var(--at-edge);
+  font-size: 12px;
+  font-weight: 400;
+}
+.lume-atendimento .at-info-field:hover {
+  background: color-mix(in srgb, var(--at-soft), #ac77f4 6%);
+  border-color: #a678e64a;
+}
+.lume-atendimento .at-info-scroll > div:has(> .at-info-field) > div > span:first-child,
+.lume-atendimento .at-info-scroll .grid > div > div > span:first-child {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.lume-atendimento .at-info-field:focus-visible,
+.lume-atendimento button:focus-visible {
+  outline: 2px solid var(--at-lilac);
+  outline-offset: 3px;
+}
+.lume-atendimento .at-ai-chat {
+  background: transparent;
+}
+.lume-atendimento .at-ai-chat > div:last-child button {
+  transition:
+    background 200ms,
+    border-color 200ms,
+    color 200ms;
+}
+.lume-atendimento .at-ai-chat > div:last-child button:hover:not(:disabled) {
+  background: #9760e51a;
+  border-color: #b594ff66;
+}
+.lume-atendimento.at-insight-sheet {
+  background: var(--at-surface);
+  border-color: var(--at-edge);
+  border-radius: 28px 0 0 28px;
+  padding-top: 64px;
+}
+.lume-atendimento.at-insight-sheet > button {
+  border: 1px solid var(--at-edge);
+  border-radius: 50%;
+  padding: 8px;
+}
+/* Portais de configurações e menus usam o tema global, sem sobrescrever seus botões. */
+.lume-atendimento :is(.at-queue, .at-conversation, .at-sidebar) {
+  animation: at-panel-enter 180ms ease-out;
+}
+@keyframes at-panel-enter {
+  from {
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@supports (interpolate-size: allow-keywords) {
+  .lume-atendimento details::details-content {
+    interpolate-size: allow-keywords;
+    height: 0;
+    overflow: clip;
+    transition:
+      height 240ms ease,
+      content-visibility 240ms allow-discrete;
+  }
+  .lume-atendimento details[open]::details-content {
+    height: auto;
+  }
+}
+@media (min-width: 1280px) {
+  .lume-atendimento .at-workspace {
+    grid-template-columns: clamp(264px, 22vw, 320px) minmax(0, 1fr) clamp(280px, 24vw, 360px);
+  }
+}
+@media (max-width: 1279px) {
+  .lume-atendimento .at-queue {
+    padding: 16px;
+  }
+  .lume-atendimento .at-stat > .at-stat-surface > button {
+    height: clamp(150px, 23dvh, 200px);
+  }
+}
+@media (max-width: 640px) {
+  .lume-atendimento .at-workspace {
+    gap: 0;
+    padding: 6px;
+  }
+  .lume-atendimento .at-queue,
+  .lume-atendimento .at-conversation {
+    border-radius: 20px;
+  }
+  .lume-atendimento .at-thread-header {
+    gap: 8px;
+    padding-inline: 10px;
+    min-height: 78px;
+  }
+  .lume-atendimento .at-thread-header h2 {
+    font-size: 15px;
+  }
+  .lume-atendimento .at-thread-header > .at-avatar > span:first-child {
+    width: 34px !important;
+    height: 34px !important;
+    font-size: 13px !important;
+  }
+  .lume-atendimento .at-thread-header > .at-avatar {
+    margin-right: 2px;
+  }
+  .lume-atendimento.at-insight-sheet {
+    border-radius: 0;
+    padding-top: 64px;
+  }
+  .lume-atendimento .at-composer-pill {
+    padding-inline: 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lume-atendimento * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .lume-atendimento details::details-content {
+    transition: none !important;
+  }
+}

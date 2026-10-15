@@ -54,6 +54,8 @@ import {
   withInlineQuote,
   type VisitPayload,
 } from "@/lib/inbox/conversation-actions";
+import { ConversationOwner } from "@/components/team/ConversationOwner";
+import { useLeadAssignment } from "@/hooks/useLeadAssignment";
 import { useAuth } from "@/auth/AuthContext";
 import { ChannelBadge, StatusBadge } from "@/components/Badges";
 import { OriginBadge, getConversationOrigin } from "./inbox.index";
@@ -200,6 +202,7 @@ function ConversationPage() {
   const prevVisibleSnapRef = useRef<ArrayDiagSnapshot<Message> | null>(null);
   const conversation = getConversationById(conversationId);
   const lead = conversation ? getLeadById(conversation.leadId) : undefined;
+  const assignment=useLeadAssignment(lead?.id);
   const repoMessages = conversation ? getMessagesFor(conversationId) : EMPTY_MESSAGES;
 
   // `localMessages` guarda apenas adições otimistas (envios ainda não confirmados
@@ -1185,6 +1188,10 @@ function ConversationPage() {
   };
 
   const sendMessage = async (text: string) => {
+    if (!assignment.canReply) {
+      toast.error("Assuma este atendimento ou solicite uma transferência para responder.");
+      return;
+    }
     const rawTrimmed = text.trim();
     if (!rawTrimmed) return;
 
@@ -1775,6 +1782,7 @@ function ConversationPage() {
             <PanelRight className="h-5 w-5" />
           </button>
         </header>
+        <ConversationOwner leadId={lead.id} />
 
 
         {/* Manual follow-up result modal */}
@@ -1988,7 +1996,7 @@ function ConversationPage() {
                   }
                   return (
                     <div className="py-1.5 min-w-0 max-w-full w-full overflow-hidden">
-                      <MessageBubble m={m} canManage={!closedInfo} />
+                      <MessageBubble m={m} canManage={!closedInfo && assignment.canReply} />
                     </div>
                   );
                 }}
@@ -2178,6 +2186,7 @@ function ConversationPage() {
           somado à safe-area para o campo nunca ficar coberto no iOS.
         */}
         <div
+          inert={!assignment.canReply}
           className="border-t border-border px-2 md:px-3 pt-2 md:pt-3 shrink-0 bg-background max-w-full overflow-x-hidden"
           style={{
             paddingBottom:

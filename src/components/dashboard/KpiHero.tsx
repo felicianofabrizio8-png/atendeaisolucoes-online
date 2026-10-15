@@ -1,8 +1,9 @@
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Minus, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MicroArc, MicroRidge } from "./charts/Micro";
-import { brl, brlCompact, num, pct, useCountUp, useInView } from "./charts/primitives";
+
+import { brl, brlCompact, num, pct, useCountUp } from "./charts/primitives";
 import type { Periodo, ValorComparado } from "./useDashboardMetrics";
+import { ChartExplorer } from "./charts/ChartExplorer";
 
 const PERIODOS: Array<{ value: Periodo; label: string }> = [
   { value: "semana", label: "Semana" },
@@ -115,7 +116,7 @@ function Hero({
       <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {/* tabular-nums é obrigatório em número que anima: sem ele os dígitos
             têm larguras diferentes e a linha inteira treme enquanto sobe. */}
-        <span className="text-[26px] font-bold leading-none tabular-nums tracking-tight text-foreground sm:text-[32px]">
+        <span className="dash-kpi-value text-[30px] font-bold leading-none tabular-nums tracking-tight text-foreground lg:text-[38px]">
           {display}
         </span>
         {delta !== undefined && <Delta value={delta} />}
@@ -127,42 +128,13 @@ function Hero({
 }
 
 /**
- * Barra de composição do pipeline.
- *
- * O pipeline aberto é um número sem tamanho próprio: R$ 400 mil é muito ou
- * pouco? A parte que está QUENTE responde — é a fração que pode virar receita
- * nas próximas semanas. Dois segmentos, não uma pizza: comparação de duas
- * partes de um todo se lê melhor em comprimento.
- */
-function PipelineSplit({ total, quentes }: { total: number; quentes: number }) {
-  const [ref, inView] = useInView<HTMLDivElement>();
-  const fracao = total > 0 ? Math.min(quentes / total, 1) : 0;
-  return (
-    <div ref={ref} aria-hidden>
-      <div className="flex h-2 w-full gap-[3px] overflow-hidden rounded-full">
-        <span
-          className="h-full rounded-full transition-[width] duration-700 ease-out"
-          style={{ width: inView ? `${fracao * 100}%` : "0%", background: "var(--viz-3)" }}
-        />
-        <span
-          className="h-full min-w-0 flex-1 rounded-full"
-          style={{ background: "var(--viz-track)" }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/**
  * Faixa de KPIs do topo.
  *
  * Três números, não oito: um painel com dezesseis indicadores não é lido, é
  * ignorado. A ordem é a da pergunta do dono do negócio — quanto entrou,
  * quanto está em jogo, quanto do que entra vira venda.
  *
- * Cada número ganhou uma micro-visualização embaixo. Não é enfeite: um valor
- * isolado não diz se está subindo, de que é feito nem quanto falta para o
- * todo, e essas três perguntas cabem em trinta pixels de altura cada.
+ * Cada indicador inclui seu contexto: comparação, participação ou proporção.
  */
 export function KpiHero({
   receita,
@@ -172,7 +144,6 @@ export function KpiHero({
   ticketMedio,
   vendas,
   periodoLabel,
-  serieReceita,
 }: {
   receita: ValorComparado;
   pipeline: number;
@@ -181,54 +152,100 @@ export function KpiHero({
   ticketMedio: number;
   vendas: ValorComparado;
   periodoLabel: string;
-  /** Série de receita por balde — a crista sob o número grande. */
-  serieReceita: number[];
 }) {
   const conversao = useCountUp(taxaConversao);
 
-  return (
-    <section className="viz-fade-up grid gap-6 rounded-2xl border border-border bg-card/60 p-5 sm:grid-cols-3">
+  const revenueContent = (
+    <>
       <Hero
         label={`Receita · ${periodoLabel}`}
         value={receita.atual}
         delta={receita.variacao}
         compare={
           receita.anterior > 0
-            ? `Antes: ${brlCompact(receita.anterior)} · ${num(vendas.atual)} venda${vendas.atual === 1 ? "" : "s"}`
-            : `${num(vendas.atual)} venda${vendas.atual === 1 ? "" : "s"} fechada${vendas.atual === 1 ? "" : "s"}`
+            ? `Antes: ${brlCompact(receita.anterior)}`
+            : "Sem receita no período anterior"
         }
       >
-        {serieReceita.some((v) => v > 0) && <MicroRidge data={serieReceita} color="var(--viz-1)" />}
+        <span className="dash-sales-pill">{num(vendas.atual)} vendas fechadas</span>
       </Hero>
-
-      <div className="flex min-w-0 flex-col sm:border-l sm:border-border sm:pl-6">
+    </>
+  );
+  const pipelineContent = (
+    <>
+      <Hero
+        label="Oportunidades em aberto"
+        value={pipeline}
+        compare={
+          pipelineQuentes > 0
+            ? `${brlCompact(pipelineQuentes)} em leads quentes · agora`
+            : "Nenhum lead quente no momento"
+        }
+      >
+        <span className="dash-hot-pill">
+          <Flame size={13} />
+          {pipeline > 0
+            ? `${pct((pipelineQuentes / pipeline) * 100, 0)} do valor em leads quentes`
+            : "Sem oportunidades em aberto"}
+        </span>
+      </Hero>
+    </>
+  );
+  const conversionContent = (
+    <>
+      <div className="flex items-start justify-between gap-3">
         <Hero
-          label="Pipeline aberto"
-          value={pipeline}
+          label="Conversão"
+          value={taxaConversao}
+          formatted={pct(conversao, 1)}
           compare={
-            pipelineQuentes > 0
-              ? `${brlCompact(pipelineQuentes)} em leads quentes`
-              : "Nenhum lead quente no momento"
+            ticketMedio > 0
+              ? `Ticket médio ${brlCompact(ticketMedio)}`
+              : "Sem venda fechada no período"
           }
-        >
-          {pipeline > 0 && <PipelineSplit total={pipeline} quentes={pipelineQuentes} />}
-        </Hero>
+        />
       </div>
-
-      <div className="flex min-w-0 flex-col sm:border-l sm:border-border sm:pl-6">
-        <div className="flex items-start justify-between gap-3">
-          <Hero
-            label="Conversão"
-            value={taxaConversao}
-            formatted={pct(conversao, 1)}
-            compare={
-              ticketMedio > 0
-                ? `Ticket médio ${brlCompact(ticketMedio)}`
-                : "Sem venda fechada no período"
-            }
+      <div className="dash-conversion-ticks" aria-hidden>
+        {Array.from({ length: 40 }, (_, i) => (
+          <i
+            key={i}
+            style={{
+              background:
+                i < Math.round(Math.max(0, Math.min(100, taxaConversao)) / 2.5)
+                  ? "var(--dash-lime)"
+                  : "var(--dash-track)",
+            }}
           />
-          <MicroArc value={taxaConversao} color="var(--viz-2)" size={44} className="mt-1" />
-        </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[10px] text-muted-foreground">Vendas ÷ novos leads no período</p>
+    </>
+  );
+  return (
+    <section className="viz-fade-up grid gap-4 sm:grid-cols-3">
+      <div className="dash-kpi dash-kpi-revenue">
+        <span className="dash-kpi-symbol">
+          <ChartExplorer title="Receita" chartClass="dash-kpi dash-kpi-revenue">
+            {revenueContent}
+          </ChartExplorer>
+        </span>
+        {revenueContent}
+      </div>
+      <div className="dash-kpi dash-kpi-pipeline">
+        <span className="dash-kpi-symbol">
+          <ChartExplorer title="Oportunidades em aberto" chartClass="dash-kpi dash-kpi-pipeline">
+            {pipelineContent}
+          </ChartExplorer>
+        </span>
+        {pipelineContent}
+      </div>
+      <div className="dash-kpi dash-kpi-conversion">
+        <span className="dash-kpi-symbol">
+          <ChartExplorer title="Conversão" chartClass="dash-kpi dash-kpi-conversion">
+            {conversionContent}
+          </ChartExplorer>
+        </span>
+        {conversionContent}
       </div>
     </section>
   );

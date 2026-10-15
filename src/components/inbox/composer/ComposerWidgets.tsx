@@ -592,7 +592,7 @@ export function MediaSendPanel({
       // Upload se for arquivo local
       if (!path && pending.file) {
         const ext = (pending.file.name.split(".").pop() ?? "bin").toLowerCase().slice(0, 6);
-        const uploadPath = `${companyId}/inbox/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const uploadPath = `${companyId}/inbox/${conversationId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from("product-images")
           .upload(uploadPath, pending.file, {

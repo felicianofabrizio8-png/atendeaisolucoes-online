@@ -1,122 +1,393 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  AlertCircle,
+  ArrowRight,
+  ArrowUpRight,
+  CalendarDays,
+  CheckCheck,
+  Images,
+  Library,
+  Megaphone,
+  Music2,
+  Send,
+  Sparkles,
+  Upload,
+  Video,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { apiListPublishContents, apiListPublishSchedule } from "@/data/marketingRepo";
-import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
-import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
-import { MediaThumb } from "./ui/MarketingUi";
-import type { PublishView } from "./MarketingPublishHub";
+import { MarketingHero } from "./MarketingHero";
+import { LumeNumber } from "./MarketingMotion";
 
-interface Props {
-  companyId: string;
-  onCreate?: () => void;
-  onOpenPublish?: (view: PublishView) => void;
+import {
+  apiListMedia,
+  apiListPromotions,
+  apiListPublishContents,
+  apiListPublishSchedule,
+} from "@/data/marketingRepo";
+import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
+import type { MarketingSection } from "./MarketingWorkspace";
+
+interface Overview {
+  media: number;
+  promotions: number;
+  drafts: number;
+  approved: number;
+  planned: number;
+  failed: number;
+  upcoming: MarketingScheduleRow[];
+  contents: MarketingContentRow[];
+  /** Active schedule entries per day, today first, for the next seven days. */
+  week: { date: Date; count: number }[];
 }
 
-const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp", carousel: "Carrossel" };
+function nextSevenDays(schedule: MarketingScheduleRow[]) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const count = schedule.filter((s) => {
+      if (s.status !== "planned" && s.status !== "queued") return false;
+      const at = new Date(s.scheduled_at);
+      return at.toDateString() === date.toDateString();
+    }).length;
+    return { date, count };
+  });
+}
+const channelLabel = { instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp" };
+const formatLabel = {
+  feed: "Feed",
+  story: "Story",
+  reel: "Reel",
+  whatsapp_cta: "Mensagem",
+  carousel: "Carrossel",
+};
 
-export function MarketingDashboard({ companyId, onCreate, onOpenPublish }: Props) {
-  const [contents, setContents] = useState<MarketingContentRow[]>([]);
-  const [schedule, setSchedule] = useState<MarketingScheduleRow[]>([]);
-  const [loading, setLoading] = useState(true);
-
+export function MarketingDashboard({
+  companyId,
+  onNavigate,
+}: {
+  companyId: string;
+  onNavigate: (section: MarketingSection) => void;
+}) {
+  const [data, setData] = useState<Overview | null>(null);
+  const [error, setError] = useState(false);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
-    let active = true;
-    void Promise.all([apiListPublishContents().catch(() => []), apiListPublishSchedule().catch(() => [])]).then(([c, s]) => {
-      if (!active) return;
-      setContents(c);
-      setSchedule(s);
-      setLoading(false);
-    });
+    let cancelled = false;
+    setData(null);
+    setError(false);
+    void Promise.all([
+      apiListMedia(),
+      apiListPromotions(),
+      apiListPublishContents(),
+      apiListPublishSchedule(),
+    ])
+      .then(([media, promotions, contents, schedule]) => {
+        if (cancelled) return;
+        setData({
+          media: media.length,
+          promotions: promotions.filter((p) => p.status === "active").length,
+          drafts: contents.filter((c) => c.status === "draft" || c.status === "pending").length,
+          approved: contents.filter((c) => c.status === "approved").length,
+          planned: schedule.filter((s) => s.status === "planned").length,
+          failed: schedule.filter((s) => s.status === "failed").length,
+          upcoming: schedule
+            .filter((s) => s.status === "planned" || s.status === "queued")
+            .filter((s) => new Date(s.scheduled_at).getTime() >= Date.now())
+            .sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at))
+            .slice(0, 3),
+          contents,
+          week: nextSevenDays(schedule),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [companyId]);
-
-  const review = contents.filter((c) => c.status === "draft" || c.status === "pending");
-  const upcoming = useMemo(
-    () =>
-      schedule
-        .filter((s) => s.status === "planned" || s.status === "queued" || s.status === "publishing")
-        .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
-    [schedule],
-  );
-  const failures = schedule.filter((s) => s.status === "failed");
-
-  const byId = useMemo(() => new Map(contents.map((c) => [c.id, c])), [contents]);
-  const upcomingContents = useMemo(
-    () => upcoming.slice(0, 5).map((s) => byId.get(s.content_id)).filter((c): c is MarketingContentRow => !!c),
-    [upcoming, byId],
-  );
-  const previews = useContentPreviews(companyId, upcomingContents);
+  }, [companyId, reload]);
+  const value = (key: "media" | "promotions" | "drafts" | "approved" | "planned") =>
+    data?.[key].toLocaleString("pt-BR") ?? "—";
+  const next = !data
+    ? null
+    : data.drafts > 0
+      ? {
+          title: "Vamos dar o seu toque?",
+          text: `${data.drafts} ${data.drafts === 1 ? "conteúdo precisa" : "conteúdos precisam"} de revisão antes de seguir para a agenda.`,
+          action: "Revisar conteúdos",
+          target: "approvals" as const,
+        }
+      : data.media === 0
+        ? {
+            title: "Comece com uma boa imagem.",
+            text: "Adicione fotos ou vídeos à biblioteca para preparar sua primeira campanha.",
+            action: "Adicionar mídias",
+            target: "library" as const,
+          }
+        : {
+            title: "Sua próxima campanha começa aqui.",
+            text: "Use seu acervo e as informações da marca para criar uma nova campanha.",
+            action: "Criar campanha",
+            target: "generator" as const,
+          };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">O que vamos criar hoje?</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Crie, revise e publique no Instagram e no Facebook.</p>
-        <Button onClick={onCreate} size="lg" className="marketing-primary mt-4 px-6 shadow-md">
-          <Plus className="mr-2 h-4 w-4" /> Criar publicação
-        </Button>
+    <div className="mkt-overview">
+      <MarketingHero onCreate={() => onNavigate("generator")} />
+      <div className="mkt-hero-grid">
+        <section className="mkt-next mkt-card">
+          <h2>
+            {next?.title ??
+              (error ? "Vamos retomar de onde parou." : "Preparando sua visão geral…")}
+          </h2>
+          <p>
+            {next?.text ??
+              (error
+                ? "Não foi possível consultar os dados agora. Seus recursos continuam disponíveis nas abas."
+                : "Reunindo sua biblioteca, conteúdos e agenda.")}
+          </p>
+          {error ? (
+            <Button className="mkt-primary" onClick={() => setReload((v) => v + 1)}>
+              Tentar novamente
+            </Button>
+          ) : (
+            next && (
+              <Button className="mkt-primary" onClick={() => onNavigate(next.target)}>
+                {next.action}
+                <ArrowRight />
+              </Button>
+            )
+          )}
+        </section>
+        <div className="mkt-metrics" aria-label="Resumo do marketing" aria-busy={!data && !error}>
+          <button
+            data-lume-light
+            className="mkt-metric mkt-metric-vivid"
+            onClick={() => onNavigate("approvals")}
+          >
+            <span className="mkt-metric-top">
+              <CheckCheck size={16} />
+              Para revisar
+              <ArrowUpRight size={15} />
+            </span>
+            <strong>{<LumeNumber value={data?.drafts ?? null} />}</strong>
+            <span className="mkt-metric-ratio" aria-hidden>
+              <i
+                style={{
+                  transform: `scaleX(${
+                    data && data.drafts + data.approved > 0
+                      ? data.approved / (data.drafts + data.approved)
+                      : 0
+                  })`,
+                }}
+              />
+            </span>
+            <span className="mkt-metric-foot">
+              {value("approved")}{" "}
+              {data?.approved === 1 ? "conteúdo aprovado" : "conteúdos aprovados"}
+            </span>
+          </button>
+          <button
+            data-lume-light
+            className="mkt-metric mkt-metric-calendar"
+            onClick={() => onNavigate("schedule")}
+          >
+            <span className="mkt-metric-top">
+              <CalendarDays size={16} />
+              Na programação
+              <ArrowUpRight size={15} />
+            </span>
+            <strong>{<LumeNumber value={data?.planned ?? null} />}</strong>
+            <span className="mkt-week" aria-hidden>
+              {(data?.week ?? nextSevenDays([])).map(({ date, count }, i) => (
+                <span key={i} data-today={i === 0 || undefined} data-busy={count > 0 || undefined}>
+                  <i style={{ animationDelay: `${120 + i * 60}ms` }} />
+                  {date.toLocaleDateString("pt-BR", { weekday: "narrow" })}
+                </span>
+              ))}
+            </span>
+            <span className="mkt-metric-foot">Agendamentos nos próximos dias</span>
+          </button>
+          <button
+            data-lume-light
+            className="mkt-metric mkt-metric-media"
+            onClick={() => onNavigate("library")}
+          >
+            <span className="mkt-metric-top">
+              <Images size={16} />
+              Seu acervo
+              <ArrowUpRight size={15} />
+            </span>
+            <strong>{<LumeNumber value={data?.media ?? null} />}</strong>
+            <span className="mkt-metric-foot">Fotos e vídeos na biblioteca</span>
+          </button>
+        </div>
       </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Para revisar" value={review.length} loading={loading} onClick={() => onOpenPublish?.("review")} />
-        <StatCard label="Agendadas" value={upcoming.length} loading={loading} onClick={() => onOpenPublish?.("scheduled")} />
-        <StatCard label="Com problema" value={failures.length} loading={loading} danger onClick={() => onOpenPublish?.("problems")} />
-      </div>
-
-      {failures.length > 0 && (
-        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 p-4 text-sm">
-          <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
-          <span className="min-w-0 flex-1 basis-48">
-            {failures.length === 1 ? "1 publicação não saiu." : `${failures.length} publicações não saíram.`}
+      {!error && data && data.failed > 0 && (
+        <div className="mkt-error mkt-error-action" role="alert">
+          <AlertCircle size={16} aria-hidden />
+          <span>
+            {data.failed === 1
+              ? "1 publicação não saiu."
+              : `${data.failed} publicações não saíram.`}
           </span>
-          <Button size="sm" className="rounded-full" onClick={() => onOpenPublish?.("problems")}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mkt-secondary"
+            onClick={() => onNavigate("problems")}
+          >
             Resolver
           </Button>
         </div>
       )}
+      {error && (
+        <p className="mkt-error" role="alert">
+          Não foi possível carregar os indicadores. Nenhum valor foi estimado.
+        </p>
+      )}
+      <div className="mkt-overview-heading">
+        <h2>Sua campanha, passo a passo.</h2>
+        <span>Você está no controle de cada etapa.</span>
+      </div>
+      <nav className="mkt-workflow" aria-label="Etapas de uma campanha">
+        {[
+          { id: "generator", icon: Sparkles, title: "Crie", text: "Escolha imagens e uma ideia" },
+          { id: "approvals", icon: CheckCheck, title: "Revise", text: "Deixe com a sua cara" },
+          { id: "schedule", icon: CalendarDays, title: "Agende", text: "Escolha o melhor momento" },
+          { id: "publisher", icon: Send, title: "Acompanhe", text: "Veja o que já foi publicado" },
+        ].map(({ id, icon: Icon, title, text }, index) => (
+          <button
+            key={id}
+            data-hue={["blue", "violet", "orchid", "lilac"][index]}
+            onClick={() => onNavigate(id as MarketingSection)}
+          >
+            <span className="mkt-workflow-node" aria-hidden />
+            <span className="mkt-icon-chip" aria-hidden>
+              <Icon size={17} />
+            </span>
+            <strong>{title}</strong>
+            <small>{text}</small>
+            <ArrowUpRight aria-hidden size={16} className="mkt-workflow-arrow" />
+          </button>
+        ))}
+      </nav>
 
-      <section>
-        <h3 className="mb-2 font-semibold">Próximas publicações</h3>
-        <div className="marketing-card">
-          {loading ? (
-            <p className="py-5 text-sm text-muted-foreground">Carregando…</p>
-          ) : upcoming.length === 0 ? (
-            <p className="py-5 text-sm text-muted-foreground">Nada agendado.</p>
-          ) : (
-            upcoming.slice(0, 5).map((s) => {
-              const c = byId.get(s.content_id);
-              return (
-                <div key={s.id} className="flex items-center gap-3 border-b py-3 last:border-0">
-                  <MediaThumb preview={c ? previews[c.id] : null} className="h-14 w-14 shrink-0 rounded-lg" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{c?.title || c?.body?.split("\n")[0] || "Publicação"}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {FORMAT_LABEL[c?.format ?? ""] ?? c?.format ?? ""} ·{" "}
-                      {new Date(s.scheduled_at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+      <div className="mkt-bottom-grid">
+        <section className="mkt-agenda mkt-card">
+          <header>
+            <h2>Próximas publicações</h2>
+            <button className="mkt-text-link" onClick={() => onNavigate("schedule")}>
+              Ver calendário <ArrowUpRight size={14} />
+            </button>
+          </header>
+          {!data ? (
+            <p className="mkt-empty">
+              {error ? "Agenda indisponível no momento." : "Carregando agenda…"}
+            </p>
+          ) : data.upcoming.length ? (
+            <ol className="mkt-agenda-list">
+              {data.upcoming.map((item) => {
+                const content = data.contents.find((c) => c.id === item.content_id);
+                const date = new Date(item.scheduled_at);
+                return (
+                  <li key={item.id} data-channel={item.channel}>
+                    <time dateTime={item.scheduled_at}>
+                      <strong>{date.toLocaleDateString("pt-BR", { day: "2-digit" })}</strong>
+                      <span>{date.toLocaleDateString("pt-BR", { month: "short" })}</span>
+                    </time>
+                    <div>
+                      <h3>
+                        {content?.title || content?.body?.slice(0, 80) || "Conteúdo agendado"}
+                      </h3>
+                      <p>
+                        <span className={`mkt-channel mkt-channel-${item.channel}`}>
+                          {channelLabel[item.channel]}
+                        </span>
+                        {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} ·{" "}
+                        {content ? formatLabel[content.format] : "Conteúdo"} ·{" "}
+                        {item.status === "queued" ? "Na fila" : "Planejado"}
+                      </p>
                     </div>
-                  </div>
-                </div>
-              );
-            })
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <div className="mkt-empty-agenda">
+              <h3>Um espaço para suas próximas ideias.</h3>
+              <p>Aprove um conteúdo e escolha uma data para ele aparecer aqui.</p>
+              <Button variant="outline" size="sm" onClick={() => onNavigate("approvals")}>
+                Ir para revisão <ArrowRight />
+              </Button>
+            </div>
           )}
-        </div>
-      </section>
+          <button className="mkt-agenda-foot" onClick={() => onNavigate("generator")}>
+            Planejar a próxima criação <ArrowRight size={15} />
+          </button>
+        </section>
+        <section className="mkt-resources mkt-card">
+          <header>
+            <h2>Tudo para a próxima ideia.</h2>
+          </header>
+          <div className="mkt-resource-grid">
+            {[
+              {
+                id: "library",
+                title: "Fotos e vídeos",
+                text: "Envie e organize seu acervo",
+                icon: Upload,
+                hue: "violet",
+              },
+              {
+                id: "audio",
+                title: "Trilhas e áudios",
+                text: "Encontre o ritmo da campanha",
+                icon: Music2,
+                hue: "blue",
+              },
+              {
+                id: "promotions",
+                title: "Ofertas da vez",
+                text: `${value("promotions")} ${data?.promotions === 1 ? "promoção ativa" : "promoções ativas"}`,
+                icon: Megaphone,
+                hue: "orchid",
+              },
+            ].map(({ id, title, text, icon: Icon, hue }) => (
+              <button
+                key={id}
+                data-hue={hue}
+                data-lume-light
+                className="mkt-resource"
+                onClick={() => onNavigate(id as MarketingSection)}
+              >
+                <span className="mkt-icon-chip" aria-hidden>
+                  <Icon size={17} />
+                </span>
+                <ArrowUpRight aria-hidden size={15} className="mkt-resource-arrow" />
+                <strong>{title}</strong>
+                <span>{text}</span>
+              </button>
+            ))}
+            <a href="/ia" data-hue="lilac" data-lume-light className="mkt-resource">
+              <span className="mkt-icon-chip" aria-hidden>
+                <Library size={17} />
+              </span>
+              <ArrowUpRight aria-hidden size={15} className="mkt-resource-arrow" />
+              <strong>Sua marca</strong>
+              <span>Base de conhecimento nas configurações da IA</span>
+            </a>
+          </div>
+          <button className="mkt-video-link" onClick={() => onNavigate("generated")}>
+            <Video size={16} /> Procurando um vídeo já gerado?{" "}
+            <span>
+              Ver vídeos <ArrowRight size={14} />
+            </span>
+          </button>
+        </section>
+      </div>
     </div>
-  );
-}
-
-function StatCard({ label, value, loading, danger, onClick }: { label: string; value: number; loading: boolean; danger?: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="marketing-card text-center transition-all hover:-translate-y-0.5 hover:shadow-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className={`block text-3xl font-semibold tabular-nums ${danger && value > 0 ? "text-destructive" : ""}`}>{loading ? "–" : value}</span>
-      <span className="text-xs text-muted-foreground sm:text-sm">{label}</span>
-    </button>
   );
 }

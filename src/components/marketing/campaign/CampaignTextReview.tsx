@@ -1,8 +1,9 @@
+import { LumePulse } from "../MarketingMotion";
 // Tela de revisão de texto (approval-gate).
 // A IA propõe; o usuário edita/aprova antes de qualquer renderização.
 //
 // Botões:
-//  - "Gerar nova sugestão IA"  → regenera overlays (mesma imagem/áudio).
+//  - "Pedir outra ideia à Lume"  → regenera overlays (mesma imagem/áudio).
 //  - "Restaurar original"       → volta ao snapshot da 1ª sugestão (client-side).
 //  - "Aprovar e gerar vídeo"    → persiste texto aprovado + enfileira render.
 
@@ -12,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Sparkles, RotateCcw, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
+import { Sparkles, RotateCcw, CheckCircle2 } from "lucide-react";
+import { lumeToast as toast } from "../MarketingFeedback";
 import {
   apiApproveCampaignAndRender,
   apiRegenerateCampaignTexts,
@@ -71,8 +72,7 @@ export function CampaignTextReview({
     try {
       const res = await apiRegenerateCampaignTexts({ campaign_id: campaignId });
       const fresh = (res.contents ?? []) as MarketingContentRow[];
-      const feed =
-        fresh.find((c) => c.campaign_role === "feed") ?? fresh[0] ?? null;
+      const feed = fresh.find((c) => c.campaign_role === "feed") ?? fresh[0] ?? null;
       if (feed) {
         setHeadline(feed.overlay_headline ?? "");
         setSubheadline(feed.overlay_subheadline ?? "");
@@ -121,8 +121,8 @@ export function CampaignTextReview({
       <div>
         <div className="text-sm font-semibold">Revisar textos do vídeo</div>
         <div className="text-xs text-muted-foreground">
-          A IA sugeriu os textos abaixo. Edite livremente e aprove — o vídeo só
-          será renderizado após sua aprovação.
+          A Lume sugeriu os textos abaixo. Edite livremente e aprove — o vídeo só será renderizado
+          após sua aprovação.
         </div>
       </div>
 
@@ -179,9 +179,7 @@ export function CampaignTextReview({
 
         {/* Preview */}
         <div className="md:pl-2">
-          <div className="text-xs font-medium text-muted-foreground mb-2">
-            Prévia (9:16)
-          </div>
+          <div className="text-xs font-medium text-muted-foreground mb-2">Prévia (9:16)</div>
           <CampaignTextPreview
             imageUrl={previewImageUrl}
             focalPoint={focalPoint ?? null}
@@ -193,30 +191,22 @@ export function CampaignTextReview({
       </div>
 
       <div className="flex flex-wrap gap-2 pt-2 border-t">
-        <Button
-          variant="outline"
-          onClick={handleRegenerate}
-          disabled={regenerating || approving}
-        >
+        <Button variant="outline" onClick={handleRegenerate} disabled={regenerating || approving}>
           {regenerating ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            <LumePulse className="h-4 w-4 animate-spin mr-1" />
           ) : (
             <Sparkles className="h-4 w-4 mr-1" />
           )}
-          Gerar nova sugestão IA
+          Pedir outra ideia à Lume
         </Button>
-        <Button
-          variant="ghost"
-          onClick={handleRestore}
-          disabled={regenerating || approving}
-        >
+        <Button variant="ghost" onClick={handleRestore} disabled={regenerating || approving}>
           <RotateCcw className="h-4 w-4 mr-1" />
           Restaurar original
         </Button>
         <div className="flex-1" />
         <Button onClick={handleApprove} disabled={!canApprove} size="lg">
           {approving ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            <LumePulse className="h-4 w-4 animate-spin mr-1" />
           ) : (
             <CheckCircle2 className="h-4 w-4 mr-1" />
           )}

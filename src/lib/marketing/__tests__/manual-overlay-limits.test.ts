@@ -21,6 +21,7 @@ vi.mock("@tanstack/react-start", () => {
   return { createServerFn, createMiddleware: () => ({ server: () => ({}) }) };
 });
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
+vi.mock("@/lib/team/middleware", () => ({ requireTeamPermission: () => ({}) }));
 
 import { approveCampaignAndRender, generateManualCampaign } from "../marketing-campaign.functions";
 import { OVERLAY_LIMITS, buildManualOverlay, composeManualCaption, fitOverlayText } from "../manual-campaign";

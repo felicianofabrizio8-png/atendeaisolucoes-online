@@ -1211,7 +1211,7 @@ function MessageBubbleImpl({
           }}
           className={cn(
             "text-base leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:text-sm md:select-text transition-transform active:scale-[0.99]",
-            appearance === "atendimento" ? "rounded-3xl px-4 py-2.5" : "rounded-lg px-3 py-2",
+            appearance === "atendimento" ? `at-bubble ${isAgent ? "at-bubble-out" : "at-bubble-in"} rounded-3xl px-4 py-2.5` : "rounded-lg px-3 py-2",
             isAgent
               ? cn(
                   "bg-primary text-primary-foreground",

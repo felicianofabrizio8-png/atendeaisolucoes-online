@@ -9,6 +9,8 @@ import {
 } from "react";
 import { ArrowLeft, Bot, Hand, Loader2, Lock, RotateCw } from "lucide-react";
 import { toast } from "sonner";
+import { ConversationOwner } from "@/components/team/ConversationOwner";
+import { useLeadAssignment } from "@/hooks/useLeadAssignment";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
 import { refetchConversationMessages } from "@/data/leadRepo";
@@ -78,6 +80,7 @@ export function ChatThread({
 }) {
   const { lead, conversation, history, hue } = contact;
   const conversationId = conversation.id;
+  const assignment = useLeadAssignment(simulated ? undefined : lead.id);
   const { profile } = useAuth();
   const companyId = profile?.company_id ?? null;
   const { isAdmin } = useIsAdmin();
@@ -127,7 +130,7 @@ export function ChatThread({
   const commercialClosed =
     closedHere || lead.status === "fechado" || lead.status === "perdido" || !!lead.closedAt;
   const communicationClosed = lostHere || lead.status === "perdido";
-  const locked = communicationClosed || simulated;
+  const locked = communicationClosed || simulated || !assignment.canReply;
 
   // Troca de conversa: zera o estado efêmero e recupera o rascunho dela.
   useEffect(() => {
@@ -372,8 +375,8 @@ export function ChatThread({
         : "Mandar mensagem";
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-x-hidden">
-      <header className="flex items-center gap-3 px-4 py-3 sm:px-5">
+    <div className="at-thread flex h-full min-h-0 flex-col overflow-x-hidden">
+      <header className="at-thread-header flex items-center gap-3 px-4 py-3 sm:px-5">
         {onBack && (
           <button
             type="button"
@@ -419,6 +422,7 @@ export function ChatThread({
         )}
         {actions}
       </header>
+      {!simulated && <ConversationOwner leadId={lead.id} />}
 
       {/* IA pediu humano: é a única faixa que merece interromper a leitura. */}
       {!simulated && conversation.aiStatus === "aguardando_humano" && (
@@ -471,7 +475,7 @@ export function ChatThread({
           </div>
         )}
 
-      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
+      <div ref={scrollerRef} className="at-messages min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
         <MessagesContext.Provider value={messages}>
           <ReplyComposeContext.Provider value={replyCompose}>
             <div className="flex w-full min-w-0 flex-col gap-2">

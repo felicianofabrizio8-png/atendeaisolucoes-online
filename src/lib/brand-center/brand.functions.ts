@@ -13,7 +13,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import { resolveBrandContext } from "./brand-resolver";
 import { BrandRepository, loadBrandResolverInput } from "./brand.repository";
 import type { BrandAssetType, BrandContext } from "./brand.types";
@@ -40,7 +40,7 @@ async function currentCompanyId(ctx: AuthCtx): Promise<string | null> {
 // ---------------------------------------------------------------------------
 
 export const getBrandContext = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }): Promise<BrandContext> => {
     const auth = context as AuthCtx;
     const companyId = await currentCompanyId(auth);
@@ -83,7 +83,7 @@ export interface BrandAssetAccess {
 }
 
 export const getBrandAssetAccess = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => GetBrandAssetAccessSchema.parse(data))
   .handler(async ({ data, context }): Promise<BrandAssetAccess> => {
     const auth = context as AuthCtx;

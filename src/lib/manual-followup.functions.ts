@@ -8,7 +8,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 const Input = z.object({ conversationId: z.string().uuid() });
 
@@ -16,7 +16,7 @@ const Input = z.object({ conversationId: z.string().uuid() });
 export type { ManualFollowupResult } from "@/lib/followup";
 
 export const runFollowupNowForConversation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("admin")])
   .inputValidator((data: unknown) => Input.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context as unknown as {

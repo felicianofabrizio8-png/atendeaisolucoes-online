@@ -9,7 +9,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import {
   extractCompanyIdFromAudioPath,
@@ -231,7 +231,7 @@ const sha256Schema = z.object({
 // ============================================================================
 
 export const listAudios = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => listSchema.parse(input ?? {}))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);
@@ -276,7 +276,7 @@ export const listAudios = createServerFn({ method: "GET" })
 // ============================================================================
 
 export const getAudioQuota = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const ctx = await loadCompany(context);
     const quota = await loadQuota(ctx);
@@ -289,7 +289,7 @@ export const getAudioQuota = createServerFn({ method: "GET" })
 // ============================================================================
 
 export const checkAudioDuplicate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => sha256Schema.parse(input))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);
@@ -321,7 +321,7 @@ export const checkAudioDuplicate = createServerFn({ method: "POST" })
 // ============================================================================
 
 export const createAudio = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => createSchema.parse(input))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);
@@ -467,7 +467,7 @@ export const createAudio = createServerFn({ method: "POST" })
 // ============================================================================
 
 export const updateAudio = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => updateSchema.parse(input))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);
@@ -551,7 +551,7 @@ export const updateAudio = createServerFn({ method: "POST" })
 // ============================================================================
 
 export const deleteAudio = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => idSchema.parse(input))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);
@@ -603,7 +603,7 @@ export const deleteAudio = createServerFn({ method: "POST" })
 // ============================================================================
 
 export const getAudioSignedUrl = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => idSchema.parse(input))
   .handler(async ({ data, context }) => {
     const ctx = await loadCompany(context);

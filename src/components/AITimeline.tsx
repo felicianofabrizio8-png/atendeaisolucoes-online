@@ -11,7 +11,6 @@ import {
   Bot,
   Clock,
   TriangleAlert,
-  Send,
   XCircle,
   DollarSign,
   Calendar,
@@ -29,32 +28,90 @@ type FlowEvent = {
 type Meta = { icon: typeof Flame; color: string; label: (p: Record<string, unknown>) => string };
 
 const META: Record<string, Meta> = {
-  detected_city:        { icon: MapPin,        color: "#60a5fa", label: (p) => `Cidade detectada: ${p.value ?? "—"}` },
-  detected_state:       { icon: MapPin,        color: "#60a5fa", label: (p) => `Estado detectado: ${p.value ?? "—"}` },
-  detected_size:        { icon: Ruler,         color: "#60a5fa", label: (p) => `Medida detectada: ${p.value ?? "—"}` },
-  detected_interest:    { icon: Target,        color: "#60a5fa", label: (p) => `Interesse: ${p.value ?? "—"}` },
-  detected_budget:      { icon: DollarSign,    color: "#60a5fa", label: (p) => `Orçamento: ${p.value ?? "—"}` },
-  detected_timing:      { icon: Calendar,      color: "#60a5fa", label: (p) => `Prazo de compra: ${p.value ?? "—"}` },
-  detected_stage:       { icon: User2,         color: "#60a5fa", label: (p) => `Estágio: ${p.value ?? "—"}` },
-  detected_objection:   { icon: AlertTriangle, color: "#f59e0b", label: (p) => `Objeção: ${p.value ?? "—"}` },
-  lead_temperature_changed: {
-    icon: Flame, color: "#ef4444",
-    label: (p) => `Temperatura: ${p.from ?? "—"} → ${p.to ?? "—"}${p.score ? ` (score ${p.score})` : ""}`,
+  detected_city: {
+    icon: MapPin,
+    color: "#60a5fa",
+    label: (p) => `Cidade detectada: ${p.value ?? "—"}`,
   },
-  ready_to_close_detected: { icon: CheckCircle2, color: "#10b981", label: () => "Lead pronto para fechar" },
-  lead_bumped_to_hot:      { icon: Flame,        color: "#ef4444", label: () => "Lead promovido a quente" },
-  handoff_human:           { icon: UserCheck,    color: "#f59e0b", label: (p) => `Handoff humano${p.reason ? `: ${p.reason}` : ""}` },
-  handoff_requested:       { icon: UserCheck,    color: "#f59e0b", label: (p) => `Handoff solicitado${p.reason ? `: ${p.reason}` : ""}` },
-  handoff_safety_block:    { icon: TriangleAlert,color: "#ef4444", label: (p) => `Bloqueio de segurança${p.reason ? `: ${p.reason}` : ""}` },
-  handoff_timeout_alert:   { icon: Clock,        color: "#ef4444", label: () => "Humano não assumiu (timeout)" },
-  auto_reply_sent:         { icon: Bot,          color: "#a78bfa", label: () => "IA respondeu automaticamente" },
-  agent_error:             { icon: XCircle,      color: "#ef4444", label: (p) => `Erro do agente${p.error ? `: ${p.error}` : ""}` },
+  detected_state: {
+    icon: MapPin,
+    color: "#60a5fa",
+    label: (p) => `Estado detectado: ${p.value ?? "—"}`,
+  },
+  detected_size: {
+    icon: Ruler,
+    color: "#60a5fa",
+    label: (p) => `Medida detectada: ${p.value ?? "—"}`,
+  },
+  detected_interest: {
+    icon: Target,
+    color: "#60a5fa",
+    label: (p) => `Interesse: ${p.value ?? "—"}`,
+  },
+  detected_budget: {
+    icon: DollarSign,
+    color: "#60a5fa",
+    label: (p) => `Orçamento: ${p.value ?? "—"}`,
+  },
+  detected_timing: {
+    icon: Calendar,
+    color: "#60a5fa",
+    label: (p) => `Prazo de compra: ${p.value ?? "—"}`,
+  },
+  detected_stage: { icon: User2, color: "#60a5fa", label: (p) => `Estágio: ${p.value ?? "—"}` },
+  detected_objection: {
+    icon: AlertTriangle,
+    color: "#f59e0b",
+    label: (p) => `Objeção: ${p.value ?? "—"}`,
+  },
+  lead_temperature_changed: {
+    icon: Flame,
+    color: "#ef4444",
+    label: (p) =>
+      `Temperatura: ${p.from ?? "—"} → ${p.to ?? "—"}${p.score ? ` (score ${p.score})` : ""}`,
+  },
+  ready_to_close_detected: {
+    icon: CheckCircle2,
+    color: "#10b981",
+    label: () => "Lead pronto para fechar",
+  },
+  lead_bumped_to_hot: { icon: Flame, color: "#ef4444", label: () => "Lead promovido a quente" },
+  handoff_human: {
+    icon: UserCheck,
+    color: "#f59e0b",
+    label: (p) => `Handoff humano${p.reason ? `: ${p.reason}` : ""}`,
+  },
+  handoff_requested: {
+    icon: UserCheck,
+    color: "#f59e0b",
+    label: (p) => `Handoff solicitado${p.reason ? `: ${p.reason}` : ""}`,
+  },
+  handoff_safety_block: {
+    icon: TriangleAlert,
+    color: "#ef4444",
+    label: (p) => `Bloqueio de segurança${p.reason ? `: ${p.reason}` : ""}`,
+  },
+  handoff_timeout_alert: {
+    icon: Clock,
+    color: "#ef4444",
+    label: () => "Humano não assumiu (timeout)",
+  },
+  auto_reply_sent: { icon: Bot, color: "#a78bfa", label: () => "IA respondeu automaticamente" },
+  agent_error: {
+    icon: XCircle,
+    color: "#ef4444",
+    label: (p) => `Erro do agente${p.error ? `: ${p.error}` : ""}`,
+  },
 };
 
 function metaFor(type: string): Meta {
   if (META[type]) return META[type];
   if (type.startsWith("skipped_")) {
-    return { icon: Activity, color: "#64748b", label: () => `IA pulou (${type.replace("skipped_", "")})` };
+    return {
+      icon: Activity,
+      color: "#64748b",
+      label: () => `IA pulou (${type.replace("skipped_", "")})`,
+    };
   }
   return { icon: Activity, color: "#64748b", label: () => type };
 }
@@ -93,9 +150,14 @@ export function AITimeline({ conversationId }: { conversationId: string }) {
       .channel(`${topicRef.current}-${conversationId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "ai_flow_events", filter: `conversation_id=eq.${conversationId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "ai_flow_events",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
         (payload) => {
-          setEvents((prev) => [(payload.new as FlowEvent), ...(prev ?? [])].slice(0, 40));
+          setEvents((prev) => [payload.new as FlowEvent, ...(prev ?? [])].slice(0, 40));
         },
       )
       .subscribe();
@@ -104,7 +166,6 @@ export function AITimeline({ conversationId }: { conversationId: string }) {
       void supabase.removeChannel(ch);
     };
   }, [conversationId]);
-
 
   return (
     <div className="p-4 border-b border-border">
@@ -137,6 +198,3 @@ export function AITimeline({ conversationId }: { conversationId: string }) {
     </div>
   );
 }
-
-// silence unused
-void Send;

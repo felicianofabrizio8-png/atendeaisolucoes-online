@@ -1,9 +1,32 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { FileText, Plus } from "lucide-react";
-import { listQuotes, subscribeQuotes } from "@/data/quotes";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
+import { ChevronDown, Plus, Search, SearchX, X } from "lucide-react";
+import { getLeads, subscribeRepo } from "@/data/leadRepo";
+import { matchesQuote, normalizeQuoteSearch } from "@/lib/quote-presentation";
+import { listQuotes, subscribeQuotes, type Quote } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
+import { QuoteSuccessModal } from "@/components/orcamentos/QuoteSuccessModal";
+import {
+  FILTERS,
+  QuotesEmptyState,
+  QuotesOverview,
+  SORTS,
+  sortQuotes,
+  useQuoteStats,
+  type QuoteFilter,
+  type QuoteSort,
+} from "@/components/orcamentos/QuotesOverview";
+import { computeQuoteStatus } from "@/data/quotes";
+import "@/components/orcamentos/quotes.css";
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
@@ -30,6 +53,14 @@ interface QuotesSearch {
   returnTo?: "atendimento";
 }
 
+function quoteCustomerName(quote: Quote, leads: ReturnType<typeof getLeads>): string | undefined {
+  const lead = leads.find((item) => item.id === quote.leadId);
+  const own = quote.customerDetails
+    ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim()
+    : "";
+  return own || lead?.name;
+}
+
 function useQuotes() {
   return useSyncExternalStore(
     (cb) => subscribeQuotes(cb),
@@ -43,6 +74,11 @@ function QuotesPage() {
   const navigate = useNavigate();
   const quotes = useQuotes();
   const [open, setOpen] = useState(false);
+  const [successQuote, setSuccessQuote] = useState<Quote | null>(null);
+  const [requestedAction, setRequestedAction] = useState<{
+    id: string;
+    action: "send" | "edit" | "details";
+  } | null>(null);
   const [prefillLeadId, setPrefillLeadId] = useState<string | undefined>();
   const [prefillConvId, setPrefillConvId] = useState<string | undefined>();
   const [prefillProductId, setPrefillProductId] = useState<string | undefined>();
@@ -50,7 +86,84 @@ function QuotesPage() {
   const [returnTo, setReturnTo] = useState<"atendimento" | undefined>();
   const PAGE_SIZE = 20;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const visibleQuotes = quotes.slice(0, visibleCount);
+  const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
+  const [query, setQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const [filter, setFilter] = useState<QuoteFilter>("todos");
+  const [sort, setSort] = useState<QuoteSort>("recentes");
+  const reduceMotion = useReducedMotion();
+  const tabsId = useId();
+  // Recomputed when leads load, so names resolve for quotes without customer details.
+  const nameOf = useCallback((quote: Quote) => quoteCustomerName(quote, leads), [leads]);
+  const stats = useQuoteStats(quotes, nameOf);
+  const filteredQuotes = sortQuotes(
+    quotes.filter(
+      (q) =>
+        (filter === "todos" || computeQuoteStatus(q) === filter) &&
+        matchesQuote(
+          q,
+          leads.find((l) => l.id === q.leadId),
+          query,
+        ),
+    ),
+    sort,
+  );
+  const changeFilter = (next: QuoteFilter) => {
+    setFilter(next);
+    setVisibleCount(PAGE_SIZE);
+  };
+  const visibleQuotes = filteredQuotes.slice(0, visibleCount);
+  const suggestions = [
+    ...new Map(
+      quotes
+        .map((quote) => {
+          const lead = leads.find((item) => item.id === quote.leadId);
+          const name = quote.customerDetails
+            ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim() ||
+              lead?.name ||
+              ""
+            : lead?.name || "";
+          const phone = quote.customerDetails?.phone1 || lead?.phone || "";
+          return { name, phone };
+        })
+        .filter(
+          (customer) =>
+            customer.name &&
+            normalizeQuoteSearch(customer.name).includes(normalizeQuoteSearch(query)),
+        )
+        .map((customer) => [normalizeQuoteSearch(customer.name), customer] as const),
+    ).values(),
+  ].slice(0, 6);
+  const suggestionsOpen = showSuggestions && !!query.trim() && suggestions.length > 0;
+  const chooseSuggestion = (name: string) => {
+    setQuery(name);
+    setVisibleCount(PAGE_SIZE);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
+  };
+  const openCreate = () => {
+    setPrefillLeadId(undefined);
+    setPrefillConvId(undefined);
+    setPrefillProductId(undefined);
+    setSuggestionReason(undefined);
+    setReturnTo(undefined);
+    setOpen(true);
+  };
+  const closeSuccess = () => {
+    const createdQuote = successQuote;
+    setSuccessQuote(null);
+    if (!createdQuote?.conversationId) return;
+    if (returnTo === "atendimento") {
+      navigate({ to: "/atendimento", search: { conversation: createdQuote.conversationId } });
+    } else {
+      navigate({
+        to: "/inbox/$conversationId",
+        params: { conversationId: createdQuote.conversationId },
+        search: { quote: createdQuote.id },
+      });
+    }
+  };
 
   // Abre o modal automaticamente quando vier de outra tela com ?new=1
   useEffect(() => {
@@ -74,47 +187,206 @@ function QuotesPage() {
   ]);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      <header className="sticky top-0 z-20 bg-background h-14 px-4 md:px-6 border-b border-border flex items-center gap-3 safe-top">
-        <FileText className="h-4 w-4 text-primary shrink-0" />
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold">Orçamentos</h1>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {quotes.length} orçamento{quotes.length === 1 ? "" : "s"} criado
-            {quotes.length === 1 ? "" : "s"}
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setPrefillLeadId(undefined);
-            setPrefillConvId(undefined);
-            setOpen(true);
-          }}
-          aria-label="Novo orçamento"
-          className="inline-flex items-center justify-center gap-1.5 h-11 w-11 md:h-9 md:w-auto md:px-3 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold shrink-0"
-        >
-          <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
-          <span className="hidden md:inline">Novo orçamento</span>
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="lume-quotes">
+      <div className="lq-shell">
+        <header className="lq-header">
+          <div>
+            <h1>Orçamentos</h1>
+            <p>Crie, envie e acompanhe suas propostas em um só lugar.</p>
+          </div>
+          <button type="button" onClick={openCreate} className="lq-primary">
+            <Plus aria-hidden="true" />
+            Criar orçamento
+          </button>
+        </header>
         {quotes.length === 0 ? (
-          <EmptyState onCreate={() => setOpen(true)} />
+          <QuotesEmptyState onCreate={openCreate} />
         ) : (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-5xl">
-              {visibleQuotes.map((q) => (
-                <QuoteCard key={q.id} quote={q} />
-              ))}
+            <QuotesOverview
+              stats={stats}
+              filter={filter}
+              onFilter={changeFilter}
+              onAttention={() => {
+                changeFilter("todos");
+                setSort("validade");
+              }}
+            />
+            <div className="lq-toolbar">
+              <div
+                className="lq-search"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setShowSuggestions(false);
+                }}
+              >
+                <div className="lq-search-box">
+                  <Search aria-hidden="true" />
+                  <input
+                    role="combobox"
+                    aria-label="Pesquisar orçamentos"
+                    aria-expanded={suggestionsOpen}
+                    aria-controls="quote-suggestions"
+                    aria-autocomplete="list"
+                    aria-activedescendant={
+                      suggestionsOpen && activeSuggestion >= 0
+                        ? `quote-suggestion-${activeSuggestion}`
+                        : undefined
+                    }
+                    value={query}
+                    onFocus={() => setShowSuggestions(true)}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setVisibleCount(PAGE_SIZE);
+                      setShowSuggestions(true);
+                      setActiveSuggestion(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setShowSuggestions(false);
+                      if (suggestionsOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                        e.preventDefault();
+                        setActiveSuggestion(
+                          (i) =>
+                            (i + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) %
+                            suggestions.length,
+                        );
+                      }
+                      if (suggestionsOpen && e.key === "Enter" && activeSuggestion >= 0) {
+                        e.preventDefault();
+                        chooseSuggestion(suggestions[activeSuggestion].name);
+                      }
+                    }}
+                    placeholder="Pesquisar por nome, telefone ou produto"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      aria-label="Limpar pesquisa"
+                      onClick={() => chooseSuggestion("")}
+                      className="lq-icon"
+                    >
+                      <X />
+                    </button>
+                  )}
+                </div>
+                {suggestionsOpen && (
+                  <ul
+                    id="quote-suggestions"
+                    role="listbox"
+                    aria-label="Clientes encontrados"
+                    className="lq-suggestions"
+                  >
+                    {suggestions.map((lead, index) => (
+                      <li
+                        key={normalizeQuoteSearch(lead.name)}
+                        role="option"
+                        aria-selected={index === activeSuggestion}
+                        id={`quote-suggestion-${index}`}
+                      >
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => chooseSuggestion(lead.name)}
+                        >
+                          <span className="truncate font-medium">{lead.name}</span>
+                          <small>{lead.phone}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <label className="lq-sort">
+                <span className="sr-only">Ordenar orçamentos</span>
+                <select value={sort} onChange={(e) => setSort(e.target.value as QuoteSort)}>
+                  {SORTS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden="true" />
+              </label>
             </div>
-            {visibleCount < quotes.length && (
-              <div className="max-w-5xl mt-4 flex justify-center">
+            <LayoutGroup id={tabsId}>
+              <div className="lq-tabs" role="tablist" aria-label="Filtrar por status">
+                {FILTERS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === item.id}
+                    onClick={() => changeFilter(item.id)}
+                  >
+                    {filter === item.id && (
+                      <motion.span
+                        layoutId="lq-tab"
+                        className="lq-tab-indicator"
+                        transition={
+                          reduceMotion
+                            ? { duration: 0 }
+                            : { type: "spring", stiffness: 420, damping: 34 }
+                        }
+                      />
+                    )}
+                    {item.dot && <i data-dot style={{ "--dot": item.dot } as CSSProperties} />}
+                    <span>{item.label}</span>
+                    <span>{stats.counts[item.id]}</span>
+                  </button>
+                ))}
+              </div>
+            </LayoutGroup>
+            {filteredQuotes.length === 0 ? (
+              <div className="lq-no-results" role="status">
+                <SearchX aria-hidden="true" className="h-6 w-6" />
+                <b>Nenhum orçamento encontrado</b>
+                Tente outro nome, telefone ou produto, ou mude o filtro.
                 <button
-                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-secondary hover:bg-accent text-xs font-semibold"
+                  type="button"
+                  className="lq-secondary"
+                  onClick={() => {
+                    chooseSuggestion("");
+                    changeFilter("todos");
+                  }}
                 >
-                  Carregar mais ({quotes.length - visibleCount})
+                  Limpar filtros
+                </button>
+              </div>
+            ) : (
+              <motion.div layout={!reduceMotion} className="lq-grid">
+                <AnimatePresence initial={false} mode="popLayout">
+                  {visibleQuotes.map((q, index) => (
+                    <motion.div
+                      key={q.id}
+                      layout={!reduceMotion}
+                      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reduceMotion ? undefined : { opacity: 0, y: 8 }}
+                      transition={{
+                        duration: 0.4,
+                        ease: [0.22, 1, 0.36, 1],
+                        delay: reduceMotion ? 0 : Math.min(index, 8) * 0.035,
+                      }}
+                    >
+                      <QuoteCard
+                        quote={q}
+                        requestedAction={
+                          requestedAction?.id === q.id ? requestedAction.action : undefined
+                        }
+                        onActionHandled={() => setRequestedAction(null)}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+            {visibleCount < filteredQuotes.length && (
+              <div className="lq-more">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  className="lq-secondary"
+                >
+                  Carregar mais ({filteredQuotes.length - visibleCount})
                 </button>
               </div>
             )}
@@ -131,41 +403,38 @@ function QuotesPage() {
           onCancel={() => setOpen(false)}
           onCreated={(q) => {
             setOpen(false);
-            // Se criado a partir de uma conversa, voltar para ela com a mensagem pronta
-            if (q.conversationId && returnTo === "atendimento") {
-              // O Atendimento 2.0 encontra o orçamento pendente do lead sozinho.
-              navigate({ to: "/atendimento", search: { conversation: q.conversationId } });
-            } else if (q.conversationId) {
-              navigate({
-                to: "/inbox/$conversationId",
-                params: { conversationId: q.conversationId },
-                search: { quote: q.id },
-              });
-            }
+            setQuery("");
+            setVisibleCount(PAGE_SIZE);
+            setSuccessQuote(q);
           }}
         />
       )}
-    </div>
-  );
-}
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="max-w-md mx-auto text-center py-16">
-      <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-        <FileText className="h-5 w-5 text-primary" />
-      </div>
-      <h2 className="text-base font-semibold">Nenhum orçamento ainda</h2>
-      <p className="text-sm text-muted-foreground mt-1">
-        Crie um orçamento em segundos: escolha o produto, ajuste desconto e parcelas, e envie a
-        mensagem pronta direto na conversa.
-      </p>
-      <button
-        onClick={onCreate}
-        className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold"
-      >
-        <Plus className="h-3.5 w-3.5" /> Criar primeiro orçamento
-      </button>
+      {successQuote && (
+        <QuoteSuccessModal
+          quote={successQuote}
+          canSend={(() => {
+            const lead = leads.find((item) => item.id === successQuote.leadId);
+            const phone = (successQuote.customerDetails?.phone1 || lead?.phone || "").replace(
+              /\D/g,
+              "",
+            );
+            return !!lead && phone.length >= 8 && phone.length <= 15;
+          })()}
+          onClose={closeSuccess}
+          onSend={() => {
+            setRequestedAction({ id: successQuote.id, action: "send" });
+            setSuccessQuote(null);
+          }}
+          onEdit={() => {
+            setRequestedAction({ id: successQuote.id, action: "edit" });
+            setSuccessQuote(null);
+          }}
+          onView={() => {
+            setRequestedAction({ id: successQuote.id, action: "details" });
+            setSuccessQuote(null);
+          }}
+        />
+      )}
     </div>
   );
 }

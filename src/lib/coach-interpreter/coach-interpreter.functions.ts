@@ -2,7 +2,7 @@
 // Todas exigem requireSupabaseAuth. Nenhuma UI é criada nesta fase.
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   checkCoachInterpreterEnabled,
   confirmCoachProposalViaRpc,
@@ -121,7 +121,7 @@ async function ensureConversationAccess(
 
 // ------------------------------------------------------------------
 export const createCoachConversationFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) =>
     z
       .object({
@@ -144,7 +144,7 @@ export const createCoachConversationFn = createServerFn({ method: "POST" })
   }));
 
 export const listCoachConversationsFn = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .handler(safeHandler(async ({ context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
     await ensureFlagOrThrow(context.supabase, companyId);
@@ -153,7 +153,7 @@ export const listCoachConversationsFn = createServerFn({ method: "GET" })
   }));
 
 export const getCoachConversationFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => z.object({ conversation_id: z.string().uuid() }).parse(input))
   .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
@@ -165,7 +165,7 @@ export const getCoachConversationFn = createServerFn({ method: "POST" })
   }));
 
 export const sendCoachMessageFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) =>
     z
       .object({
@@ -238,7 +238,7 @@ export const sendCoachMessageFn = createServerFn({ method: "POST" })
   }));
 
 export const retryCoachInterpretationFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) =>
     z
       .object({
@@ -267,7 +267,7 @@ export const retryCoachInterpretationFn = createServerFn({ method: "POST" })
   }));
 
 export const listCoachProposalsFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => z.object({ conversation_id: z.string().uuid() }).parse(input))
   .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
@@ -278,7 +278,7 @@ export const listCoachProposalsFn = createServerFn({ method: "POST" })
   }));
 
 export const updateCoachProposalFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) =>
     z
       .object({
@@ -300,7 +300,7 @@ export const updateCoachProposalFn = createServerFn({ method: "POST" })
   }));
 
 export const discardCoachProposalFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) => z.object({ proposal_id: z.string().uuid() }).parse(input))
   .handler(safeHandler(async ({ data, context }) => {
     const companyId = await getOwnerCompanyOrThrow(context.supabase, context.userId);
@@ -310,7 +310,7 @@ export const discardCoachProposalFn = createServerFn({ method: "POST" })
   }));
 
 export const confirmCoachProposalFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("ai.manage")])
   .inputValidator((input: unknown) =>
     z
       .object({

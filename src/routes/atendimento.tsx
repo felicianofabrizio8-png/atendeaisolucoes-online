@@ -11,6 +11,7 @@ import { StatCarousel } from "@/components/atendimento/StatCarousel";
 import { ConversationRail } from "@/components/atendimento/ConversationRail";
 import { ChatThread } from "@/components/atendimento/ChatThread";
 import { InsightPanel } from "@/components/atendimento/InsightPanel";
+import "@/components/atendimento/atendimento.css";
 
 export const Route = createFileRoute("/atendimento")({
   component: AtendimentoPage,
@@ -116,16 +117,16 @@ function AtendimentoPage() {
   return (
     // h-full (e não 100dvh): o AppShell já limita a altura da viewport e
     // reserva o espaço da navegação inferior no mobile.
-    <div className="flex h-full min-h-0 flex-1 flex-col bg-background">
+    <div className="lume-atendimento flex h-full min-h-0 flex-1 flex-col bg-background">
       {/* Sem faixa de cabeçalho: ela custava uma linha inteira da altura para
           repetir a contagem que o cartão já mostra. O que ela carregava de
           útil foi para onde pertence — voltar e Info/IA no topo da conversa,
           o seletor de dados de exemplo junto da fila que ele afeta. */}
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 xl:grid-cols-[clamp(240px,20vw,300px)_minmax(0,1fr)_clamp(260px,22vw,340px)]">
+      <div className="at-workspace grid min-h-0 min-w-0 flex-1 grid-cols-1 xl:grid-cols-[clamp(240px,20vw,300px)_minmax(0,1fr)_clamp(260px,22vw,340px)]">
         {/* Coluna 1 — métrica giratória + fila */}
         <aside
           className={cn(
-            "min-h-0 min-w-0 flex-col gap-3 border-border p-3 xl:flex xl:border-r xl:gap-4 xl:p-4",
+            "at-queue min-h-0 min-w-0 flex-col gap-3 border-border p-3 xl:flex xl:border-r xl:gap-4 xl:p-4",
             selectedId ? "hidden" : "flex",
           )}
         >
@@ -168,7 +169,7 @@ function AtendimentoPage() {
         </aside>
 
         {/* Coluna 2 — conversa */}
-        <main className={cn("min-h-0 min-w-0", selectedId ? "block" : "hidden xl:block")}>
+        <main className={cn("at-conversation min-h-0 min-w-0", selectedId ? "block" : "hidden xl:block")}>
           {/* Os três estados vêm da `main` e existem para a tela nunca ficar
               em branco sem explicação: carregando, falha e vazio de verdade.
               Vazio é vazio — a fila simulada só aparece pelo botão "Ver
@@ -208,14 +209,14 @@ function AtendimentoPage() {
                         className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary xl:hidden"
                       >
                         <PanelRight className="h-3.5 w-3.5" />
-                        Info / IA
+                        Info / Lume
                       </button>
                     </SheetTrigger>
                     {/* pt-12: o botão de fechar da gaveta mora no canto superior
                       direito e brigaria com o alternador Info/IA. */}
                     <SheetContent
                       side="right"
-                      className="w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12"
+                      className="lume-atendimento at-insight-sheet w-[88vw] max-w-[420px] overflow-hidden p-4 pt-12"
                     >
                       <SheetTitle className="sr-only">Informações e IA da conversa</SheetTitle>
                       <InsightPanel
@@ -238,7 +239,7 @@ function AtendimentoPage() {
         </main>
 
         {/* Coluna 3 — Info / IA */}
-        <aside className="hidden min-h-0 min-w-0 border-l border-border p-4 xl:block">
+        <aside className="at-sidebar hidden min-h-0 min-w-0 border-l border-border p-4 xl:block">
           {selected && compact === false && (
             <InsightPanel
               contact={selected}

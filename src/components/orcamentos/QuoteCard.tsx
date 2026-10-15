@@ -1,10 +1,17 @@
-// Extraído de src/routes/orcamentos.tsx (Sprint 7 — Fase 7.2).
-// Movimento literal: JSX, estados, efeitos, queries, mutations, cálculos e
-// validações permanecem idênticos ao original.
-
-import { useState, useSyncExternalStore } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { Send, Check, MessageCircle, Copy, Loader2, Trash2 } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
+import {
+  CalendarClock,
+  Copy,
+  FileText,
+  Loader2,
+  MessageSquareText,
+  Package,
+  Pencil,
+  Send,
+  Trash2,
+  UserRound,
+  Wallet,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,71 +22,76 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { formatBRL, timeAgo } from "@/data/mock";
-import { getLeads, getConversations, subscribeRepo } from "@/data/leadRepo";
-import { computeQuoteStatus, deleteQuote, formatQuoteDate } from "@/data/quotes";
+import { formatBRL } from "@/data/mock";
+import { getLeads, subscribeRepo } from "@/data/leadRepo";
+import { computeQuoteStatus, deleteQuote, type Quote, type QuoteStatus } from "@/data/quotes";
 import { cn } from "@/lib/utils";
-import type { Channel } from "@/data/mock";
-import type { Quote, QuoteStatus } from "@/data/quotes";
-import { SendWhatsAppModal, Chip } from "./SendWhatsAppModal";
+import { SendWhatsAppModal } from "./SendWhatsAppModal";
+import { QuoteFormModal } from "./QuoteFormModal";
+import {
+  formatQuoteMoney,
+  quoteDate,
+  quoteHue,
+  quoteInitials,
+  quoteValidity,
+} from "@/lib/quote-presentation";
+import "./quotes.css";
 
 export function QuoteCard({
   quote,
+  requestedAction,
+  onActionHandled,
   inConversation = false,
 }: {
   quote: Quote;
-  /** Cartão exibido dentro da própria conversa: não repete o cliente nem "Abrir conversa". */
+  requestedAction?: "send" | "edit" | "details";
+  onActionHandled?: () => void;
+  /** Card rendered inside the current conversation. */
   inConversation?: boolean;
 }) {
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
   const lead = leads.find((l) => l.id === quote.leadId);
-
-  const navigate = useNavigate();
+  const customerName = quote.customerDetails
+    ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim() || lead?.name
+    : lead?.name;
   const [waOpen, setWaOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
+  const phone = (quote.customerDetails?.phone1 || lead?.phone || "").replace(/\D/g, "");
+  const canWhatsApp = !!lead && phone.length >= 8 && phone.length <= 15;
+  const status = computeQuoteStatus(quote);
+  const validity = quoteValidity(quote.validUntil, status);
+  const hue = { "--hue": quoteHue(quote.id) } as CSSProperties;
+  const contact = quote.customerDetails?.phone1 || lead?.phone || lead?.handle || "Sem telefone";
+  useEffect(() => {
+    if (!requestedAction) return;
+    if (requestedAction === "send" && canWhatsApp) setWaOpen(true);
+    if (requestedAction === "edit") setEditing(true);
+    if (requestedAction === "details") setDetailsOpen(true);
+    onActionHandled?.();
+  }, [requestedAction, canWhatsApp, onActionHandled]);
   const handleDelete = async () => {
     setDeleting(true);
     try {
       await deleteQuote(quote.id);
       toast.success("Orçamento excluído");
       setConfirmDelete(false);
-    } catch (e) {
-      console.error("DELETE_QUOTE_ERROR", e);
+    } catch {
       toast.error("Erro ao excluir orçamento");
     } finally {
       setDeleting(false);
     }
   };
-
-  const targetConversationId =
-    quote.conversationId ?? getConversations().find((c) => c.leadId === quote.leadId)?.id;
-
-  const status = computeQuoteStatus(quote);
-  const phone = lead?.phone?.replace(/\D/g, "") ?? "";
-  const canWhatsApp = !!lead && phone.length >= 8 && phone.length <= 15;
-  const hasClient = !!lead;
-
-  const openConversation = () => {
-    if (!hasClient) {
-      toast.error("Selecione um cliente para abrir a conversa.");
-      return;
-    }
-    if (!targetConversationId) {
-      toast.message("Sem conversa ativa", {
-        description: "Envie pelo WhatsApp para criar a conversa.",
-      });
-      return;
-    }
-    navigate({
-      to: "/inbox/$conversationId",
-      params: { conversationId: targetConversationId },
-      search: { quote: quote.id },
-    });
-  };
-
   const copyMessage = async () => {
     try {
       await navigator.clipboard.writeText(quote.message);
@@ -88,140 +100,253 @@ export function QuoteCard({
       toast.error("Não foi possível copiar");
     }
   };
-
-  const channelLabel: Record<Channel, string> = {
-    whatsapp: "WhatsApp",
-    instagram: "Instagram",
-    facebook: "Facebook",
-  };
-  const contactLine = lead
-    ? lead.phone
-      ? `${channelLabel[lead.channel]} • ${lead.phone}`
-      : lead.handle
-        ? `${channelLabel[lead.channel]} • @${lead.handle}`
-        : channelLabel[lead.channel]
-    : "Sem cliente vinculado";
-
+  const installmentLine =
+    quote.installments > 1
+      ? `${quote.installments}x de ${formatBRL(quote.finalValue / quote.installments)}`
+      : "à vista";
   return (
     <>
-      <div className="rounded-lg border border-border bg-card p-3 md:p-4 flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold truncate">{quote.productName}</div>
-            {!inConversation && (
-              <>
-                <div className="text-[12px] font-medium truncate">
-                  {lead?.name ?? "— Cliente não selecionado —"}
-                </div>
-                <div className="text-[11px] text-muted-foreground truncate">{contactLine}</div>
-              </>
-            )}
-            <div className="text-[11px] text-muted-foreground">há {timeAgo(quote.createdAt)}</div>
+      <article
+        className="lq-card"
+        data-status={status}
+        style={hue}
+        aria-label={`Orçamento de ${customerName ?? "cliente não selecionado"}`}
+      >
+        <span className="lq-card-light" aria-hidden="true" />
+        <header className="lq-card-head">
+          <span className="lq-avatar" aria-hidden="true">
+            {quoteInitials(inConversation ? quote.productName : customerName)}
+          </span>
+          <div className="lq-who">
+            <h2 title={inConversation ? quote.productName : customerName}>
+              {inConversation ? quote.productName : (customerName ?? "Sem cliente")}
+            </h2>
+            <p>{inConversation ? `${quote.paymentMethod} · ${installmentLine}` : contact}</p>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <div className="text-right">
-              <div className="text-lg md:text-base font-bold leading-tight">
-                {formatBRL(quote.finalValue)}
-              </div>
-              {quote.installments > 1 && (
-                <div className="text-[11px] text-muted-foreground">
-                  {quote.installments}x {formatBRL(quote.finalValue / quote.installments)}
+          <StatusBadge status={status} />
+        </header>
+        <div className="lq-amount">
+          <strong>{formatQuoteMoney(quote.finalValue)}</strong>
+          <p>
+            <b>{quote.paymentMethod}</b> · {installmentLine}
+            {quote.discount > 0 && <> · {formatBRL(quote.discount)} de desconto</>}
+          </p>
+        </div>
+        <span className="lq-validity" data-tone={validity.tone}>
+          <CalendarClock aria-hidden="true" />
+          {validity.label}
+        </span>
+        <div className="lq-card-actions">
+          <button
+            type="button"
+            onClick={() => setWaOpen(true)}
+            disabled={!canWhatsApp}
+            title={canWhatsApp ? "Enviar pelo WhatsApp" : "Cliente sem telefone válido"}
+            className="lq-primary"
+          >
+            <Send aria-hidden="true" />
+            Enviar
+          </button>
+          <button type="button" onClick={() => setDetailsOpen(true)} className="lq-ghost">
+            Detalhes
+          </button>
+          <span className="lq-spacer" />
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            aria-label="Editar orçamento"
+            title="Editar"
+            className="lq-icon"
+          >
+            <Pencil />
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            aria-label="Excluir orçamento"
+            title="Excluir"
+            className="lq-icon"
+            data-danger
+          >
+            <Trash2 />
+          </button>
+        </div>
+      </article>
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent
+          className="lq-black lq-sheet"
+          // Read-only fields would grab focus and show as selected text.
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <div className="lq-sheet-head" style={hue}>
+            <span className="lq-panel-glow" aria-hidden="true" />
+            <DialogHeader className="space-y-0 text-left">
+              <div className="lq-sheet-who">
+                <span className="lq-avatar" aria-hidden="true">
+                  {quoteInitials(customerName)}
+                </span>
+                <div className="min-w-0">
+                  <DialogTitle className="sr-only">Detalhes do orçamento</DialogTitle>
+                  <h2 className="truncate">{customerName ?? "Sem cliente"}</h2>
+                  <DialogDescription asChild>
+                    <p>
+                      {contact} · criado em {quoteDate(quote.createdAt)}
+                    </p>
+                  </DialogDescription>
                 </div>
-              )}
+              </div>
+            </DialogHeader>
+            <div className="lq-sheet-value">
+              <div>
+                <strong>{formatQuoteMoney(quote.finalValue)}</strong>
+                <p>
+                  {quote.paymentMethod} · {installmentLine} ·{" "}
+                  <span className="lq-validity" data-tone={validity.tone}>
+                    {validity.label}
+                  </span>
+                </p>
+              </div>
+              <StatusBadge status={status} />
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5 text-[11px]">
-          <Chip>{quote.paymentMethod}</Chip>
-          {quote.discount > 0 && <Chip>Desc. {formatBRL(quote.discount)}</Chip>}
-          <Chip>Válido até {formatQuoteDate(quote.validUntil)}</Chip>
-          <StatusBadge status={status} />
-        </div>
-
-        {!hasClient && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-            Selecione um cliente para enviar este orçamento.
+          <div className="lq-sheet-body">
+            <section className="lq-sheet-group">
+              <h3>
+                <UserRound aria-hidden="true" /> Cliente
+              </h3>
+              <div className="lq-detail-grid">
+                <DetailField label="Cliente" value={customerName ?? "Sem cliente"} />
+                <DetailField label="Contato" value={contact === "Sem telefone" ? "" : contact} />
+                <DetailField label="Canal" value={lead?.channel ?? ""} />
+                <OptionalField label="Email" value={quote.customerDetails?.email} />
+                <OptionalField label="Telefone 2" value={quote.customerDetails?.phone2} />
+                <OptionalField label="Rua" value={quote.customerDetails?.street} />
+                <OptionalField label="Número" value={quote.customerDetails?.number} />
+                <OptionalField label="Bairro" value={quote.customerDetails?.neighborhood} />
+                <OptionalField label="Cidade" value={quote.customerDetails?.city} />
+                <OptionalField label="Estado" value={quote.customerDetails?.state} />
+                <OptionalField label="CEP" value={quote.customerDetails?.postalCode} />
+              </div>
+            </section>
+            <section className="lq-sheet-group">
+              <h3>
+                <Package aria-hidden="true" /> Proposta
+              </h3>
+              <div className="lq-detail-grid">
+                <DetailField label="Produto" value={quote.productName} wide />
+                {quote.productDescription && (
+                  <DetailField label="Descrição" value={quote.productDescription} multiline wide />
+                )}
+                {quote.benefits && (
+                  <DetailField label="Benefícios" value={quote.benefits} multiline wide />
+                )}
+                <ListField label="Itens inclusos" items={quote.inclusos} />
+                <ListField label="Brindes" items={quote.brindes} />
+                <ListField label="Por conta do cliente" items={quote.porConta} />
+                {quote.notes && (
+                  <DetailField label="Observações" value={quote.notes} multiline wide />
+                )}
+              </div>
+            </section>
+            <section className="lq-sheet-group">
+              <h3>
+                <Wallet aria-hidden="true" /> Valores e prazos
+              </h3>
+              <div className="lq-detail-grid">
+                <DetailField label="Preço original" value={formatBRL(quote.unitPrice)} />
+                <DetailField label="Desconto" value={formatBRL(quote.discount)} />
+                <DetailField label="Valor final" value={formatBRL(quote.finalValue)} />
+                <DetailField label="Pagamento" value={quote.paymentMethod} />
+                <DetailField
+                  label="Parcelamento"
+                  value={`${quote.installments}x de ${formatBRL(quote.finalValue / quote.installments)}`}
+                />
+                <DetailField label="Validade" value={quoteDate(quote.validUntil)} />
+                <DetailField label="Criado em" value={quoteDate(quote.createdAt)} />
+                <OptionalField label="Enviado em" value={quote.sentAt && quoteDate(quote.sentAt)} />
+                <OptionalField
+                  label="Visualizado em"
+                  value={quote.viewedAt && quoteDate(quote.viewedAt)}
+                />
+              </div>
+            </section>
+            <section className="lq-sheet-group">
+              <h3>
+                <MessageSquareText aria-hidden="true" /> Mensagem do orçamento
+                <button type="button" onClick={copyMessage} className="lq-ghost">
+                  <Copy aria-hidden="true" />
+                  Copiar orçamento
+                </button>
+              </h3>
+              <DetailField
+                label="Mensagem do orçamento"
+                value={quote.message}
+                multiline
+                wide
+                className="lq-detail-message"
+                hideLabel
+              />
+            </section>
           </div>
-        )}
-
-        <div className="flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2">
-          <button
-            onClick={() => {
-              if (!hasClient) {
-                toast.error("Selecione um cliente para enviar este orçamento.");
-                return;
-              }
-              if (!canWhatsApp) {
-                toast.error("Cliente sem telefone válido");
-                return;
-              }
-              setWaOpen(true);
-            }}
-            disabled={!canWhatsApp}
-            className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-[#25D366] text-white px-3 min-h-11 md:min-h-0 md:py-1.5 hover:opacity-90 font-semibold disabled:opacity-40 w-full md:w-auto"
-          >
-            <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
-            {quote.sent ? "Reenviar no WhatsApp" : "Enviar no WhatsApp"}
-          </button>
-          <div className="flex items-center gap-2">
-            {!inConversation && (
-              <button
-                onClick={openConversation}
-                disabled={!hasClient}
-                className="flex-1 md:flex-none inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-1.5 hover:bg-accent font-semibold disabled:opacity-40"
-              >
-                <MessageCircle className="h-4 w-4 md:h-3.5 md:w-3.5" />
-                <span className="md:inline">Abrir conversa</span>
-              </button>
-            )}
+          <div className="lq-sheet-foot">
+            <small>
+              <FileText aria-hidden="true" className="mr-1 inline h-3 w-3" />
+              Nº {quote.id}
+            </small>
+            <span className="lq-spacer" />
             <button
-              onClick={copyMessage}
-              aria-label="Copiar orçamento"
-              title="Copiar orçamento"
-              className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs rounded-md bg-secondary min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:px-3 md:py-1.5 hover:bg-accent font-semibold"
+              type="button"
+              className="lq-secondary"
+              onClick={() => {
+                setDetailsOpen(false);
+                setEditing(true);
+              }}
             >
-              <Copy className="h-4 w-4 md:h-3.5 md:w-3.5" />
-              <span className="hidden md:inline">Copiar orçamento</span>
+              <Pencil aria-hidden="true" />
+              Editar
             </button>
             <button
               type="button"
-              onClick={() => setConfirmDelete(true)}
-              aria-label="Excluir orçamento"
-              title="Excluir orçamento"
-              className="inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7"
+              className="lq-primary"
+              disabled={!canWhatsApp}
+              onClick={() => {
+                setDetailsOpen(false);
+                setWaOpen(true);
+              }}
             >
-              <Trash2 className="h-4 w-4 md:h-3.5 md:w-3.5" />
+              <Send aria-hidden="true" />
+              Enviar pelo WhatsApp
             </button>
           </div>
-        </div>
-      </div>
-
-      {waOpen && lead && (
-        <SendWhatsAppModal
+        </DialogContent>
+      </Dialog>
+      {editing && (
+        <QuoteFormModal
           quote={quote}
-          leadName={lead.name}
-          phone={phone}
-          onClose={() => setWaOpen(false)}
-          onDone={inConversation ? () => setWaOpen(false) : undefined}
-          onSent={(conversationId) => {
-            // Na conversa o atendente já está no lugar certo: não troca de tela.
-            if (inConversation) return;
-            setWaOpen(false);
-            const targetId = conversationId ?? targetConversationId;
-            if (targetId) {
-              navigate({
-                to: "/inbox/$conversationId",
-                params: { conversationId: targetId },
-                search: { quote: quote.id },
-              });
-            }
+          defaultLeadId={quote.leadId}
+          defaultConversationId={quote.conversationId}
+          defaultProductId={quote.productId}
+          onCancel={() => setEditing(false)}
+          onCreated={() => {
+            setEditing(false);
+            toast.success("Orçamento atualizado");
           }}
         />
       )}
-
+      {waOpen && lead && (
+        <SendWhatsAppModal
+          quote={quote}
+          leadName={customerName || lead.name}
+          phone={phone}
+          onClose={() => setWaOpen(false)}
+          onDone={inConversation ? () => setWaOpen(false) : undefined}
+          onSent={() => {
+            /* Keep the send dialog and block progress visible. */
+          }}
+        />
+      )}
       <AlertDialog open={confirmDelete} onOpenChange={(o) => !deleting && setConfirmDelete(o)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-3xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Deseja excluir este orçamento?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -229,22 +354,18 @@ export function QuoteCard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting} className="rounded-full">
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={deleting}
               onClick={(e) => {
                 e.preventDefault();
                 void handleDelete();
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Excluindo…
-                </>
-              ) : (
-                "Excluir orçamento"
-              )}
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Excluir orçamento
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -253,35 +374,57 @@ export function QuoteCard({
   );
 }
 
+function DetailField({
+  label,
+  value,
+  multiline,
+  wide,
+  className,
+  hideLabel,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  wide?: boolean;
+  className?: string;
+  hideLabel?: boolean;
+}) {
+  const shown = value || "Não informado";
+  return (
+    <label className={cn("lq-detail", (wide || multiline) && "lq-detail-wide", className)}>
+      <span className={hideLabel ? "sr-only" : undefined}>{label}</span>
+      {multiline ? (
+        <textarea readOnly rows={Math.min(14, shown.split("\n").length + 1)} value={shown} />
+      ) : (
+        <input readOnly value={shown} />
+      )}
+    </label>
+  );
+}
+
+/** Customer fields are optional: an empty one is simply not shown. */
+function OptionalField({ label, value }: { label: string; value?: string | false }) {
+  if (!value || !value.trim()) return null;
+  return <DetailField label={label} value={value} />;
+}
+
+function ListField({ label, items }: { label: string; items: string[] }) {
+  if (!items.length) return null;
+  return <DetailField label={label} value={items.join("\n")} multiline wide />;
+}
+
 export const STATUS_META: Record<QuoteStatus, { label: string; className: string }> = {
-  pendente: {
-    label: "Pendente envio",
-    className: "bg-[var(--status-warm)]/15 text-[var(--status-warm)]",
-  },
-  enviado: { label: "Enviado", className: "bg-primary/15 text-primary" },
-  visualizado: { label: "Visualizado", className: "bg-blue-500/15 text-blue-500" },
-  aprovado: {
-    label: "Aprovado",
-    className: "bg-[var(--status-won)]/15 text-[var(--status-won)]",
-  },
-  vencido: {
-    label: "Vencido",
-    className: "bg-destructive/15 text-destructive",
-  },
+  pendente: { label: "Para enviar", className: "lq-status" },
+  enviado: { label: "Enviado", className: "lq-status" },
+  visualizado: { label: "Visualizado", className: "lq-status" },
+  aprovado: { label: "Aprovado", className: "lq-status" },
+  vencido: { label: "Vencido", className: "lq-status" },
 };
 
 export function StatusBadge({ status }: { status: QuoteStatus }) {
   const meta = STATUS_META[status];
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold",
-        meta.className,
-      )}
-    >
-      {status === "enviado" || status === "visualizado" || status === "aprovado" ? (
-        <Check className="h-3 w-3" />
-      ) : null}
+    <span className={meta.className} data-status={status}>
       {meta.label}
     </span>
   );

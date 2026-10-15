@@ -12,7 +12,7 @@ import {
   rolesFromSelection,
   type CampaignRole,
 } from "./campaign-formats";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import type {
   MarketingContentChannel,
@@ -491,7 +491,7 @@ async function loadRecentOverlays(
 }
 
 export const generateMarketingContent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => InputSchema.parse(i))
   .handler(async ({ data, context }) => {
     const apiKey = process.env.LOVABLE_API_KEY;
@@ -1131,7 +1131,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
   });
 
 export const generateSimpleMarketingPost = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => SimpleMarketingPostInputSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);

@@ -105,7 +105,7 @@ export function ThreadComposer({
   return (
     <form
       onSubmit={onSubmit}
-      className="w-full min-w-0 shrink-0 px-3 sm:px-5"
+      className="at-composer w-full min-w-0 shrink-0 px-3 sm:px-5"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 1rem)" }}
     >
       {replyingTo && (
@@ -127,7 +127,7 @@ export function ThreadComposer({
         </div>
       )}
 
-      <div className="flex w-full min-w-0 items-end gap-1 rounded-3xl border border-border bg-background px-2 py-1.5">
+      <div className="at-composer-pill flex w-full min-w-0 items-end gap-1 rounded-3xl border border-border bg-background px-2 py-1.5">
         {recordingVoice ? (
           <VoiceNoteBar
             state={voice.state}

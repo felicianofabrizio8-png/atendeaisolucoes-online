@@ -3,7 +3,7 @@
 // Não altera nada do fluxo do Inbox; apenas lê dados existentes.
 
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -38,7 +38,7 @@ export interface RecoveryDashboard {
 
 
 export const getRecoveryDashboard = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("admin")])
   .handler(async ({ context }): Promise<RecoveryDashboard> => {
     const ctxAny = context as unknown as { supabase: any; userId: string };
     const supabase = ctxAny.supabase;

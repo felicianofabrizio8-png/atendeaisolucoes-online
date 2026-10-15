@@ -80,7 +80,7 @@ export type Appearance = {
 
 const DEFAULT: Appearance = {
   theme: "dark",
-  font: "system",
+  font: "Inter",
   sidebar: "expanded",
 };
 
@@ -109,7 +109,7 @@ var f=s.getItem(${JSON.stringify(FONT_KEY)});var fonts=${JSON.stringify(
     ]),
   ),
 )};
-if(f&&fonts[f]){d.style.setProperty('--app-font-family',fonts[f].family);var l=document.createElement('link');l.id=${JSON.stringify(FONT_LINK_ID)};l.rel='stylesheet';l.href=fonts[f].href;document.head.appendChild(l);}
+if(f==='system'){d.style.setProperty('--app-font-family',${JSON.stringify(FALLBACK_STACK)});}else{var selected=f&&fonts[f]?f:'Inter';d.style.setProperty('--app-font-family',fonts[selected].family);var l=document.createElement('link');l.id=${JSON.stringify(FONT_LINK_ID)};l.rel='stylesheet';l.href=fonts[selected].href;document.head.appendChild(l);}
 var sb=s.getItem(${JSON.stringify(SIDEBAR_KEY)});if(sb==='collapsed'){d.setAttribute('data-sidebar','collapsed');}
 }catch(e){}})();`;
 

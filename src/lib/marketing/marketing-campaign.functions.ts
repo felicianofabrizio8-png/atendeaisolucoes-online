@@ -22,7 +22,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { generateMarketingContent } from "./marketing-ai.functions";
 import { matchesPrimary, readStoredSequence, sequenceToStore } from "./campaign-image-sequence";
@@ -505,7 +505,7 @@ async function ensureCampaignJob(
 //    explícita do usuário via `approveCampaignAndRender`.
 
 export const generateMarketingCampaign = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => GenerateCampaignInput.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -653,7 +653,7 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
 const RegenerateTextsInput = z.object({ campaign_id: z.string().uuid() });
 
 export const regenerateCampaignTexts = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((d: unknown) => RegenerateTextsInput.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -859,7 +859,7 @@ const ApproveInput = z.object({
 });
 
 export const approveCampaignAndRender = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((d: unknown) => ApproveInput.parse(d))
   .handler(async ({ data, context }): Promise<{ job_id: string }> => {
     const { supabase, userId } = context;
@@ -1167,7 +1167,7 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
 const StatusInput = z.object({ campaign_id: z.string().uuid() });
 
 export const getCampaignRenderStatus = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((d: unknown) => StatusInput.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
@@ -1247,7 +1247,7 @@ const RetryInput = z.object({
 });
 
 export const retryCampaignRender = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((d: unknown) => RetryInput.parse(d))
   .handler(async ({ data, context }): Promise<{ job_id: string }> => {
     const { supabase, userId } = context;
@@ -1489,7 +1489,7 @@ export const GenerateManualCampaignInput = z
   });
 
 export const generateManualCampaign = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((d: unknown) => GenerateManualCampaignInput.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;

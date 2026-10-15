@@ -1,36 +1,24 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Check, Copy, Loader2, Paperclip, Sparkles, Wand2 } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ConversationAiChat } from "./ConversationAiChat";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { Check, Copy, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listProducts, subscribeProducts } from "@/data/products";
 import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
-import { answerQuestion, type CopilotContext } from "@/lib/atendimento/copilot";
 import { CoachPanel } from "@/components/coach/CoachPanel";
 import { AITimeline } from "@/components/AITimeline";
 import { useSalesAgentPanelMode } from "@/hooks/useSalesAgentPanelMode";
 import { listQuotes, subscribeQuotes } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { AiComposer, type Attachment } from "./AiComposer";
-import { SiriOrb } from "./SiriOrb";
 import { CustomerTierBadge } from "./CustomerTierBadge";
-import { RichText } from "./RichText";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
 import { followupReasonLabel, type FollowupCycleView } from "@/lib/atendimento/followup-view";
 import { extractConversationFacts, type Fact } from "@/lib/atendimento/conversation-facts";
 
 type Tab = "info" | "ia";
 
-/**
- * Painel Info / IA.
- *
- * Em conversa real a aba IA é o Coach de produção (sugestões, alertas e a
- * aprovação da Vendedora no modo assistido) — a mesma IA da Caixa de
- * atendimento. O copiloto local só responde para os clientes de exemplo, onde
- * não existe conversa no banco para a IA ler.
- *
- * Monte uma instância por vez: o Coach assina canais Realtime por conversa e
- * duas cópias simultâneas derrubam a assinatura.
- */
+/** Painel da conversa: copiloto consultivo e uma única instância dos controles da IA. */
 export function InsightPanel({
   contact,
   onUseSuggestion,
@@ -45,21 +33,33 @@ export function InsightPanel({
   followup?: FollowupCycleView;
 }) {
   const [tab, setTab] = useState<Tab>("info");
+  const reducedMotion = useReducedMotion();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5 pl-1">
+    <div className="at-insight flex h-full min-h-0 flex-col gap-5 pl-1">
       <SegmentedToggle tab={tab} onChange={setTab} />
-      {tab === "info" ? (
-        <InfoTab contact={contact} followup={followup} />
-      ) : simulated ? (
-        <AiTab contact={contact} onUseSuggestion={onUseSuggestion} />
-      ) : (
-        <CoachTab
-          contact={contact}
-          onUseSuggestion={onUseSuggestion}
-          composerHasDraft={composerHasDraft}
-        />
-      )}
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.div
+          key={tab}
+          className="at-tab-content"
+          initial={{ opacity: 0, y: reducedMotion ? 0 : 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: reducedMotion ? 0 : -5 }}
+          transition={{ duration: reducedMotion ? 0 : 0.14, ease: "easeOut" }}
+        >
+          {tab === "info" ? (
+            <InfoTab contact={contact} followup={followup} />
+          ) : simulated ? (
+            <ConversationAiChat contact={contact} onUseSuggestion={onUseSuggestion} simulated />
+          ) : (
+            <CoachTab
+              contact={contact}
+              onUseSuggestion={onUseSuggestion}
+              composerHasDraft={composerHasDraft}
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -91,24 +91,32 @@ function CoachTab({
   const { isAdmin } = useIsAdmin();
 
   return (
-    <div className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden rounded-2xl border border-border">
-      <CoachPanel
-        conversationId={contact.conversation.id}
-        messages={coachMessages}
-        onInsertSuggestion={onUseSuggestion}
-        composerHasDraft={composerHasDraft}
-        aiStatus={contact.conversation.aiStatus ?? null}
-        humanTakeoverAt={contact.conversation.humanTakeoverAt ?? null}
-      />
-      {mode === "coach" && <AITimeline conversationId={contact.conversation.id} />}
-      {mode === "vendedora" && isAdmin && (
-        <details data-testid="ai-technical-history" className="border-t border-border">
-          <summary className="cursor-pointer px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
-            Histórico técnico
-          </summary>
-          <AITimeline conversationId={contact.conversation.id} />
-        </details>
-      )}
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <ConversationAiChat contact={contact} onUseSuggestion={onUseSuggestion} />
+      <details className="shrink-0 rounded-2xl border border-border">
+        <summary className="cursor-pointer px-3 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+          Automação e aprovações
+        </summary>
+        <div className="max-h-[35vh] overflow-y-auto">
+          <CoachPanel
+            conversationId={contact.conversation.id}
+            messages={coachMessages}
+            onInsertSuggestion={onUseSuggestion}
+            composerHasDraft={composerHasDraft}
+            aiStatus={contact.conversation.aiStatus ?? null}
+            humanTakeoverAt={contact.conversation.humanTakeoverAt ?? null}
+          />
+          {mode === "coach" && <AITimeline conversationId={contact.conversation.id} />}
+          {mode === "vendedora" && isAdmin && (
+            <details data-testid="ai-technical-history" className="border-t border-border">
+              <summary className="cursor-pointer px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+                Histórico técnico
+              </summary>
+              <AITimeline conversationId={contact.conversation.id} />
+            </details>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
@@ -118,7 +126,7 @@ function SegmentedToggle({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => vo
     <div
       role="tablist"
       aria-label="Painel lateral"
-      className="relative flex self-center rounded-full bg-secondary p-1 text-sm font-semibold"
+      className="at-tabs relative flex self-center rounded-full bg-secondary p-1 text-sm font-semibold"
     >
       {/* Pastilha deslizante: dá continuidade visual entre as duas abas. */}
       <span
@@ -138,7 +146,7 @@ function SegmentedToggle({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => vo
             tab === t ? "text-foreground" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {t === "info" ? "Info" : "IA"}
+          {t === "info" ? "Info" : "Lume"}
         </button>
       ))}
     </div>
@@ -148,7 +156,9 @@ function SegmentedToggle({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => vo
 function PanelHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div>
-      <h3 className="text-[30px] font-extrabold leading-none tracking-tight">{title}</h3>
+      <h3 className="at-panel-title text-[30px] font-extrabold leading-none tracking-tight">
+        {title}
+      </h3>
       <p className="mt-1.5 flex items-center gap-1 text-[13px] font-bold text-muted-foreground">
         {subtitle}
         <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--primary)" }} />
@@ -198,7 +208,7 @@ function Field({
   };
 
   return (
-    <div>
+    <div className="at-fact" data-field={label}>
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-[13px] font-bold">{label}</span>
         {badge ??
@@ -216,7 +226,7 @@ function Field({
           // Superfície cheia + borda: os campos precisam se ler como caixas
           // com contorno próprio, não como manchas um pouco mais claras que
           // o fundo preto.
-          "group relative w-full rounded-2xl border border-border bg-secondary px-3.5 text-left text-sm transition-colors hover:bg-accent",
+          "at-info-field group relative w-full rounded-2xl border border-border bg-secondary px-3.5 text-left text-sm transition-colors hover:bg-accent",
           multiline
             ? "min-h-[110px] py-3 leading-relaxed"
             : "flex min-h-11 items-center py-2.5 pr-8 leading-snug",
@@ -240,7 +250,13 @@ function Field({
   );
 }
 
-function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?: FollowupCycleView }) {
+function InfoTab({
+  contact,
+  followup,
+}: {
+  contact: AtendimentoContact;
+  followup?: FollowupCycleView;
+}) {
   const { lead, conversation, history, summary, messages } = contact;
   const tier = classifyCustomer(history);
   const catalog = useSyncExternalStore(subscribeProducts, listProducts, listProducts);
@@ -258,7 +274,7 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+    <div className="at-info-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
       <PanelHeading title="Informações" subtitle="Do cadastro e da conversa" />
 
       <Field label="Nome" value={lead.name} badge={<CustomerTierBadge history={history} />} />
@@ -283,11 +299,17 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
       {followup && (
         <div className="rounded-2xl border border-border bg-secondary/30 p-3.5">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Follow-up</p>
-            <span className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-bold",
-              followup.bucket === "overdue" ? "bg-destructive/10 text-destructive" : "bg-secondary text-muted-foreground",
-            )}>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              Follow-up
+            </p>
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                followup.bucket === "overdue"
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-secondary text-muted-foreground",
+              )}
+            >
               {followup.bucket === "overdue" ? "Vencido" : "Próximo"}
             </span>
           </div>
@@ -298,12 +320,16 @@ function InfoTab({ contact, followup }: { contact: AtendimentoContact; followup?
             </div>
             <div>
               <dt className="text-muted-foreground">Tentativa</dt>
-              <dd className="mt-0.5 font-semibold">{followup.attempts} / {followup.maxAttempts}</dd>
+              <dd className="mt-0.5 font-semibold">
+                {followup.attempts} / {followup.maxAttempts}
+              </dd>
             </div>
             <div className="col-span-2">
               <dt className="text-muted-foreground">Próximo contato</dt>
               <dd className="mt-0.5 font-semibold">
-                {followup.nextFollowupAt ? new Date(followup.nextFollowupAt).toLocaleString("pt-BR") : "Sem data programada"}
+                {followup.nextFollowupAt
+                  ? new Date(followup.nextFollowupAt).toLocaleString("pt-BR")
+                  : "Sem data programada"}
               </dd>
             </div>
           </dl>
@@ -361,7 +387,8 @@ function ConversationQuotes({ leadId }: { leadId: string }) {
           ))}
           {mine.length > MAX_CONVERSATION_QUOTES && (
             <p className="text-[11px] text-muted-foreground">
-              Mostrando os {MAX_CONVERSATION_QUOTES} mais recentes de {mine.length}. Os demais estão na tela Orçamentos.
+              Mostrando os {MAX_CONVERSATION_QUOTES} mais recentes de {mine.length}. Os demais estão
+              na tela Orçamentos.
             </p>
           )}
         </>
@@ -369,183 +396,3 @@ function ConversationQuotes({ leadId }: { leadId: string }) {
     </div>
   );
 }
-
-interface ChatEntry {
-  id: string;
-  role: "user" | "ia";
-  text: string;
-  /** Nomes dos arquivos anexados à pergunta, só para exibição. */
-  attachmentNames?: string[];
-}
-
-/**
- * Aba IA dos clientes de exemplo — superfície de conversa, não painel de leitura.
- *
- * Em repouso mostra só a orbe, a saudação e o campo: quem abre a aba quer
- * perguntar alguma coisa, e um card de sugestão sempre aberto roubava essa
- * decisão. O que a IA tem a dizer aparece quando o atendente pede.
- *
- * As sugestões prontas continuam em `@/lib/atendimento/copilot`
- * (`suggestNextMessage`, `quickPrompts`), sem superfície por enquanto.
- */
-function AiTab({
-  contact,
-  onUseSuggestion,
-}: {
-  contact: AtendimentoContact;
-  onUseSuggestion: (text: string) => void;
-}) {
-  const ctx: CopilotContext = useMemo(
-    () => ({
-      lead: contact.lead,
-      conversation: contact.conversation,
-      messages: contact.messages,
-      history: contact.history,
-      summary: contact.summary,
-    }),
-    [contact],
-  );
-
-  const [chat, setChat] = useState<ChatEntry[]>([]);
-  const [input, setInput] = useState("");
-  const [thinking, setThinking] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-
-  // Trocar de conversa zera o fio do copiloto: contexto antigo respondendo
-  // sobre um cliente novo é pior do que começar do zero.
-  useEffect(() => {
-    setChat([]);
-    setInput("");
-  }, [contact.conversation.id]);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [chat.length, thinking]);
-
-  const ask = (question: string, attachments: Attachment[] = []) => {
-    const q = question.trim();
-    if ((!q && attachments.length === 0) || thinking) return;
-    setInput("");
-    setChat((prev) => [
-      ...prev,
-      {
-        id: `u-${Date.now()}`,
-        role: "user",
-        text: q,
-        attachmentNames: attachments.map((a) => a.file.name),
-      },
-    ]);
-    setThinking(true);
-    // Pequeno atraso proposital: resposta instantânea parece bug, e o
-    // "pensando…" comunica que a IA leu a conversa antes de responder.
-    window.setTimeout(() => {
-      const answer = answerQuestion(q, ctx);
-      setChat((prev) => [...prev, { id: `a-${Date.now()}`, role: "ia", text: answer.text }]);
-      setThinking(false);
-    }, 420);
-  };
-
-  const idle = chat.length === 0 && !thinking;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {idle ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center">
-          {/* Espaçadores 1 : 2,4 em vez de padding fixo — o conjunto fica no
-              terço superior tanto na coluna baixa do desktop quanto na gaveta
-              alta do celular. */}
-          <div className="min-h-4 flex-[1]" />
-          <div className="flex flex-col items-center gap-7">
-            <SiriOrb size={176} />
-            <p className="max-w-[13ch] text-center text-[22px] font-bold leading-tight">
-              Como posso te ajudar hoje?
-            </p>
-          </div>
-          <div className="flex-[2.4]" />
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-          {chat.map((entry) => (
-            <div key={entry.id} className="space-y-1.5">
-              <div
-                className={cn(
-                  "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
-                  // Mesma lógica dos balões do chat com o cliente, para o olho
-                  // não ter que reaprender: pergunta sólida em `primary`
-                  // (cinza no escuro, quase preto no claro), resposta da IA na
-                  // superfície neutra.
-                  entry.role === "user"
-                    ? "ml-6 bg-primary text-primary-foreground"
-                    : "border border-border bg-secondary",
-                )}
-              >
-                {entry.text && (
-                  <p className="whitespace-pre-wrap">
-                    <RichText text={entry.text} />
-                  </p>
-                )}
-                {entry.attachmentNames && entry.attachmentNames.length > 0 && (
-                  <ul className="mt-1 space-y-0.5">
-                    {entry.attachmentNames.map((name) => (
-                      <li
-                        key={name}
-                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-                      >
-                        <Paperclip className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              {entry.role === "ia" && (
-                <button
-                  type="button"
-                  onClick={() => onUseSuggestion(entry.text)}
-                  className="inline-flex items-center gap-1.5 rounded-full px-1 text-[11px] font-bold text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  <Wand2 className="h-3 w-3" />
-                  Usar no chat
-                </button>
-              )}
-            </div>
-          ))}
-
-          {thinking && (
-            <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              lendo a conversa…
-            </p>
-          )}
-
-          <div ref={endRef} />
-        </div>
-      )}
-
-      {/* Duas ações, não cinco. O painel voltou a ser limpo justamente por
-          tirar a parede de sugestões; o que fica aqui é o atalho para as duas
-          coisas que o atendente pede em quase todo turno. */}
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {QUICK_ACTIONS.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            disabled={thinking}
-            onClick={() => ask(action.prompt)}
-            className="rounded-full border border-border px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-
-      <AiComposer value={input} onChange={setInput} onSubmit={ask} disabled={thinking} />
-    </div>
-  );
-}
-
-/** Atalhos fixos acima do campo. `prompt` é o que vai de fato para a IA. */
-const QUICK_ACTIONS: Array<{ label: string; prompt: string }> = [
-  { label: "Próxima resposta", prompt: "Qual a melhor próxima mensagem?" },
-  { label: "Resumir conversa", prompt: "Resuma essa conversa" },
-];

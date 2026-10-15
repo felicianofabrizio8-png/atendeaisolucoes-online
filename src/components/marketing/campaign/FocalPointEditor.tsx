@@ -105,7 +105,7 @@ export function FocalPointEditor({ open, imageUrl, initialFocal, onCancel, onSav
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onCancel()}>
-      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-4 sm:w-full sm:p-6">
+      <DialogContent className="mkt-dialog flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-4 sm:w-full sm:p-6">
         <DialogHeader className="shrink-0 pb-3">
           <DialogTitle>Ajustar enquadramento</DialogTitle>
           <DialogDescription>

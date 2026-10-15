@@ -3,11 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/privacidade")({
   head: () => ({
     meta: [
-      { title: "Política de Privacidade · Atende Ai" },
+      { title: "Política de Privacidade · Lume" },
       {
         name: "description",
         content:
-          "Política de Privacidade do Atende Ai: como coletamos, usamos e protegemos os dados de Facebook, Instagram e WhatsApp.",
+          "Política de Privacidade da Lume: como coletamos, usamos e protegemos os dados de Facebook, Instagram e WhatsApp.",
       },
     ],
   }),
@@ -22,7 +22,7 @@ function PrivacidadePage() {
 
         <div className="mt-8 space-y-6 text-base leading-relaxed text-muted-foreground">
           <p>
-            O <strong className="text-foreground">Atende Ai</strong> respeita sua privacidade.
+            A <strong className="text-foreground">Lume</strong> respeita sua privacidade.
           </p>
           <p>
             As informações coletadas através do Facebook, Instagram e WhatsApp são utilizadas

@@ -9,8 +9,12 @@ interface Props {
   companyId: string;
   /** Começa uma publicação com a mídia tocada. */
   onUseMedia?: (selection: MediaSelection) => void;
+  /** Tipo aberto, quando quem chama controla a navegação. */
+  kind?: LibraryKind;
+  onKindChange?: (kind: LibraryKind) => void;
 }
-type Kind = "photos" | "videos" | "audio" | "generated";
+export type LibraryKind = "photos" | "videos" | "audio" | "generated";
+type Kind = LibraryKind;
 
 const TABS: Array<[Kind, string]> = [
   ["photos", "Fotos"],
@@ -19,15 +23,14 @@ const TABS: Array<[Kind, string]> = [
   ["generated", "Vídeos criados"],
 ];
 
-export function MarketingLibraryHub({ companyId, onUseMedia }: Props) {
-  const [kind, setKind] = useState<Kind>("photos");
-  const [visitedKinds, setVisitedKinds] = useState<Set<Kind>>(() => new Set(["photos"]));
+export function MarketingLibraryHub({ companyId, onUseMedia, kind: controlled, onKindChange }: Props) {
+  const [inner, setInner] = useState<Kind>(controlled ?? "photos");
+  const kind = controlled ?? inner;
+  const [visitedKinds, setVisitedKinds] = useState<Set<Kind>>(() => new Set([kind]));
+  if (!visitedKinds.has(kind)) setVisitedKinds(new Set([...visitedKinds, kind]));
   function selectKind(next: Kind) {
-    setKind(next);
-    setVisitedKinds((current) => {
-      if (current.has(next)) return current;
-      return new Set([...current, next]);
-    });
+    setInner(next);
+    onKindChange?.(next);
   }
   return (
     <div className="space-y-4">

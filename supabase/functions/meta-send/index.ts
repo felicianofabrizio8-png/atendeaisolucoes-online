@@ -106,6 +106,15 @@ Deno.serve(async (req) => {
     return json({ ok: false, code: "invalid_payload", error: "invalid json", requestId }, 400);
   }
 
+  const caller = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: auth } }, auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const authorize = async (payload: Record<string, unknown>) => {
+    const { data, error } = await caller.rpc("team_authorize_interaction", { _payload: payload, _write: true });
+    return !error && data === true;
+  };
+  if (!(await authorize(body))) return json({ ok: false, error: "Atendimento sem permissão ou com outro responsável." }, 403);
+
   const attemptId = typeof body.attemptId === "string" ? body.attemptId : null;
 
   const text = String(body.text ?? "").trim();
@@ -218,6 +227,7 @@ Deno.serve(async (req) => {
       console.log("META_SEND_CONVERSATION_RESOLVED", { requestId, attemptId, phase: "created" });
     }
 
+    if (!(await authorize({ conversationId }))) return json({ ok: false, error: "Atendimento com outro responsável." }, 403);
     const integrationQuery = sb
       .from("integrations")
       .select("id, access_token, external_account_id")

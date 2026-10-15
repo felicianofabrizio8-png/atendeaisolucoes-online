@@ -31,7 +31,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+        "mkt-chip inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors",
         active ? "border-foreground bg-foreground text-background font-medium" : "bg-card text-foreground hover:bg-muted",
         className,
       )}

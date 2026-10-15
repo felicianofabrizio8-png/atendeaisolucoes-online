@@ -294,7 +294,7 @@ describe("contrato do servidor do estúdio", () => {
       const head = q.slice(0, 420);
       expect(head.includes('.eq("company_id", companyId)') || head.includes("company_id: companyId")).toBe(true);
     }
-    expect(source).toContain("requireSupabaseAuth");
+    expect(source).toMatch(/requireSupabaseAuth|requireTeamPermission\(/);
   });
 
   it("normaliza o documento, confere a posse das imagens e não sobrescreve vídeo nem post antigo", () => {

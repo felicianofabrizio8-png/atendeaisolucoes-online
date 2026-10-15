@@ -1,9 +1,12 @@
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, BookMarked, Save } from "lucide-react";
-import { toast } from "sonner";
+import { Save, Fingerprint, MessageCircle, ShoppingBag, NotebookPen } from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
+import { MarketingArtwork } from "./MarketingArtwork";
+import "./marketing.css";
 import {
   getMarketingKnowledgeBase,
   upsertMarketingKnowledgeBase,
@@ -15,10 +18,7 @@ interface Props {
 }
 
 interface FieldDef {
-  key: keyof Omit<
-    MarketingKnowledgeBaseRow,
-    "id" | "company_id" | "updated_at" | "updated_by"
-  >;
+  key: keyof Omit<MarketingKnowledgeBaseRow, "id" | "company_id" | "updated_at" | "updated_by">;
   label: string;
   placeholder: string;
   rows: number;
@@ -121,10 +121,38 @@ const EMPTY: Record<FieldDef["key"], string> = {
   extra_notes: "",
 };
 
+const GROUPS = [
+  {
+    title: "Essência",
+    help: "Comece pelo que torna sua marca única.",
+    icon: Fingerprint,
+    fields: ["brand_identity", "differentiators", "products_services"],
+  },
+  {
+    title: "Voz",
+    help: "Defina como você quer conversar com as pessoas.",
+    icon: MessageCircle,
+    fields: ["tone_of_voice", "preferred_words", "forbidden_words", "copy_best_practices"],
+  },
+  {
+    title: "Negócio",
+    help: "Deixe suas condições comerciais sempre à mão.",
+    icon: ShoppingBag,
+    fields: ["guarantees", "cities_served", "gifts", "commercial_terms", "next_load_forecast"],
+  },
+  {
+    title: "Detalhes",
+    help: "Acrescente o que mais a IA precisa saber.",
+    icon: NotebookPen,
+    fields: ["extra_notes"],
+  },
+];
+
 export function MarketingKnowledgeBase({ companyId }: Props) {
   const [values, setValues] = useState<Record<FieldDef["key"], string>>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [group, setGroup] = useState(0);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
@@ -152,7 +180,9 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
       const res = await upsertMarketingKnowledgeBase({ data: values });
       const kb = res.kb as MarketingKnowledgeBaseRow;
       setUpdatedAt(kb.updated_at);
-      toast.success("Base de conhecimento salva. As IAs de atendimento e de marketing já usam este contexto.");
+      toast.success(
+        "Base de conhecimento salva. As IAs de atendimento e de marketing já usam este contexto.",
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao salvar base.");
     } finally {
@@ -163,60 +193,99 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground p-6">
-        <Loader2 className="h-4 w-4 animate-spin" /> Carregando base de conhecimento…
+        <LumePulse className="h-4 w-4 animate-spin" /> Carregando base de conhecimento…
       </div>
     );
   }
 
+  const filled = FIELDS.filter((f) => values[f.key].trim()).length;
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-start gap-3">
-          <BookMarked className="h-5 w-5 text-primary mt-0.5" />
-          <div className="text-sm">
-            <div className="font-semibold">Base de conhecimento da empresa</div>
-            <p className="text-muted-foreground">
-              Fonte única de conhecimento da empresa: as <strong>IAs de atendimento</strong>{" "}
-              consultam este conteúdo ao responder clientes e orientar a equipe, e o{" "}
-              <strong>Marketing IA</strong> o usa como contexto obrigatório em todas as gerações
-              de conteúdo. Preencha o que fizer sentido para a sua empresa — campos vazios são
-              simplesmente ignorados.
+    <div className="lume-marketing mkt-embedded">
+      <div className="mkt-brand-layout">
+        <aside className="mkt-brand-index">
+          <div className="mkt-brand-cover">
+            <MarketingArtwork kind="prism" />
+            <strong>
+              {filled}
+              <span>/{FIELDS.length}</span>
+            </strong>
+            <small>informações que a Lume já conhece</small>
+          </div>
+          <div className="mkt-brand-intro">
+            <b>Base de conhecimento da empresa</b>
+            <p>
+              Fonte única de conhecimento: as <strong>IAs de atendimento</strong> consultam este
+              conteúdo ao responder clientes, e o <strong>Marketing IA</strong> o usa como contexto
+              em todas as gerações de conteúdo.
             </p>
           </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border bg-card p-4 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {FIELDS.map((f) => (
-            <div key={f.key} className={f.rows >= 4 ? "md:col-span-2" : ""}>
-              <Label>{f.label}</Label>
-              <Textarea
-                value={values[f.key]}
-                onChange={(e) =>
-                  setValues((prev) => ({ ...prev, [f.key]: e.target.value }))
-                }
-                rows={f.rows}
-                placeholder={f.placeholder}
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between pt-2 border-t">
-          <div className="text-xs text-muted-foreground">
-            {updatedAt
-              ? `Última atualização: ${new Date(updatedAt).toLocaleString("pt-BR")}`
-              : "Ainda não salva."}
+          <nav aria-label="Partes da identidade da marca">
+            {GROUPS.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.title}
+                  aria-pressed={group === index}
+                  onClick={() => setGroup(index)}
+                >
+                  <Icon size={19} />
+                  <span>
+                    {item.title}
+                    <small>
+                      {item.fields.length} {item.fields.length === 1 ? "informação" : "informações"}
+                    </small>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+          <div className="mkt-brand-progress">
+            <span>
+              {filled} de {FIELDS.length} informações preenchidas
+            </span>
+            <progress value={filled} max={FIELDS.length} />
+            <small>Preencha o que fizer sentido. Todos os campos são opcionais.</small>
           </div>
-          <Button onClick={save} disabled={saving}>
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-            ) : (
-              <Save className="h-4 w-4 mr-1" />
-            )}
-            Salvar base de conhecimento
-          </Button>
+        </aside>
+        <div className="mkt-knowledge-form">
+          {GROUPS.map((item, index) => (
+            <section key={item.title} hidden={group !== index} className="mkt-brand-section">
+              <h3>{item.title}</h3>
+              <p>{item.help}</p>
+              <div className="mkt-brand-fields">
+                {FIELDS.filter((f) => item.fields.includes(f.key)).map((f) => (
+                  <div key={f.key}>
+                    <Label htmlFor={`mkt-brand-${f.key}`}>{f.label}</Label>
+                    <Textarea
+                      id={`mkt-brand-${f.key}`}
+                      value={values[f.key]}
+                      onChange={(e) => setValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      rows={f.rows}
+                      placeholder={f.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+          <div className="mkt-brand-save">
+            <div>
+              <strong>A Lume aprende com o que você conta.</strong>
+              <small>
+                {updatedAt
+                  ? `Salvo em ${new Date(updatedAt).toLocaleString("pt-BR")}`
+                  : "Suas alterações serão aplicadas ao salvar."}
+              </small>
+            </div>
+            <Button className="mkt-primary" onClick={save} disabled={saving}>
+              {saving ? (
+                <LumePulse className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}{" "}
+              Salvar base de conhecimento
+            </Button>
+          </div>
         </div>
       </div>
     </div>

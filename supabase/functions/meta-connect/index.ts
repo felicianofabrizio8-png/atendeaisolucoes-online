@@ -285,6 +285,17 @@ Deno.serve(async (req) => {
   const { data: userRes, error: userErr } = await sb.auth.getUser(accessToken);
   if (userErr || !userRes.user) return json({ ok: false, error: "invalid session" }, 401);
 
+  const caller = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: allowed, error: permissionError } = await caller.rpc("team_has_permission", {
+    _permission: "settings.manage",
+  });
+  if (permissionError || allowed !== true) {
+    return json({ ok: false, error: "Sem permissão para gerenciar integrações." }, 403);
+  }
+
   const { data: profile } = await sb
     .from("profiles").select("company_id").eq("id", userRes.user.id).maybeSingle();
   const companyId = profile?.company_id;

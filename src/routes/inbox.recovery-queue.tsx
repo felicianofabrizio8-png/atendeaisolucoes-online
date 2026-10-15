@@ -26,13 +26,13 @@ export const Route = createFileRoute("/inbox/recovery-queue")({
   component: RecoveryQueuePage,
   head: () => ({
     meta: [
-      { title: "Fila Inteligente de Recuperação | Atende Aí" },
+      { title: "Fila Inteligente de Recuperação | Lume" },
       {
         name: "description",
         content:
           "Priorize os leads com maior chance de recuperação: score explicado, janela do WhatsApp e ação sugerida para cada cliente parado.",
       },
-      { property: "og:title", content: "Fila Inteligente de Recuperação | Atende Aí" },
+      { property: "og:title", content: "Fila Inteligente de Recuperação | Lume" },
       {
         property: "og:description",
         content:

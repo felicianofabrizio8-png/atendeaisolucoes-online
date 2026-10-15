@@ -104,7 +104,7 @@ describe("ver o vídeo renderizado", () => {
   it("o servidor só assina vídeo da empresa logada, ativo e dentro da pasta dela", () => {
     const source = read("src/lib/render-engine/render-job.functions.ts");
     const fn = source.slice(source.indexOf("export const getVideoSignedUrl"), source.indexOf("export const setVideoActive"));
-    expect(fn).toContain("requireSupabaseAuth");
+    expect(fn).toMatch(/requireSupabaseAuth|requireTeamPermission\(/);
     expect(fn).toContain('video.company_id !== prof.company_id');
     expect(fn).toContain("!video.is_active");
     expect(fn).toContain("video.file_path.startsWith(`${prof.company_id}/`)");

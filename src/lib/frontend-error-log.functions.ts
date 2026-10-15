@@ -1,7 +1,7 @@
 // Diagnóstico: grava erros do frontend (React error boundary) em public.error_log
 // Sem efeitos colaterais além do insert. Best-effort: nunca lança.
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 
 export interface FrontendErrorPayload {
   route: string;
@@ -13,7 +13,7 @@ export interface FrontendErrorPayload {
 }
 
 export const logFrontendError = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("member")])
   .inputValidator((d: FrontendErrorPayload) => d)
   .handler(async ({ data, context }) => {
     try {

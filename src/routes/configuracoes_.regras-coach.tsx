@@ -49,7 +49,7 @@ export const Route = createFileRoute("/configuracoes_/regras-coach")({
   ),
   head: () => ({
     meta: [
-      { title: "Regras do Coach — Atende Ai!" },
+      { title: "Regras do Coach — Lume" },
       { name: "description", content: "Gestão de regras e versões do Coach V2 (Fase 1)." },
       { name: "robots", content: "noindex, nofollow" },
     ],

@@ -34,13 +34,13 @@ export const Route = createFileRoute("/configuracoes_/coach-desempenho")({
   component: CoachPerformancePage,
   head: () => ({
     meta: [
-      { title: "Desempenho dos Aprendizados • Atende Aí" },
+      { title: "Desempenho dos Aprendizados • Lume" },
       {
         name: "description",
         content:
           "Acompanhe uso, confiança e feedback dos aprendizados do Coach IA e entenda por que cada regra foi aplicada.",
       },
-      { property: "og:title", content: "Desempenho dos Aprendizados • Atende Aí" },
+      { property: "og:title", content: "Desempenho dos Aprendizados • Lume" },
       {
         property: "og:description",
         content: "Painel de desempenho e rastreabilidade do Coach Evolutivo.",

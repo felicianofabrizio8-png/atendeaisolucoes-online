@@ -31,16 +31,18 @@ import {
   toggleSidebar,
 } from "@/lib/appearance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { loadRemote, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
+import { loadRemote, refreshTeamScope, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBridge } from "@/components/NotificationBridge";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { openSettings } from "@/lib/settings-dialog";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
+import { AccessDenied } from "@/components/team/AccessDenied";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { LumeLogo } from "@/components/brand/LumeLogo";
 
 type NavItem = {
   to:
@@ -87,7 +89,7 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, profile, company, signOut } = useAuth();
-  const { isAdmin } = useIsAdmin();
+  const access = useTeamAccess();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -128,22 +130,41 @@ export function AppShell() {
 
   // Quando logar, carrega dados reais e desativa demo. Quando deslogar/demo, volta pro mock.
   useEffect(() => {
-    if (user && profile) {
+    if (user && profile && access.access?.active) {
       window.localStorage.removeItem("atendeai.demo");
       setDemoMode(false);
-      loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
-      loadProductsRemote(profile.company_id).catch((e) =>
+      if (access.can("conversations.read")) loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+      else setRepoMode("demo");
+      if (access.can("products.view")) loadProductsRemote(profile.company_id).catch((e) =>
         console.error("loadProductsRemote failed", e),
       );
-      loadQuotesRemote(profile.company_id).catch((e) =>
+      else setProductsMode("demo");
+      if (access.can("quotes.manage")) loadQuotesRemote(profile.company_id).catch((e) =>
         console.error("loadQuotesRemote failed", e),
       );
+      else setQuotesMode("demo");
     } else {
       setRepoMode("demo");
       setProductsMode("demo");
       setQuotesMode("demo");
     }
-  }, [user, profile]);
+  }, [user, profile, access.access]);
+
+  useEffect(() => {
+    if (!profile || !access.can("conversations.read") || !access.access?.schemaReady) return;
+    let running = false;
+    const refresh = async () => {
+      if (running) return;
+      running = true;
+      try { await refreshTeamScope(profile.company_id); }
+      catch (error) { console.error("team scope refresh failed", error); }
+      finally { running = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [profile, access.access]);
 
   // /login não usa o shell.
   // /login e o callback OAuth Meta não usam o shell (callback roda em popup).
@@ -161,12 +182,18 @@ export function AppShell() {
   const handleSignOut = async () => {
     await signOut();
     window.localStorage.removeItem("atendeai.demo");
-    navigate({ to: "/login" });
+    await navigate({ to: "/", replace: true });
   };
 
   const enableDemo = () => {
     window.localStorage.setItem("atendeai.demo", "1");
     setDemoMode(true);
+  };
+
+  const leaveDemoForAuth = () => {
+    window.localStorage.removeItem("atendeai.demo");
+    setDemoMode(false);
+    window.location.replace("/");
   };
 
   const handleOpenSettings = () => {
@@ -202,7 +229,7 @@ export function AppShell() {
   const renderNavList = (collapsible: boolean) => (
     <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
       {nav
-        .filter((item) => !item.adminOnly || isAdmin)
+        .filter((item) => (!user && demoMode) || access.canOpen(item.to))
         .map((item) => {
           const Icon = item.icon;
           const active =
@@ -299,7 +326,7 @@ export function AppShell() {
               {SettingsButton}
             </div>
             <button
-              onClick={() => navigate({ to: "/login" })}
+              onClick={leaveDemoForAuth}
               className="w-full inline-flex items-center justify-center gap-1.5 h-9 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
             >
               <LogIn className="h-3.5 w-3.5" />
@@ -324,7 +351,7 @@ export function AppShell() {
             </div>
             {SettingsButton}
             <button
-              onClick={() => navigate({ to: "/login" })}
+              onClick={leaveDemoForAuth}
               title="Entrar / Criar conta"
               aria-label="Entrar / Criar conta"
               className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
@@ -342,15 +369,22 @@ export function AppShell() {
   // `collapsible=true` só na sidebar de desktop, a única que minimiza.
   const renderBrand = (withSignOut = true, collapsible = false) => (
     <div className="sidebar-header relative flex h-14 shrink-0 items-center gap-2 px-4 border-b border-sidebar-border">
-      <img
-        src="/icon-192.png"
-        alt="Atende Ai!"
-        className="h-8 w-8 shrink-0 drop-shadow-[0_0_10px_rgba(34,211,238,0.35)]"
+      <LumeLogo
+        variant="lockup"
+        aria-label="Lume"
+        className={cn(
+          "h-8 w-[116px] text-sidebar-foreground",
+          collapsible && "sidebar-when-expanded",
+        )}
       />
-      <div className={cn("leading-tight flex-1 min-w-0", collapsible && "sidebar-when-expanded")}>
-        <div className="text-sm font-semibold truncate">Atende Ai!</div>
-        <div className="text-[10px] text-muted-foreground truncate">Vendas que não esperam</div>
-      </div>
+      {collapsible && (
+        <LumeLogo
+          variant="mark"
+          aria-label="Lume"
+          className="sidebar-when-collapsed h-8 w-8 text-sidebar-foreground"
+        />
+      )}
+      <div className={cn("flex-1 min-w-0", collapsible && "sidebar-when-expanded")} />
       {collapsible ? (
         <span className="sidebar-when-expanded">
           <button
@@ -405,7 +439,7 @@ export function AppShell() {
           {renderNavList(true)}
 
           <div className="sidebar-when-expanded">
-            <NeuralIntelligencePanel />
+            {access.can("ai.manage") && <NeuralIntelligencePanel />}
           </div>
           {/* O painel neural não cabe em 72px. Em vez de sumir sem aviso, vira
               um atalho que reabre a sidebar onde ele mora. */}
@@ -450,17 +484,16 @@ export function AppShell() {
                 <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
                 {renderBrand(false)}
                 {renderNavList(false)}
-                <NeuralIntelligencePanel />
+                {access.can("ai.manage") && <NeuralIntelligencePanel />}
                 {FooterPanel}
               </SheetContent>
             </Sheet>
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <img
-                src="/icon-192.png"
-                alt="Atende Ai!"
-                className="h-7 w-7 shrink-0 drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
+            <div className="flex items-center min-w-0 flex-1">
+              <LumeLogo
+                variant="lockup"
+                aria-label="Lume"
+                className="h-7 w-[98px] text-sidebar-foreground"
               />
-              <span className="text-sm font-semibold truncate">Atende Ai!</span>
             </div>
             {SignOutButton}
           </div>
@@ -479,7 +512,7 @@ export function AppShell() {
               : "overflow-hidden pb-0")
           }
         >
-          <Outlet />
+          {(!user && demoMode) || access.canOpen(location.pathname) ? <Outlet /> : <AccessDenied access={access} />}
         </div>
 
         {showBottomNav ? (

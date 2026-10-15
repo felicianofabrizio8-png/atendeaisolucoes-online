@@ -1,44 +1,48 @@
-// Extraído de src/routes/orcamentos.tsx (Sprint 7 — Fase 7.2).
-// Movimento literal: JSX, estados, efeitos, queries, mutations, cálculos e
-// validações permanecem idênticos ao original.
-
-import * as React from "react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  FileText,
-  Plus,
-  X,
-  Send,
+  ArrowRight,
   Check,
-  Calendar as CalendarIcon,
-  CreditCard,
-  Percent,
-  Package as PackageIcon,
-  Sparkles,
+  ChevronDown,
+  ListChecks,
   Loader2,
+  MapPin,
+  MessageCircle,
+  MessageSquareText,
+  Package as PackageIcon,
   Pencil,
   RotateCcw,
-  Settings as SettingsIcon,
+  Search,
+  Settings2,
+  Sparkles,
+  UserPlus,
+  UserRound,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { formatBRL } from "@/data/mock";
-import { products, getProduct, activePrice } from "@/data/products";
-import { getLeads, subscribeRepo, createLead } from "@/data/leadRepo";
-import { normalizePhone } from "@/lib/phone";
-import { createQuote, buildQuoteMessage } from "@/data/quotes";
 import { useAuth } from "@/auth/AuthContext";
-import { cn } from "@/lib/utils";
-import type { Channel } from "@/data/mock";
-import type { PaymentMethod, Quote } from "@/data/quotes";
+import { createLead, getLeads, subscribeRepo } from "@/data/leadRepo";
+import { formatBRL, type Channel } from "@/data/mock";
+import { activePrice, getProduct, products } from "@/data/products";
+import {
+  buildQuoteMessage,
+  createQuote,
+  type PaymentMethod,
+  type Quote,
+  type QuoteCustomerDetails,
+} from "@/data/quotes";
+import { supabase } from "@/integrations/supabase/client";
+import { normalizePhone } from "@/lib/phone";
+import { quoteHue, quoteInitials } from "@/lib/quote-presentation";
+import "./quotes.css";
 
 export const PAYMENT_METHODS: PaymentMethod[] = [
   "Pix",
@@ -47,24 +51,130 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
   "Transferência",
   "Dinheiro",
 ];
-// ===== Form modal =====
-
 export interface QuoteFormModalProps {
+  quote?: Quote;
   defaultLeadId?: string;
   defaultConversationId?: string;
   defaultProductId?: string;
   suggestionReason?: string;
   onCancel: () => void;
-  onCreated: (q: Quote) => void;
+  onCreated: (quote: Quote) => void;
 }
-
 export function todayPlusDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+const emptyCustomer: QuoteCustomerDetails = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone1: "",
+  phone2: "",
+  street: "",
+  number: "",
+  city: "",
+  neighborhood: "",
+  state: "",
+  postalCode: "",
+};
+const BRAZILIAN_STATES = [
+  ["AC", "Acre"],
+  ["AL", "Alagoas"],
+  ["AP", "Amapá"],
+  ["AM", "Amazonas"],
+  ["BA", "Bahia"],
+  ["CE", "Ceará"],
+  ["DF", "Distrito Federal"],
+  ["ES", "Espírito Santo"],
+  ["GO", "Goiás"],
+  ["MA", "Maranhão"],
+  ["MT", "Mato Grosso"],
+  ["MS", "Mato Grosso do Sul"],
+  ["MG", "Minas Gerais"],
+  ["PA", "Pará"],
+  ["PB", "Paraíba"],
+  ["PR", "Paraná"],
+  ["PE", "Pernambuco"],
+  ["PI", "Piauí"],
+  ["RJ", "Rio de Janeiro"],
+  ["RN", "Rio Grande do Norte"],
+  ["RS", "Rio Grande do Sul"],
+  ["RO", "Rondônia"],
+  ["RR", "Roraima"],
+  ["SC", "Santa Catarina"],
+  ["SP", "São Paulo"],
+  ["SE", "Sergipe"],
+  ["TO", "Tocantins"],
+] as const;
+// Styled by `.lq-form .quote-form-input` (quotes.css); the class also drives the autofill fix.
+const inputClass = "quote-form-input";
+function FormField({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`block min-w-0 ${className}`}>
+      <span className="lq-field-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+function splitName(name: string) {
+  const [firstName = "", ...rest] = name.trim().split(/\s+/);
+  return { firstName, lastName: rest.join(" ") };
+}
+function lines(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
+}
+function parseMoney(value: string) {
+  const normalized = value.includes(",")
+    ? value.replace(/\./g, "").replace(",", ".")
+    : /^\d{1,3}(\.\d{3})+$/.test(value)
+      ? value.replace(/\./g, "")
+      : value;
+  return Number(normalized) || 0;
+}
+function quoteFormErrorMessage(error: unknown) {
+  if (!error || typeof error !== "object") return "Falha ao criar orçamento";
+  const result = error as { code?: unknown; message?: unknown };
+  if (result.code === "23505")
+    return "Cliente já cadastrado. Pesquise e selecione o cliente existente.";
+  const message = typeof result.message === "string" ? result.message : "";
+  if (result.code === "42501" || /row.level security/i.test(message))
+    return "Sua sessão não tem permissão para salvar este orçamento.";
+  return message || "Falha ao criar orçamento";
+}
+function isDuplicatePhoneError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const result = error as { code?: unknown; message?: unknown };
+  return (
+    result.code === "23505" &&
+    typeof result.message === "string" &&
+    result.message.includes("leads_company_phone_key")
+  );
+}
+async function findCompanyLeadByPhone(companyId: string, phone: string) {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("id,name")
+    .eq("company_id", companyId)
+    .eq("phone", phone)
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? undefined;
 }
 
 export function QuoteFormModal({
+  quote,
   defaultLeadId,
   defaultConversationId,
   defaultProductId,
@@ -75,61 +185,110 @@ export function QuoteFormModal({
   const leads = useSyncExternalStore(subscribeRepo, getLeads, getLeads);
   const { profile } = useAuth();
   const companyId = profile?.company_id;
-
-  // Cliente — NUNCA pré-seleciona automaticamente (a menos que venha via deep link).
+  const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState(1);
+  const reduceMotion = useReducedMotion();
   const [clientMode, setClientMode] = useState<"existing" | "new">(
-    defaultLeadId ? "existing" : "existing",
+    defaultLeadId || quote ? "existing" : "new",
   );
-  const [leadId, setLeadId] = useState<string>(defaultLeadId ?? "");
+  const [leadId, setLeadId] = useState(quote?.leadId ?? defaultLeadId ?? "");
   const [clientSearch, setClientSearch] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newChannel, setNewChannel] = useState<Channel>("whatsapp");
-  const [newPhone, setNewPhone] = useState("");
-  const [newHandle, setNewHandle] = useState("");
-  const [creatingClient, setCreatingClient] = useState(false);
-
-  const selectedLead = leadId ? leads.find((l) => l.id === leadId) : undefined;
-
-  const filteredLeads = useMemo(() => {
-    const q = clientSearch.trim().toLowerCase();
-    const qNorm = normalizePhone(q);
-    const sorted = [...leads].sort((a, b) => a.name.localeCompare(b.name));
-    if (!q) return sorted.slice(0, 50);
-    return sorted
-      .filter(
-        (l) =>
-          l.name.toLowerCase().includes(q) ||
-          (l.phone ?? "").toLowerCase().includes(q) ||
-          (l.phone && qNorm && l.phone.includes(qNorm)) ||
-          (l.handle ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 50);
-  }, [leads, clientSearch]);
-
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [customer, setCustomer] = useState<QuoteCustomerDetails>({
+    ...emptyCustomer,
+    ...quote?.customerDetails,
+  });
+  const [channel, setChannel] = useState<Channel>("whatsapp");
+  const [handle, setHandle] = useState("");
   const [productId, setProductId] = useState(
-    defaultProductId && getProduct(defaultProductId) ? defaultProductId : (products[0]?.id ?? ""),
+    quote?.productId ??
+      (defaultProductId && getProduct(defaultProductId)
+        ? defaultProductId
+        : (products[0]?.id ?? "")),
   );
-  // O aviso "sugerido pela IA" some assim que o usuário troca o produto
-  const [showSuggestion, setShowSuggestion] = useState(!!defaultProductId && !!suggestionReason);
-  const [discountRaw, setDiscountRaw] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Pix");
-  const [installments, setInstallments] = useState(1);
-  const [validUntil, setValidUntil] = useState(todayPlusDays(7));
-  const [submitting, setSubmitting] = useState(false);
-
-  // Textos multilinha (preservam quebras de linha, emojis e marcadores).
-  const [inclusosText, setInclusosText] = useState("");
-  const [brindesText, setBrindesText] = useState("");
-  const [porContaText, setPorContaText] = useState("");
-  const [observacoes, setObservacoes] = useState("");
-
-  // Defaults da empresa (company_settings).
-  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
-  const [defIncluded, setDefIncluded] = useState("");
-  const [defGifts, setDefGifts] = useState("");
-  const [defCustomer, setDefCustomer] = useState("");
+  const [description, setDescription] = useState(
+    quote?.productDescription ?? getProduct(productId)?.description ?? "",
+  );
+  const [benefits, setBenefits] = useState(
+    quote?.benefits ?? getProduct(productId)?.includedItems?.join("\n") ?? "",
+  );
+  const [unitPriceRaw, setUnitPriceRaw] = useState(
+    String(quote?.unitPrice ?? (getProduct(productId) ? activePrice(getProduct(productId)!) : "")),
+  );
+  const [discountRaw, setDiscountRaw] = useState(String(quote?.discount ?? 0));
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(quote?.paymentMethod ?? "Pix");
+  const [installments, setInstallments] = useState(quote?.installments ?? 1);
+  const [validUntil, setValidUntil] = useState(quote?.validUntil ?? todayPlusDays(7));
+  const [inclusosText, setInclusosText] = useState(quote?.inclusos.join("\n") ?? "");
+  const [brindesText, setBrindesText] = useState(quote?.brindes.join("\n") ?? "");
+  const [porContaText, setPorContaText] = useState(quote?.porConta.join("\n") ?? "");
+  const [observacoes, setObservacoes] = useState(quote?.notes ?? "");
+  const [customMessage, setCustomMessage] = useState<string | null>(quote?.message ?? null);
+  const [editingMessage, setEditingMessage] = useState(false);
+  const [defaults, setDefaults] = useState({
+    included: "",
+    gifts: "",
+    customer: "",
+    loaded: false,
+  });
   const [editDefaultsOpen, setEditDefaultsOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
+  const [stateMenuOpen, setStateMenuOpen] = useState(false);
 
+  const selectedLead = leadId ? leads.find((lead) => lead.id === leadId) : undefined;
+  useEffect(() => {
+    const cep = customer.postalCode.replace(/\D/g, "");
+    if (cep.length !== 8) {
+      setCepLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setCepLoading(true);
+    void fetch(`https://viacep.com.br/ws/${cep}/json/`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("CEP indisponível");
+        return response.json() as Promise<{
+          erro?: boolean;
+          logradouro?: string;
+          bairro?: string;
+          localidade?: string;
+          uf?: string;
+        }>;
+      })
+      .then((address) => {
+        if (address.erro) {
+          toast.error("CEP não encontrado");
+          return;
+        }
+        setCustomer((current) => ({
+          ...current,
+          street: address.logradouro || current.street,
+          neighborhood: address.bairro || current.neighborhood,
+          city: address.localidade || current.city,
+          state: address.uf || current.state,
+        }));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name !== "AbortError") {
+          toast.error("Não foi possível consultar o CEP");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCepLoading(false);
+      });
+    return () => controller.abort();
+  }, [customer.postalCode]);
+  useEffect(() => {
+    if (!selectedLead || quote?.customerDetails) return;
+    setCustomer((current) =>
+      current.firstName
+        ? current
+        : { ...current, ...splitName(selectedLead.name), phone1: selectedLead.phone ?? "" },
+    );
+    setChannel(selectedLead.channel);
+    setHandle(selectedLead.handle ?? "");
+  }, [selectedLead, quote?.customerDetails]);
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
@@ -142,32 +301,46 @@ export function QuoteFormModal({
         .eq("company_id", companyId)
         .maybeSingle();
       if (cancelled) return;
-      if (error) {
-        console.warn("load quote defaults", error);
+      if (error) console.warn("load quote defaults", error);
+      const included = (data?.default_quote_included_items as string | null) ?? "";
+      const gifts = (data?.default_quote_gifts as string | null) ?? "";
+      const responsibility = (data?.default_quote_customer_responsibility as string | null) ?? "";
+      setDefaults({ included, gifts, customer: responsibility, loaded: true });
+      if (!quote) {
+        setInclusosText((value) => value || included);
+        setBrindesText((value) => value || gifts);
+        setPorContaText((value) => value || responsibility);
       }
-      const inc = (data?.default_quote_included_items as string | null) ?? "";
-      const gif = (data?.default_quote_gifts as string | null) ?? "";
-      const cus = (data?.default_quote_customer_responsibility as string | null) ?? "";
-      setDefIncluded(inc);
-      setDefGifts(gif);
-      setDefCustomer(cus);
-      // Os textos longos (itens inclusos, brindes, por conta do cliente) não entram mais no
-      // orçamento: ficam nas respostas rápidas da empresa, enviadas quando fizer sentido.
-      setDefaultsLoaded(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [companyId, quote]);
 
-  const [editingMessage, setEditingMessage] = useState(false);
-  const [customMessage, setCustomMessage] = useState<string | null>(null);
-
+  const filteredLeads = useMemo(() => {
+    const query = clientSearch.trim().toLocaleLowerCase("pt-BR");
+    const phoneQuery = normalizePhone(query);
+    if (!query) return [];
+    return leads
+      .filter(
+        (lead) =>
+          lead.name.toLocaleLowerCase("pt-BR").includes(query) ||
+          (!!phoneQuery && normalizePhone(lead.phone ?? "").includes(phoneQuery)) ||
+          (lead.handle ?? "").toLocaleLowerCase("pt-BR").includes(query),
+      )
+      .slice(0, 8);
+  }, [leads, clientSearch]);
   const product = getProduct(productId);
-  const unitPrice = product ? activePrice(product) : 0;
-  const discount = Math.max(0, Math.min(Number(discountRaw.replace(/[^\d]/g, "")) || 0, unitPrice));
+  const unitPrice = parseMoney(unitPriceRaw);
+  const discount = Math.max(0, Math.min(parseMoney(discountRaw), unitPrice));
   const finalValue = Math.max(0, unitPrice - discount);
-
+  const fullName = `${customer.firstName.trim()} ${customer.lastName.trim()}`.trim();
+  const phoneValid = normalizePhone(customer.phone1).length >= 8;
+  const clientValid =
+    clientMode === "existing"
+      ? !!leadId
+      : fullName.length >= 2 &&
+        (channel === "whatsapp" ? phoneValid : handle.trim().length >= 2 || phoneValid);
   const autoMessage = useMemo(() => {
     if (!product) return "";
     const base = buildQuoteMessage({
@@ -179,30 +352,16 @@ export function QuoteFormModal({
       discount,
     });
     const extra: string[] = [];
-    const inc = inclusosText.trim();
-    const gif = brindesText.trim();
-    const cus = porContaText.trim();
-    if (inc) {
-      extra.push("");
-      extra.push("✅ Itens inclusos:");
-      extra.push(inc);
-    }
-    if (gif) {
-      extra.push("");
-      extra.push("🎁 Brindes:");
-      extra.push(gif);
-    }
-    if (cus) {
-      extra.push("");
-      extra.push("⚠️ Por conta do cliente:");
-      extra.push(cus);
-    }
-    if (observacoes.trim().length > 0) {
-      extra.push("");
-      extra.push("📝 Observações:");
-      extra.push(observacoes.trim());
-    }
-    return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
+    if (description.trim()) extra.push("", "Descrição:", description.trim());
+    if (benefits.trim()) extra.push("", "Benefícios:", benefits.trim());
+    if (inclusosText.trim()) extra.push("", "✅ Itens inclusos:", inclusosText.trim());
+    if (brindesText.trim()) extra.push("", "🎁 Brindes:", brindesText.trim());
+    if (porContaText.trim()) extra.push("", "⚠️ Por conta do cliente:", porContaText.trim());
+    if (observacoes.trim()) extra.push("", "📝 Observações:", observacoes.trim());
+    if (!extra.length) return base;
+    const closing = "Posso reservar para você?";
+    const introduction = base.endsWith(closing) ? base.slice(0, -closing.length).trimEnd() : base;
+    return `${introduction}\n${extra.join("\n")}\n\n${closing}`;
   }, [
     product,
     finalValue,
@@ -210,575 +369,863 @@ export function QuoteFormModal({
     paymentMethod,
     validUntil,
     discount,
+    description,
+    benefits,
     inclusosText,
     brindesText,
     porContaText,
     observacoes,
   ]);
-
-  const previewMessage = customMessage ?? autoMessage;
-
-  const addItem = (
-    list: string[],
-    setList: (v: string[]) => void,
-    value: string,
-    reset: () => void,
-  ) => {
-    const v = value.trim();
-    if (!v) return;
-    if (list.includes(v)) {
-      reset();
-      return;
-    }
-    setList([...list, v]);
-    reset();
+  const changeCustomer = (key: keyof QuoteCustomerDetails, value: string) =>
+    setCustomer((current) => ({ ...current, [key]: value }));
+  const selectLead = (lead: (typeof leads)[number]) => {
+    setLeadId(lead.id);
+    setClientMode("existing");
+    setClientSearch(lead.name);
+    setSearchOpen(false);
+    setCustomer({ ...emptyCustomer, ...splitName(lead.name), phone1: lead.phone ?? "" });
+    setChannel(lead.channel);
+    setHandle(lead.handle ?? "");
   };
-
-  const newClientValid =
-    clientMode === "new" &&
-    newName.trim().length >= 2 &&
-    (newChannel === "whatsapp"
-      ? newPhone.replace(/\D/g, "").length >= 8
-      : newHandle.trim().length >= 2 || newPhone.replace(/\D/g, "").length >= 8);
-
-  const hasClient = clientMode === "existing" ? !!leadId : newClientValid;
-  const canSubmit = !!product && hasClient && finalValue > 0 && installments >= 1 && !submitting;
-
+  const addClient = () => {
+    setLeadId("");
+    setClientMode("new");
+    setClientSearch("");
+    setSearchOpen(false);
+    setCustomer(emptyCustomer);
+    setChannel("whatsapp");
+    setHandle("");
+  };
+  const chooseProduct = (id: string) => {
+    const next = getProduct(id);
+    setProductId(id);
+    setDescription(next?.description ?? "");
+    setBenefits(next?.includedItems?.join("\n") ?? "");
+    setUnitPriceRaw(String(next ? activePrice(next) : ""));
+    setCustomMessage(null);
+  };
   const submit = async () => {
-    if (!canSubmit || !product) return;
+    if (
+      submitting ||
+      !clientValid ||
+      !product ||
+      finalValue <= 0 ||
+      installments < 1 ||
+      !validUntil
+    )
+      return;
     setSubmitting(true);
     try {
-      const incText = inclusosText.trim();
-      const gifText = brindesText.trim();
-      const cusText = porContaText.trim();
-      const finalObservacoes = observacoes.trim();
-
-      // Para compatibilidade com a base (jsonb arrays), guardamos como
-      // array de linhas não vazias. O texto na mensagem é preservado como
-      // foi digitado (com quebras de linha, emojis e marcadores).
-      const toLines = (s: string) =>
-        s
-          .split("\n")
-          .map((l) => l.trimEnd())
-          .filter((l) => l.length > 0);
-      const finalInclusos = toLines(incText);
-      const finalBrindes = toLines(gifText);
-      const finalPorConta = toLines(cusText);
-
       let finalLeadId = leadId;
       if (clientMode === "new") {
-        const created = await createLead(
-          {
-            name: newName.trim(),
-            channel: newChannel,
-            phone: newPhone.trim() ? newPhone.trim() : undefined,
-            handle: newHandle.trim() ? newHandle.trim() : undefined,
-          },
-          companyId,
-        );
-        finalLeadId = created.id;
-        toast.success(`Cliente "${created.name}" criado`);
+        const phone = normalizePhone(customer.phone1);
+        const existingLead = !phone
+          ? undefined
+          : companyId
+            ? await findCompanyLeadByPhone(companyId, phone)
+            : leads.find((lead) => normalizePhone(lead.phone) === phone);
+        if (existingLead) {
+          finalLeadId = existingLead.id;
+          toast.info(`Telefone já cadastrado. Orçamento associado a ${existingLead.name}.`);
+        } else {
+          try {
+            const created = await createLead(
+              {
+                name: fullName,
+                channel,
+                phone: phone || undefined,
+                handle: handle.trim() || undefined,
+              },
+              companyId,
+            );
+            finalLeadId = created.id;
+          } catch (error) {
+            if (!isDuplicatePhoneError(error) || !companyId || !phone) throw error;
+            const matched = await findCompanyLeadByPhone(companyId, phone);
+            if (!matched) throw error;
+            finalLeadId = matched.id;
+            toast.info(`Telefone já cadastrado. Orçamento associado a ${matched.name}.`);
+          }
+        }
       }
-
-      // Recompõe a mensagem final preservando exatamente o texto digitado.
-      const recomposedAuto = (() => {
-        const base = buildQuoteMessage({
-          product,
-          finalValue,
-          installments,
-          paymentMethod,
-          validUntil,
+      const result = await createQuote(
+        {
+          leadId: finalLeadId,
+          conversationId:
+            defaultConversationId && defaultLeadId === finalLeadId
+              ? defaultConversationId
+              : quote?.conversationId,
+          productId,
+          unitPrice,
           discount,
-        });
-        const extra: string[] = [];
-        if (incText) extra.push("", "✅ Itens inclusos:", incText);
-        if (gifText) extra.push("", "🎁 Brindes:", gifText);
-        if (cusText) extra.push("", "⚠️ Por conta do cliente:", cusText);
-        if (finalObservacoes) extra.push("", "📝 Observações:", finalObservacoes);
-        return extra.length > 0 ? `${base}\n${extra.join("\n")}` : base;
-      })();
-      const finalMessage = customMessage ?? recomposedAuto;
-
-      const q = await createQuote({
-        leadId: finalLeadId,
-        conversationId:
-          defaultConversationId && defaultLeadId === finalLeadId
-            ? defaultConversationId
-            : undefined,
-        productId,
-        discount,
-        paymentMethod,
-        installments,
-        validUntil,
-        message: finalMessage,
-        inclusos: finalInclusos,
-        brindes: finalBrindes,
-        porConta: finalPorConta,
-        notes: finalObservacoes,
-      });
-
-      onCreated(q);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao criar orçamento");
+          paymentMethod,
+          installments,
+          validUntil,
+          message: customMessage ?? autoMessage,
+          inclusos: lines(inclusosText),
+          brindes: lines(brindesText),
+          porConta: lines(porContaText),
+          notes: observacoes.trim(),
+          customerDetails: customer,
+          productDescription: description,
+          benefits,
+        },
+        quote?.id,
+      );
+      onCreated(result);
+    } catch (error) {
+      toast.error(quoteFormErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
   };
-
-  const saveDefaults = async (inc: string, gif: string, cus: string) => {
+  const saveDefaults = async (included: string, gifts: string, responsibility: string) => {
     if (!companyId) return;
     const { error } = await supabase
       .from("company_settings")
       .update({
-        default_quote_included_items: inc,
-        default_quote_gifts: gif,
-        default_quote_customer_responsibility: cus,
+        default_quote_included_items: included,
+        default_quote_gifts: gifts,
+        default_quote_customer_responsibility: responsibility,
       })
       .eq("company_id", companyId);
-    if (error) {
-      toast.error("Não foi possível salvar os padrões: " + error.message);
-      return;
-    }
-    setDefIncluded(inc);
-    setDefGifts(gif);
-    setDefCustomer(cus);
+    if (error) throw new Error(error.message);
+    setDefaults({ included, gifts, customer: responsibility, loaded: true });
     toast.success("Padrões da empresa atualizados");
   };
 
-  const applyDefaultsNow = () => {
-    setInclusosText(defIncluded);
-    setBrindesText(defGifts);
-    setPorContaText(defCustomer);
-    toast.success("Textos padrão aplicados");
+  const steps = [
+    {
+      label: "Cliente",
+      hint: quote ? "Confira quem recebe a proposta." : "Para quem é a proposta?",
+    },
+    { label: "Produto", hint: "O que você está oferecendo?" },
+    { label: "Pagamento", hint: "Como o cliente vai pagar?" },
+  ];
+  const canReach = (target: number) =>
+    target <= step || (target === 2 && clientValid) || (target === 3 && clientValid && !!product);
+  const goTo = (target: number) => {
+    if (!canReach(target) || target === step) return;
+    setDirection(target > step ? 1 : -1);
+    setStep(target);
   };
+  const discountPct = unitPrice > 0 ? Math.round((discount / unitPrice) * 100) : 0;
+  const validDays = Math.round(
+    (new Date(validUntil + "T12:00:00").getTime() -
+      new Date(todayPlusDays(0) + "T12:00:00").getTime()) /
+      86_400_000,
+  );
+  const extraCount = [inclusosText, brindesText, porContaText, observacoes].filter((value) =>
+    value.trim(),
+  ).length;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-stretch md:items-center justify-center md:p-4 overflow-y-auto"
-      onClick={onCancel}
-    >
-      <div
-        className="w-full md:max-w-2xl md:rounded-lg border-0 md:border md:border-border bg-card shadow-xl md:my-4 md:my-8 min-h-screen md:min-h-0 md:max-h-[calc(100vh-2rem)] overflow-y-auto safe-top safe-bottom"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 z-10 bg-card p-4 border-b border-border flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Novo orçamento</h2>
-          <button
-            onClick={onCancel}
-            aria-label="Fechar"
-            className="ml-auto inline-flex items-center justify-center rounded-md hover:bg-accent min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:h-7 md:w-7"
-          >
-            <X className="h-5 w-5 md:h-4 md:w-4" />
-          </button>
-        </div>
-
-        {defaultProductId && product && (
-          <div className="px-4 pt-3">
-            <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-center gap-2 text-xs">
-              <PackageIcon className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="text-muted-foreground">Produto selecionado:</span>
-              <span className="font-semibold truncate">{product.name}</span>
-              <span className="ml-auto text-[11px] text-muted-foreground shrink-0">
-                Você pode trocar abaixo
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Cliente — obrigatório, sem auto-seleção */}
-          <div className="md:col-span-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1.5">
-              Cliente <span className="text-destructive">*</span>
-            </div>
-            <div className="inline-flex rounded-md border border-border bg-input p-0.5 mb-2">
+    <>
+      <div className="lq-black-backdrop" onClick={onCancel}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={quote ? "Editar orçamento" : "Novo Orçamento"}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") onCancel();
+          }}
+          className="quote-form lq-black lq-panel lq-form"
+        >
+          <span className="lq-panel-glow" aria-hidden="true" />
+          <div className="lq-form-head">
+            <div className="lq-form-title">
+              <div>
+                <h2>{quote ? "Editar orçamento" : "Novo orçamento"}</h2>
+                <p>{steps[step - 1].hint}</p>
+              </div>
               <button
                 type="button"
-                onClick={() => setClientMode("existing")}
-                className={cn(
-                  "text-xs px-3 py-1 rounded font-semibold transition",
-                  clientMode === "existing"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                onClick={onCancel}
+                aria-label="Fechar formulário"
+                className="lq-close"
               >
-                Cliente existente
-              </button>
-              <button
-                type="button"
-                onClick={() => setClientMode("new")}
-                className={cn(
-                  "text-xs px-3 py-1 rounded font-semibold transition",
-                  clientMode === "new"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                Novo cliente
+                <X className="h-5 w-5" />
               </button>
             </div>
-
-            {clientMode === "existing" ? (
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={clientSearch}
-                  onChange={(e) => setClientSearch(e.target.value)}
-                  placeholder="Buscar por nome, telefone ou @"
-                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-                />
-                {leads.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-border px-3 py-4 text-xs text-muted-foreground text-center">
-                    Nenhum cliente cadastrado ainda. Use a aba "Novo cliente".
-                  </div>
-                ) : (
-                  <div className="max-h-48 overflow-y-auto rounded-md border border-border divide-y divide-border">
-                    {filteredLeads.length === 0 ? (
-                      <div className="px-3 py-4 text-xs text-muted-foreground text-center">
-                        Nenhum cliente encontrado.
-                      </div>
-                    ) : (
-                      filteredLeads.map((l) => {
-                        const checked = l.id === leadId;
-                        return (
-                          <button
-                            type="button"
-                            key={l.id}
-                            onClick={() => setLeadId(l.id)}
-                            className={cn(
-                              "w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 hover:bg-accent",
-                              checked && "bg-primary/10",
-                            )}
+            <nav className="lq-stepper" aria-label={`Etapa ${step} de 3`}>
+              {steps.map((item, index) => {
+                const target = index + 1;
+                return (
+                  <button
+                    type="button"
+                    key={item.label}
+                    onClick={() => goTo(target)}
+                    disabled={!canReach(target)}
+                    aria-current={target === step ? "step" : undefined}
+                    data-state={target === step ? "current" : target < step ? "done" : "todo"}
+                  >
+                    <i aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+            {step === 1 && (
+              <div className="lq-client-search">
+                <div className="lq-client-box">
+                  <Search aria-hidden="true" />
+                  <input
+                    value={clientSearch}
+                    onFocus={() => setSearchOpen(true)}
+                    onChange={(event) => {
+                      setClientSearch(event.target.value);
+                      setSearchOpen(true);
+                    }}
+                    placeholder="Buscar cliente por nome ou telefone"
+                    aria-label="Pesquisar Cliente"
+                    className="quote-form-search"
+                  />
+                  <button type="button" onClick={addClient}>
+                    <UserPlus aria-hidden="true" />
+                    Novo
+                  </button>
+                </div>
+                {searchOpen && clientSearch.trim() && (
+                  <div className="lq-client-results">
+                    {filteredLeads.length ? (
+                      filteredLeads.map((lead) => (
+                        <button type="button" key={lead.id} onClick={() => selectLead(lead)}>
+                          <span
+                            className="lq-avatar"
+                            aria-hidden="true"
+                            style={
+                              {
+                                "--hue": quoteHue(lead.id),
+                                width: 32,
+                                height: 32,
+                                fontSize: 11,
+                              } as CSSProperties
+                            }
                           >
-                            <div className="min-w-0">
-                              <div className="font-semibold truncate">{l.name}</div>
-                              <div className="text-[11px] text-muted-foreground truncate">
-                                {l.channel} •{" "}
-                                {l.phone ?? (l.handle ? `@${l.handle}` : "sem contato")}
-                              </div>
-                            </div>
-                            {checked && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                          </button>
-                        );
-                      })
+                            {quoteInitials(lead.name)}
+                          </span>
+                          <span className="min-w-0">
+                            <b className="truncate">{lead.name}</b>
+                            <small>{lead.phone || lead.handle || lead.channel}</small>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p>Nenhum cliente encontrado. Toque em Novo para cadastrar.</p>
                     )}
                   </div>
                 )}
-                {selectedLead && (
-                  <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                    <span className="text-muted-foreground">Selecionado:</span>{" "}
-                    <span className="font-semibold">{selectedLead.name}</span>{" "}
-                    <span className="text-muted-foreground">
-                      • {selectedLead.channel} •{" "}
-                      {selectedLead.phone ??
-                        (selectedLead.handle ? `@${selectedLead.handle}` : "sem contato")}
+                {clientMode === "existing" && selectedLead && (
+                  <div className="lq-client-chip">
+                    <span
+                      className="lq-avatar"
+                      aria-hidden="true"
+                      style={{ "--hue": quoteHue(selectedLead.id) } as CSSProperties}
+                    >
+                      {quoteInitials(selectedLead.name)}
                     </span>
+                    <span>
+                      <b>{selectedLead.name}</b> <small>· cliente cadastrado</small>
+                    </span>
+                    <button type="button" onClick={addClient}>
+                      Trocar
+                    </button>
                   </div>
                 )}
               </div>
+            )}
+          </div>
+
+          <div
+            className="lq-form-body"
+            onClick={() => {
+              if (searchOpen) setSearchOpen(false);
+              if (stateMenuOpen) setStateMenuOpen(false);
+            }}
+          >
+            <motion.div
+              key={step}
+              initial={reduceMotion ? false : { opacity: 0, x: direction * 28 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {step === 1 && (
+                <>
+                  <section className="lq-section">
+                    <h3 className="lq-section-title">
+                      <span aria-hidden="true">
+                        <UserRound />
+                      </span>
+                      Informações pessoais
+                    </h3>
+                    <div className="lq-fields">
+                      <FormField label="Nome">
+                        <input
+                          value={customer.firstName}
+                          autoComplete="given-name"
+                          onChange={(event) => changeCustomer("firstName", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Sobrenome">
+                        <input
+                          value={customer.lastName}
+                          autoComplete="family-name"
+                          onChange={(event) => changeCustomer("lastName", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Telefone 1">
+                        <input
+                          type="tel"
+                          value={customer.phone1}
+                          placeholder="(00) 00000-0000"
+                          onChange={(event) => changeCustomer("phone1", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Telefone 2">
+                        <input
+                          type="tel"
+                          value={customer.phone2}
+                          placeholder="Opcional"
+                          onChange={(event) => changeCustomer("phone2", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Email" className="lq-span-2">
+                        <input
+                          type="email"
+                          value={customer.email}
+                          placeholder="Opcional"
+                          onChange={(event) => changeCustomer("email", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
+                  </section>
+                  <section className="lq-section">
+                    <h3 className="lq-section-title">
+                      <span aria-hidden="true">
+                        <MapPin />
+                      </span>
+                      Endereço
+                    </h3>
+                    <div className="lq-fields">
+                      <FormField label="CEP">
+                        <input
+                          value={customer.postalCode}
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          placeholder="00000-000"
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, "").slice(0, 8);
+                            changeCustomer(
+                              "postalCode",
+                              digits.length > 5
+                                ? `${digits.slice(0, 5)}-${digits.slice(5)}`
+                                : digits,
+                            );
+                          }}
+                          className={inputClass}
+                        />
+                        <span className="lq-hint">
+                          {cepLoading ? "Buscando endereço…" : "Preenche rua, bairro e cidade."}
+                        </span>
+                      </FormField>
+                      <FormField label="Estado">
+                        <div className="relative">
+                          <button
+                            type="button"
+                            aria-label="Selecionar estado"
+                            aria-expanded={stateMenuOpen}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setStateMenuOpen((open) => !open);
+                            }}
+                            className={`${inputClass} flex items-center justify-between text-left`}
+                          >
+                            <span className={customer.state ? "text-white" : "text-white/40"}>
+                              {customer.state
+                                ? (BRAZILIAN_STATES.find(([uf]) => uf === customer.state)?.[1] ??
+                                  customer.state)
+                                : "Selecione"}
+                            </span>
+                            <ChevronDown className="h-4 w-4 text-white/60" />
+                          </button>
+                          {stateMenuOpen && (
+                            <div className="lq-state-menu" role="listbox">
+                              {BRAZILIAN_STATES.map(([uf, name]) => (
+                                <button
+                                  type="button"
+                                  key={uf}
+                                  role="option"
+                                  aria-selected={customer.state === uf}
+                                  onClick={() => {
+                                    changeCustomer("state", uf);
+                                    setStateMenuOpen(false);
+                                  }}
+                                >
+                                  <span>{name}</span>
+                                  <small>{uf}</small>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </FormField>
+                      <div className="lq-span-2 grid grid-cols-[minmax(0,1fr)_6rem] gap-x-3.5">
+                        <FormField label="Rua">
+                          <input
+                            value={customer.street}
+                            onChange={(event) => changeCustomer("street", event.target.value)}
+                            className={inputClass}
+                          />
+                        </FormField>
+                        <FormField label="Número">
+                          <input
+                            inputMode="numeric"
+                            value={customer.number}
+                            onChange={(event) => changeCustomer("number", event.target.value)}
+                            className={inputClass}
+                          />
+                        </FormField>
+                      </div>
+                      <FormField label="Bairro">
+                        <input
+                          value={customer.neighborhood}
+                          onChange={(event) => changeCustomer("neighborhood", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Cidade">
+                        <input
+                          value={customer.city}
+                          onChange={(event) => changeCustomer("city", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
+                  </section>
+                  {clientMode === "new" && (
+                    <details className="lq-extra">
+                      <summary>
+                        <MessageCircle className="h-4 w-4 text-white/60" aria-hidden="true" />
+                        Canal do novo cliente
+                        <small>{channel === "whatsapp" ? "WhatsApp" : channel}</small>
+                        <ChevronDown aria-hidden="true" />
+                      </summary>
+                      <div className="lq-extra-body">
+                        <div className="lq-fields">
+                          <FormField label="Canal">
+                            <select
+                              value={channel}
+                              onChange={(event) => setChannel(event.target.value as Channel)}
+                              className={inputClass}
+                            >
+                              <option value="whatsapp">WhatsApp</option>
+                              <option value="instagram">Instagram</option>
+                              <option value="facebook">Facebook</option>
+                            </select>
+                          </FormField>
+                          {channel !== "whatsapp" && (
+                            <FormField label="@ usuário">
+                              <input
+                                value={handle}
+                                onChange={(event) => setHandle(event.target.value)}
+                                className={inputClass}
+                              />
+                            </FormField>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  )}
+                </>
+              )}
+
+              {step === 2 && (
+                <section className="lq-section">
+                  <FormField label="Nome do Produto">
+                    <select
+                      value={productId}
+                      onChange={(event) => chooseProduct(event.target.value)}
+                      className={inputClass}
+                    >
+                      {!productId && <option value="">Selecione um produto</option>}
+                      {products.map((item) => (
+                        <option value={item.id} key={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  {defaultProductId && suggestionReason && productId === defaultProductId && (
+                    <span className="lq-hint-ai">
+                      <Sparkles aria-hidden="true" />
+                      Sugerido pela IA: {suggestionReason}
+                    </span>
+                  )}
+                  {product && (
+                    <div className="lq-product">
+                      <span aria-hidden="true">
+                        <PackageIcon />
+                      </span>
+                      <div>
+                        <b>{product.name}</b>
+                        <small>Preço de tabela</small>
+                      </div>
+                      <strong>{formatBRL(activePrice(product))}</strong>
+                    </div>
+                  )}
+                  <div className="mt-5 grid gap-4">
+                    <FormField label="Descrição">
+                      <textarea
+                        value={description}
+                        onChange={(event) => {
+                          setDescription(event.target.value);
+                          setCustomMessage(null);
+                        }}
+                        rows={6}
+                        placeholder="Detalhes do produto que o cliente precisa saber"
+                        className={inputClass}
+                      />
+                    </FormField>
+                    <FormField label="Benefícios">
+                      <textarea
+                        value={benefits}
+                        onChange={(event) => {
+                          setBenefits(event.target.value);
+                          setCustomMessage(null);
+                        }}
+                        rows={3}
+                        placeholder="Um benefício por linha"
+                        className={inputClass}
+                      />
+                    </FormField>
+                  </div>
+                  <details className="lq-extra">
+                    <summary>
+                      <ListChecks className="h-4 w-4 text-white/60" aria-hidden="true" />
+                      Conteúdo adicional
+                      <small>
+                        {extraCount
+                          ? `${extraCount} preenchido${extraCount > 1 ? "s" : ""}`
+                          : "opcional"}
+                      </small>
+                      <ChevronDown aria-hidden="true" />
+                    </summary>
+                    <div className="lq-extra-body">
+                      <div className="lq-extra-actions">
+                        <button
+                          type="button"
+                          disabled={!defaults.loaded}
+                          onClick={() => {
+                            setInclusosText(defaults.included);
+                            setBrindesText(defaults.gifts);
+                            setPorContaText(defaults.customer);
+                            setCustomMessage(null);
+                          }}
+                        >
+                          <RotateCcw aria-hidden="true" />
+                          Aplicar padrão
+                        </button>
+                        <button type="button" onClick={() => setEditDefaultsOpen(true)}>
+                          <Settings2 aria-hidden="true" />
+                          Editar padrão
+                        </button>
+                      </div>
+                      <FormField label="Itens inclusos">
+                        <textarea
+                          value={inclusosText}
+                          onChange={(event) => {
+                            setInclusosText(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          placeholder="Um item por linha"
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Brindes">
+                        <textarea
+                          value={brindesText}
+                          onChange={(event) => {
+                            setBrindesText(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Por conta do cliente">
+                        <textarea
+                          value={porContaText}
+                          onChange={(event) => {
+                            setPorContaText(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Observações">
+                        <textarea
+                          value={observacoes}
+                          onChange={(event) => {
+                            setObservacoes(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
+                  </details>
+                </section>
+              )}
+
+              {step === 3 && (
+                <section className="lq-section">
+                  <div className="lq-fields">
+                    <FormField label="Valor">
+                      <div className="lq-money" data-prefix="R$">
+                        <input
+                          inputMode="decimal"
+                          value={unitPriceRaw}
+                          onChange={(event) => {
+                            setUnitPriceRaw(event.target.value.replace(/[^\d,.]/g, ""));
+                            setCustomMessage(null);
+                          }}
+                          className={inputClass}
+                        />
+                      </div>
+                    </FormField>
+                    <div>
+                      <FormField label="Desconto (R$)">
+                        <div className="lq-money" data-prefix="R$">
+                          <input
+                            inputMode="decimal"
+                            value={discountRaw}
+                            onChange={(event) => {
+                              setDiscountRaw(event.target.value.replace(/[^\d,.]/g, ""));
+                              setCustomMessage(null);
+                            }}
+                            className={inputClass}
+                          />
+                        </div>
+                      </FormField>
+                      <div className="lq-chips" role="group" aria-label="Desconto rápido">
+                        {[0, 5, 10, 15].map((pct) => (
+                          <button
+                            type="button"
+                            key={pct}
+                            aria-pressed={discountPct === pct}
+                            disabled={unitPrice <= 0}
+                            onClick={() => {
+                              setDiscountRaw(String(Math.round(unitPrice * pct) / 100));
+                              setCustomMessage(null);
+                            }}
+                          >
+                            {pct === 0 ? "Nenhum" : `${pct}%`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="lq-span-2">
+                      <span className="lq-field-label" id="lq-payment-label">
+                        Forma de pagamento
+                      </span>
+                      <div
+                        className="lq-chips lq-chips-lg"
+                        role="radiogroup"
+                        aria-labelledby="lq-payment-label"
+                      >
+                        {PAYMENT_METHODS.map((method) => (
+                          <button
+                            type="button"
+                            role="radio"
+                            key={method}
+                            aria-checked={paymentMethod === method}
+                            onClick={() => {
+                              setPaymentMethod(method);
+                              setCustomMessage(null);
+                            }}
+                          >
+                            {method}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <FormField label="Parcelas">
+                      <select
+                        value={installments}
+                        onChange={(event) => {
+                          setInstallments(Number(event.target.value));
+                          setCustomMessage(null);
+                        }}
+                        className={inputClass}
+                      >
+                        {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((count) => (
+                          <option key={count} value={count}>
+                            {count === 1
+                              ? "À vista"
+                              : `${count}x de ${formatBRL(finalValue / count)}`}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+                    <div>
+                      <FormField label="Válido até">
+                        <input
+                          type="date"
+                          value={validUntil}
+                          onChange={(event) => {
+                            setValidUntil(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <div className="lq-chips" role="group" aria-label="Validade rápida">
+                        {[7, 15, 30].map((days) => (
+                          <button
+                            type="button"
+                            key={days}
+                            aria-pressed={validDays === days}
+                            onClick={() => {
+                              setValidUntil(todayPlusDays(days));
+                              setCustomMessage(null);
+                            }}
+                          >
+                            {days} dias
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="lq-total" aria-live="polite">
+                    <dl>
+                      <dt>Valor do produto</dt>
+                      <dd>{formatBRL(unitPrice)}</dd>
+                      <dt>Desconto{discountPct > 0 ? ` (${discountPct}%)` : ""}</dt>
+                      <dd>{discount > 0 ? `− ${formatBRL(discount)}` : formatBRL(0)}</dd>
+                    </dl>
+                    <div className="lq-total-final">
+                      <span>
+                        Total · {paymentMethod}
+                        {installments > 1
+                          ? ` · ${installments}x de ${formatBRL(finalValue / installments)}`
+                          : " · à vista"}
+                      </span>
+                      <strong>{formatBRL(finalValue)}</strong>
+                    </div>
+                  </div>
+                  <details className="lq-extra lq-message">
+                    <summary>
+                      <MessageSquareText className="h-4 w-4 text-white/60" aria-hidden="true" />
+                      Mensagem pronta para envio
+                      <small>{customMessage !== null ? "editada" : "automática"}</small>
+                      <ChevronDown aria-hidden="true" />
+                    </summary>
+                    <div className="lq-extra-body">
+                      <div className="lq-extra-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMessage(true);
+                            setCustomMessage(customMessage ?? autoMessage);
+                          }}
+                        >
+                          <Pencil aria-hidden="true" />
+                          Editar mensagem
+                        </button>
+                        {customMessage !== null && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomMessage(null);
+                              setEditingMessage(false);
+                            }}
+                          >
+                            <RotateCcw aria-hidden="true" />
+                            Restaurar automática
+                          </button>
+                        )}
+                      </div>
+                      {editingMessage ? (
+                        <textarea
+                          aria-label="Mensagem pronta para envio"
+                          value={customMessage ?? autoMessage}
+                          onChange={(event) => setCustomMessage(event.target.value)}
+                          rows={10}
+                          className={inputClass}
+                        />
+                      ) : (
+                        <pre>{customMessage ?? autoMessage}</pre>
+                      )}
+                    </div>
+                  </details>
+                </section>
+              )}
+            </motion.div>
+          </div>
+
+          <div className="lq-form-foot">
+            {step > 1 ? (
+              <button type="button" onClick={() => goTo(step - 1)} className="lq-secondary">
+                Voltar
+              </button>
+            ) : null}
+            <p className="lq-foot-note">
+              {step === 1
+                ? clientValid
+                  ? `Cliente: ${fullName || selectedLead?.name || ""}`
+                  : "Preencha nome, sobrenome e telefone para continuar."
+                : product && (
+                    <>
+                      {product.name} · <b>{formatBRL(finalValue)}</b>
+                    </>
+                  )}
+            </p>
+            {step < 3 ? (
+              <button
+                type="button"
+                disabled={step === 1 ? !clientValid : !product}
+                onClick={() => goTo(step + 1)}
+                className="lq-primary"
+              >
+                Avançar
+                <ArrowRight aria-hidden="true" />
+              </button>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Nome do cliente"
-                  className="md:col-span-2 w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-                />
-                <select
-                  value={newChannel}
-                  onChange={(e) => setNewChannel(e.target.value as Channel)}
-                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="facebook">Facebook</option>
-                </select>
-                <input
-                  type="tel"
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="Telefone (ex: 5511999998888)"
-                  className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-                />
-                {newChannel !== "whatsapp" && (
-                  <input
-                    type="text"
-                    value={newHandle}
-                    onChange={(e) => setNewHandle(e.target.value)}
-                    placeholder="@usuário"
-                    className="md:col-span-2 w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-                  />
+              <button
+                type="button"
+                disabled={!clientValid || !product || finalValue <= 0 || !validUntil || submitting}
+                onClick={() => void submit()}
+                className="lq-primary"
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
                 )}
-                <p className="md:col-span-2 text-[11px] text-muted-foreground">
-                  O cliente será cadastrado ao salvar o orçamento.
-                </p>
-              </div>
+                {quote ? "Salvar" : "Criar"}
+              </button>
             )}
-          </div>
-
-          {/* Produto */}
-          <Field label="Produto" icon={PackageIcon}>
-            <select
-              value={productId}
-              onChange={(e) => {
-                setProductId(e.target.value);
-                setShowSuggestion(false);
-              }}
-              className={cn(
-                "w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring",
-                showSuggestion && "ring-2 ring-primary/40",
-              )}
-            >
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {formatBRL(activePrice(p))}
-                </option>
-              ))}
-            </select>
-            {showSuggestion && suggestionReason && (
-              <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-primary">
-                <Sparkles className="h-3 w-3 mt-0.5 shrink-0" />
-                <span>
-                  Sugerido pela IA: {suggestionReason}{" "}
-                  <button
-                    type="button"
-                    onClick={() => setShowSuggestion(false)}
-                    className="underline text-muted-foreground hover:text-foreground"
-                  >
-                    trocar
-                  </button>
-                </span>
-              </div>
-            )}
-          </Field>
-
-          {/* Preço base */}
-          <Field label="Preço do produto">
-            <div className="rounded-md bg-input/60 px-3 py-2 text-sm">{formatBRL(unitPrice)}</div>
-          </Field>
-
-          {/* Desconto */}
-          <Field label="Desconto (R$)" icon={Percent}>
-            <input
-              inputMode="numeric"
-              value={discountRaw}
-              onChange={(e) => setDiscountRaw(e.target.value.replace(/[^\d]/g, ""))}
-              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-              placeholder="0"
-            />
-          </Field>
-
-          {/* Forma de pagamento */}
-          <Field label="Forma de pagamento" icon={CreditCard}>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-            >
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {/* Parcelas */}
-          <Field label="Parcelas">
-            <select
-              value={installments}
-              onChange={(e) => setInstallments(Number(e.target.value))}
-              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-            >
-              {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((n) => (
-                <option key={n} value={n}>
-                  {n === 1 ? "À vista" : `${n}x`}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          {/* Validade */}
-          <Field label="Válido até" icon={CalendarIcon}>
-            <input
-              type="date"
-              value={validUntil}
-              onChange={(e) => setValidUntil(e.target.value)}
-              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring"
-            />
-          </Field>
-
-          {/* Valor final destacado */}
-          <div className="md:col-span-2 rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-center justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Valor final
-              </div>
-              <div className="text-2xl font-bold text-primary">{formatBRL(finalValue)}</div>
-              {installments > 1 && (
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {installments}x de {formatBRL(finalValue / installments)}
-                </div>
-              )}
-            </div>
-            {discount > 0 && (
-              <div className="text-right">
-                <div className="text-[11px] text-muted-foreground line-through">
-                  {formatBRL(unitPrice)}
-                </div>
-                <div className="text-xs text-[var(--status-won)] font-semibold">
-                  −{formatBRL(discount)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Observações */}
-          <div className="md:col-span-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-              Observações do orçamento
-            </div>
-            <textarea
-              value={observacoes}
-              onChange={(e) => setObservacoes(e.target.value)}
-              rows={3}
-              placeholder="Ex: Entrega em até 7 dias. Garantia de 1 ano."
-              className="w-full rounded-md bg-input px-3 py-3 md:py-2 text-base md:text-sm min-h-11 md:min-h-0 outline-none focus:ring-2 focus:ring-ring resize-y"
-            />
-          </div>
-
-          {/* Pré-visualização da mensagem */}
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                <Sparkles className="h-3 w-3" /> Mensagem pronta
-              </div>
-              <div className="ml-auto flex items-center gap-1.5">
-                {customMessage !== null && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomMessage(null);
-                      setEditingMessage(false);
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] rounded-md bg-secondary px-2 py-1 hover:bg-accent"
-                    title="Restaurar mensagem automática"
-                  >
-                    <RotateCcw className="h-3 w-3" /> Restaurar
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!editingMessage && customMessage === null) {
-                      setCustomMessage(autoMessage);
-                    }
-                    setEditingMessage((v) => !v);
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
-                >
-                  <Pencil className="h-3 w-3" />
-                  {editingMessage ? "Concluir edição" : "Editar mensagem"}
-                </button>
-              </div>
-            </div>
-            {editingMessage ? (
-              <textarea
-                value={customMessage ?? autoMessage}
-                onChange={(e) => setCustomMessage(e.target.value)}
-                rows={12}
-                className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y"
-              />
-            ) : (
-              <div className="rounded-md border border-border bg-background/40 p-3 text-sm whitespace-pre-wrap leading-relaxed">
-                {previewMessage}
-              </div>
-            )}
-            {customMessage !== null && !editingMessage && (
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Mensagem editada manualmente — será salva e enviada exatamente como exibido acima.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:items-center md:justify-end gap-2 md:flex-wrap safe-bottom">
-          {!hasClient && (
-            <span className="text-[11px] text-destructive md:mr-auto text-center md:text-left">
-              Selecione um cliente para enviar este orçamento.
-            </span>
-          )}
-          <div className="flex flex-col-reverse md:flex-row gap-2">
-            <button
-              onClick={onCancel}
-              disabled={submitting}
-              className="text-sm md:text-xs rounded-md bg-secondary px-3 min-h-11 md:min-h-0 md:py-2 hover:bg-accent disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              disabled={!canSubmit}
-              onClick={submit}
-              className="inline-flex items-center justify-center gap-1.5 text-sm md:text-xs font-semibold rounded-md px-3 min-h-11 md:min-h-0 md:py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40"
-            >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 md:h-3.5 md:w-3.5 animate-spin" />
-              ) : defaultConversationId && defaultLeadId && defaultLeadId === leadId ? (
-                <Send className="h-4 w-4 md:h-3.5 md:w-3.5" />
-              ) : (
-                <Check className="h-4 w-4 md:h-3.5 md:w-3.5" />
-              )}
-              {submitting
-                ? "Salvando…"
-                : defaultConversationId && defaultLeadId && defaultLeadId === leadId
-                  ? "Salvar e deixar pronto"
-                  : "Salvar orçamento"}
-            </button>
           </div>
         </div>
       </div>
-
       <EditDefaultsDialog
         open={editDefaultsOpen}
         onOpenChange={setEditDefaultsOpen}
-        initialIncluded={defIncluded}
-        initialGifts={defGifts}
-        initialCustomer={defCustomer}
-        onSave={async (inc, gif, cus) => {
-          await saveDefaults(inc, gif, cus);
-          setEditDefaultsOpen(false);
-        }}
+        initialIncluded={defaults.included}
+        initialGifts={defaults.gifts}
+        initialCustomer={defaults.customer}
+        onSave={saveDefaults}
       />
-    </div>
-  );
-}
-
-export function TextBlockField({
-  label,
-  placeholder,
-  value,
-  onChange,
-}: {
-  label: string;
-  placeholder?: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5">
-        {label}
-      </div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={6}
-        placeholder={placeholder}
-        className="w-full rounded-md bg-input px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring resize-y whitespace-pre-wrap font-mono"
-      />
-    </div>
+    </>
   );
 }
 
@@ -791,61 +1238,64 @@ export function EditDefaultsDialog({
   onSave,
 }: {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (open: boolean) => void;
   initialIncluded: string;
   initialGifts: string;
   initialCustomer: string;
-  onSave: (inc: string, gif: string, cus: string) => Promise<void>;
+  onSave: (included: string, gifts: string, responsibility: string) => Promise<void>;
 }) {
-  const [inc, setInc] = useState(initialIncluded);
-  const [gif, setGif] = useState(initialGifts);
-  const [cus, setCus] = useState(initialCustomer);
+  const [included, setIncluded] = useState(initialIncluded);
+  const [gifts, setGifts] = useState(initialGifts);
+  const [responsibility, setResponsibility] = useState(initialCustomer);
   const [saving, setSaving] = useState(false);
-
   useEffect(() => {
     if (open) {
-      setInc(initialIncluded);
-      setGif(initialGifts);
-      setCus(initialCustomer);
+      setIncluded(initialIncluded);
+      setGifts(initialGifts);
+      setResponsibility(initialCustomer);
     }
   }, [open, initialIncluded, initialGifts, initialCustomer]);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>Editar textos padrão dos orçamentos</DialogTitle>
           <DialogDescription>
-            Esses textos serão usados automaticamente em todos os novos orçamentos da empresa. Você
-            ainda poderá editar em cada orçamento individualmente.
+            Esses textos serão usados nos novos orçamentos da empresa e podem ser ajustados em cada
+            proposta.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-1 gap-3 py-2">
-          <TextBlockField
-            label="✅ Itens inclusos"
-            placeholder={"Ex:\n• Piscina 8x4\n• Instalação completa\n• Filtro"}
-            value={inc}
-            onChange={setInc}
-          />
-          <TextBlockField
-            label="🎁 Brindes"
-            placeholder={"Ex:\n• Led colorido\n• Kit de limpeza"}
-            value={gif}
-            onChange={setGif}
-          />
-          <TextBlockField
-            label="⚠️ Por conta do cliente"
-            placeholder={"Ex:\n• Ponto de energia\n• Nivelamento do terreno"}
-            value={cus}
-            onChange={setCus}
-          />
+        <div className="space-y-4">
+          <FormField label="Itens inclusos">
+            <textarea
+              value={included}
+              onChange={(event) => setIncluded(event.target.value)}
+              rows={4}
+              className="w-full rounded-xl border bg-input p-3 text-sm"
+            />
+          </FormField>
+          <FormField label="Brindes">
+            <textarea
+              value={gifts}
+              onChange={(event) => setGifts(event.target.value)}
+              rows={4}
+              className="w-full rounded-xl border bg-input p-3 text-sm"
+            />
+          </FormField>
+          <FormField label="Por conta do cliente">
+            <textarea
+              value={responsibility}
+              onChange={(event) => setResponsibility(event.target.value)}
+              rows={4}
+              className="w-full rounded-xl border bg-input p-3 text-sm"
+            />
+          </FormField>
         </div>
         <DialogFooter>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            disabled={saving}
-            className="text-xs rounded-md bg-secondary px-3 py-2 hover:bg-accent disabled:opacity-50"
+            className="rounded-full border px-5 py-2 text-sm font-semibold"
           >
             Cancelar
           </button>
@@ -855,42 +1305,20 @@ export function EditDefaultsDialog({
             onClick={async () => {
               setSaving(true);
               try {
-                await onSave(inc, gif, cus);
+                await onSave(included, gifts, responsibility);
+                onOpenChange(false);
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : "Erro ao salvar padrões");
               } finally {
                 setSaving(false);
               }
             }}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md px-3 py-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Check className="h-3.5 w-3.5" />
-            )}
-            Salvar padrão
+            {saving ? "Salvando…" : "Salvar padrão"}
           </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-export function Field({
-  label,
-  icon: Icon,
-  children,
-}: {
-  label: string;
-  icon?: typeof PackageIcon;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1 mb-1">
-        {Icon && <Icon className="h-3 w-3" />}
-        {label}
-      </span>
-      {children}
-    </label>
   );
 }

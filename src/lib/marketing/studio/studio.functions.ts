@@ -11,7 +11,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { KIND_PAGE_LIMITS, normalizeDocument, type StudioDocument } from "./document";
 import { getRecipe } from "./carousel-recipes";
@@ -110,7 +110,7 @@ const SaveInput = z.object({
 });
 
 export const saveStudioContent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => SaveInput.parse(i))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as SB;
@@ -184,7 +184,7 @@ export const saveStudioContent = createServerFn({ method: "POST" })
   });
 
 export const getStudioContent = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as SB;
@@ -199,7 +199,7 @@ export const getStudioContent = createServerFn({ method: "GET" })
 
 /** Produtos e promoções da empresa que podem originar uma proposta. */
 export const listStudioSources = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const supabase = context.supabase as SB;
     const companyId = await companyOf(supabase, context.userId);
@@ -230,7 +230,7 @@ const ProposeInput = z
  * documento para o usuário revisar no estúdio.
  */
 export const proposeStudioCarousel = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => ProposeInput.parse(i))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as SB;

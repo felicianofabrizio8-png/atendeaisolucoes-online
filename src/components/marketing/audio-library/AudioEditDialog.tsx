@@ -1,6 +1,6 @@
+import { LumePulse } from "../MarketingMotion";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { lumeToast as toast } from "../MarketingFeedback";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,11 +38,7 @@ import {
 import { updateAudioMetadata } from "@/lib/audio-library/audio-library-service";
 import { EnumSelect } from "./EnumSelect";
 import { MultiChipSelect } from "./MultiChipSelect";
-import {
-  applySeasonToggle,
-  toggleInArray,
-  validateClientPreferredRange,
-} from "./audio-ui-helpers";
+import { applySeasonToggle, toggleInArray, validateClientPreferredRange } from "./audio-ui-helpers";
 
 function parseSecondsInput(v: string): number | null {
   const trimmed = v.trim();
@@ -67,17 +63,11 @@ export function AudioEditDialog({
   const [energy, setEnergy] = useState<AudioEnergy | "">("");
   const [vocalType, setVocalType] = useState<AudioVocalType | "">("");
   const [recommendedFor, setRecommendedFor] = useState<AudioRecommendedFor[]>([]);
-  const [marketingObjectives, setMarketingObjectives] = useState<
-    AudioMarketingObjective[]
-  >([]);
+  const [marketingObjectives, setMarketingObjectives] = useState<AudioMarketingObjective[]>([]);
   const [brandStyles, setBrandStyles] = useState<AudioBrandStyle[]>([]);
   const [seasons, setSeasons] = useState<AudioSeason[]>([]);
-  const [targetAudiences, setTargetAudiences] = useState<AudioTargetAudience[]>(
-    [],
-  );
-  const [bestVideoDurations, setBestVideoDurations] = useState<
-    AudioVideoDuration[]
-  >([]);
+  const [targetAudiences, setTargetAudiences] = useState<AudioTargetAudience[]>([]);
+  const [bestVideoDurations, setBestVideoDurations] = useState<AudioVideoDuration[]>([]);
   const [startSec, setStartSec] = useState<string>("");
   const [endSec, setEndSec] = useState<string>("");
   const [source, setSource] = useState("");
@@ -98,12 +88,8 @@ export function AudioEditDialog({
     setSeasons(row.seasons ?? []);
     setTargetAudiences(row.target_audiences ?? []);
     setBestVideoDurations(row.best_video_durations ?? []);
-    setStartSec(
-      row.preferred_start_second != null ? String(row.preferred_start_second) : "",
-    );
-    setEndSec(
-      row.preferred_end_second != null ? String(row.preferred_end_second) : "",
-    );
+    setStartSec(row.preferred_start_second != null ? String(row.preferred_start_second) : "");
+    setEndSec(row.preferred_end_second != null ? String(row.preferred_end_second) : "");
     setSource(row.source ?? "");
     setRightsNotes(row.commercial_rights_notes ?? "");
   }, [row]);
@@ -156,7 +142,7 @@ export function AudioEditDialog({
 
   return (
     <Dialog open={!!row} onOpenChange={(v) => (v ? null : onClose())}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="mkt-dialog max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar áudio</DialogTitle>
         </DialogHeader>
@@ -168,10 +154,7 @@ export function AudioEditDialog({
             </div>
             <div>
               <Label>Origem</Label>
-              <Input
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-              />
+              <Input value={source} onChange={(e) => setSource(e.target.value)} />
             </div>
           </div>
           <div>
@@ -255,9 +238,7 @@ export function AudioEditDialog({
 
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <Label htmlFor="edit-pref-start">
-                Trecho preferido — início (s)
-              </Label>
+              <Label htmlFor="edit-pref-start">Trecho preferido — início (s)</Label>
               <Input
                 id="edit-pref-start"
                 type="number"
@@ -296,7 +277,7 @@ export function AudioEditDialog({
           <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Salvando…
+                <LumePulse className="h-4 w-4 mr-2 animate-spin" /> Salvando…
               </>
             ) : (
               "Salvar"

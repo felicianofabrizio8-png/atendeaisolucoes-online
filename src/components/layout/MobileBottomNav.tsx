@@ -1,5 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { LayoutDashboard, MessageSquare, Megaphone, BarChart3, Menu } from "lucide-react";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { cn } from "@/lib/utils";
 
 type BottomNavItem = {
@@ -29,6 +30,7 @@ interface Props {
  */
 export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
   const location = useLocation();
+  const access = useTeamAccess();
 
   const isActive = (to: string) =>
     to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
@@ -39,8 +41,8 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
       data-testid="mobile-bottom-nav"
       className="lg:hidden fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] border-t border-sidebar-border bg-sidebar/95 backdrop-blur"
     >
-      <ul className="grid grid-cols-5">
-        {ITEMS.map((item) => {
+      <ul className="grid grid-flow-col auto-cols-fr">
+        {ITEMS.filter(item=>access.canOpen(item.to)).map((item) => {
           const Icon = item.icon;
           const active = isActive(item.to);
           const badge = item.to === "/inbox" ? unreadTotal : 0;

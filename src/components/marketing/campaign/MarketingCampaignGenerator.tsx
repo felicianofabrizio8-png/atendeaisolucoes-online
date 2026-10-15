@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sparkles, Loader2, Music2 } from "lucide-react";
-import { toast } from "sonner";
+import { lumeToast as toast } from "../MarketingFeedback";
 import {
   apiListPromotions,
   apiGenerateCampaign,
@@ -583,14 +583,14 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
 
       <Dialog open={audioOpen} onOpenChange={setAudioOpen}>
         {audioOpen && (
-          <DialogContent mobileFullscreen className="sm:max-w-3xl">
+          <DialogContent mobileFullscreen className="mkt-dialog sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>Escolher música</DialogTitle>
               <DialogDescription>Ouça e selecione um áudio já autorizado no acervo da empresa.</DialogDescription>
             </DialogHeader>
             <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
             <div className="flex justify-end">
-              <Button type="button" onClick={() => setAudioOpen(false)}>Concluir seleção</Button>
+              <Button type="button" className="mkt-primary" onClick={() => setAudioOpen(false)}>Concluir seleção</Button>
             </div>
           </DialogContent>
         )}
@@ -611,16 +611,16 @@ export function MarketingCampaignGenerator({ companyId, onGenerated, initialSele
             {step === 1 ? (slots.length === 0 ? "Escolha ao menos uma foto ou um vídeo" : slots.length === 1 ? "1 mídia selecionada" : `${slots.length} fotos selecionadas`) : blockedHint ?? kindLabel}
           </div>
           {step > 1 && (
-            <Button variant="outline" size="lg" className="rounded-full" onClick={() => setStep((step - 1) as Step)} disabled={generating}>
+            <Button variant="outline" size="lg" className="mkt-secondary rounded-full" onClick={() => setStep((step - 1) as Step)} disabled={generating}>
               Voltar
             </Button>
           )}
           {step < 3 ? (
-            <Button size="lg" className="flex-1 rounded-full md:flex-none" onClick={() => setStep((step + 1) as Step)} disabled={!canContinue}>
+            <Button size="lg" className="mkt-primary flex-1 rounded-full md:flex-none" onClick={() => setStep((step + 1) as Step)} disabled={!canContinue}>
               Continuar
             </Button>
           ) : !isManual ? (
-            <Button size="lg" className="flex-1 rounded-full md:flex-none" onClick={() => void (isSimpleMode ? generateSimple() : generate())} disabled={generating || !canContinue}>
+            <Button size="lg" className="mkt-primary flex-1 rounded-full md:flex-none" onClick={() => void (isSimpleMode ? generateSimple() : generate())} disabled={generating || !canContinue}>
               {generating ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
               {isSimpleMode ? "Criar legenda" : "Criar textos do vídeo"}
             </Button>

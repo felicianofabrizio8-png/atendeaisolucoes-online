@@ -1,17 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Loader2,
-  Upload,
-  Trash2,
-  Image as ImageIcon,
-  Video,
-  Package,
-  Sparkles,
-  X,
-} from "lucide-react";
-import { toast } from "sonner";
+import { Loader2, Upload, Trash2, Image as ImageIcon, Video, Package, Sparkles, X } from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
 import {
   apiListMedia,
   apiRegisterMedia,
@@ -211,10 +202,7 @@ export function MarketingLibrary({
     }));
     const products: UnifiedItem[] = productImages.map((p) => {
       const key = `p:${p.productId}:${p.imagePath}`;
-      const tags = [
-        "produto",
-        ...(p.category ? [p.category] : []),
-      ];
+      const tags = ["produto", ...(p.category ? [p.category] : [])];
       return {
         key,
         origin: "product",

@@ -5,7 +5,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 
 type SB = SupabaseClient<Database>;
@@ -46,7 +46,7 @@ const FIELDS = [
 ] as const;
 
 export const getMarketingKnowledgeBase = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { companyId, supabase } = await loadCompanyId(context);
     const { data, error } = await supabase
@@ -83,7 +83,7 @@ const UpsertSchema = z.object({
 });
 
 export const upsertMarketingKnowledgeBase = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => UpsertSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase, userId } = await loadCompanyId(context);

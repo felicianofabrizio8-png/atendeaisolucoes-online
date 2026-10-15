@@ -9,7 +9,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { REEL_NEEDS_VIDEO_MESSAGE, missingMediaMessage, publishableMediaSource, renderedVideoIdFor, requiresVideo, videoRequirementStatus } from "./publishable-media";
 import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "@/lib/marketing-publisher/carousel-flag";
@@ -103,7 +103,7 @@ const RegisterMediaSchema = z.object({
 });
 
 export const registerMarketingMedia = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => RegisterMediaSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, userId, supabase } = await loadCompany(context);
@@ -140,7 +140,7 @@ const ListMarketingMediaSchema = z.object({
 });
 
 export const listMarketingMedia = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => ListMarketingMediaSchema.parse(input ?? {}))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
@@ -163,7 +163,7 @@ export const listMarketingMedia = createServerFn({ method: "GET" })
  * uma campanha). Só devolve mídias da empresa autenticada e não removidas.
  */
 export const getMarketingMediaPaths = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input: unknown) => z.object({ ids: z.array(z.string().uuid()).min(1).max(16) }).parse(input))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
@@ -186,7 +186,7 @@ const UpdateMediaSchema = z.object({
 });
 
 export const updateMarketingMedia = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => UpdateMediaSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
@@ -207,7 +207,7 @@ export const updateMarketingMedia = createServerFn({ method: "POST" })
   });
 
 export const softDeleteMarketingMedia = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
@@ -241,7 +241,7 @@ const PromotionSchema = z.object({
 });
 
 export const upsertMarketingPromotion = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => PromotionSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, userId, supabase } = await loadCompany(context);
@@ -286,7 +286,7 @@ export const upsertMarketingPromotion = createServerFn({ method: "POST" })
   });
 
 export const listMarketingPromotions = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { companyId, supabase } = await loadCompany(context);
     const { data, error } = await supabase
@@ -300,7 +300,7 @@ export const listMarketingPromotions = createServerFn({ method: "GET" })
   });
 
 export const deleteMarketingPromotion = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
@@ -327,7 +327,7 @@ const ContentUpdateSchema = z.object({
 });
 
 export const updateMarketingContent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => ContentUpdateSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);
@@ -349,7 +349,7 @@ export const updateMarketingContent = createServerFn({ method: "POST" })
   });
 
 export const listMarketingContents = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { companyId, supabase } = await loadCompany(context);
     const { data, error } = await supabase
@@ -385,7 +385,7 @@ async function assertMarketingAdmin(ctx: { supabase: SB; userId: string }, compa
 }
 
 export const listMarketingPublishContents = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { companyId, supabase } = await loadCompany(context);
     const { data, error } = await supabase
@@ -474,12 +474,12 @@ async function findMarketingCleanupCandidates(sb: SB, companyId: string, input: 
     ids: eligibleRows.map((row) => row.id),
   };
 }
-export const previewMarketingCleanup = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).inputValidator((i: unknown) => CleanupSchema.omit({ ids: true }).parse(i)).handler(async ({ data, context }) => {
+export const previewMarketingCleanup = createServerFn({ method: "GET" }).middleware([requireTeamPermission("campaigns.manage")]).inputValidator((i: unknown) => CleanupSchema.omit({ ids: true }).parse(i)).handler(async ({ data, context }) => {
   const { companyId, supabase } = await loadCompany(context);
   await assertMarketingAdmin({ supabase, userId: context.userId }, companyId);
   return { ...(await findMarketingCleanupCandidates(supabase, companyId, data)), company_id: companyId };
 });
-export const archiveMarketingCleanup = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((i: unknown) => CleanupSchema.parse(i)).handler(async ({ data, context }) => {
+export const archiveMarketingCleanup = createServerFn({ method: "POST" }).middleware([requireTeamPermission("campaigns.manage")]).inputValidator((i: unknown) => CleanupSchema.parse(i)).handler(async ({ data, context }) => {
   const { companyId, supabase } = await loadCompany(context);
   await assertMarketingAdmin({ supabase, userId: context.userId }, companyId);
   const preview = await findMarketingCleanupCandidates(supabase, companyId, data);
@@ -497,7 +497,7 @@ const SetStatusSchema = z.object({
 });
 
 export const setMarketingContentStatus = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => SetStatusSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, userId, supabase } = await loadCompany(context);
@@ -550,7 +550,7 @@ async function fetchReadinessRows(sb: SB): Promise<ReadinessRow[]> {
 }
 
 export const getFacebookPublishReadiness = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { supabase } = await loadCompany(context);
     const list = await fetchReadinessRows(supabase);
@@ -626,7 +626,7 @@ export function resolveScheduledAt(input: { publish_now?: boolean; scheduled_at?
  * Sem essa permissão a Meta responde 403 `(#200) Permissions error` no publish.
  */
 export const scheduleMarketingContent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => ScheduleSchema.parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, userId, supabase } = await loadCompany(context);
@@ -827,7 +827,7 @@ export async function assertFacebookPublishAllowed(
 
 
 export const listMarketingSchedule = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { companyId, supabase } = await loadCompany(context);
     const { data, error } = await supabase
@@ -842,7 +842,7 @@ export const listMarketingSchedule = createServerFn({ method: "GET" })
 
 /** Agenda do Marketing IA: só agendamentos cujo conteúdo não foi ocultado. */
 export const listMarketingPublishSchedule = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }) => {
     const { companyId, supabase } = await loadCompany(context);
     const { data, error } = await supabase
@@ -859,7 +859,7 @@ export const listMarketingPublishSchedule = createServerFn({ method: "GET" })
   });
 
 export const cancelMarketingSchedule = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data, context }) => {
     const { companyId, supabase } = await loadCompany(context);

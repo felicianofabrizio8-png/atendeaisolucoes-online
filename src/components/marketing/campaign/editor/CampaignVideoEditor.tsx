@@ -613,7 +613,7 @@ export function CampaignVideoEditor({
               <span className="hidden sm:inline">Criar carrossel</span>
             </Button>
           )}
-          <Button onClick={handleApprove} disabled={approving || regenerating || !headline.trim()}>
+          <Button className="mkt-primary" onClick={handleApprove} disabled={approving || regenerating || !headline.trim()}>
             {approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
             Gerar vídeo
           </Button>

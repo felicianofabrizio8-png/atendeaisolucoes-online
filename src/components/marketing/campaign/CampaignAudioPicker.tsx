@@ -1,3 +1,4 @@
+import { LumePulse } from "../MarketingMotion";
 // Seletor de áudio da campanha — estilo Spotify light.
 // - Busca por nome/categoria/humor.
 // - Chips de categoria.
@@ -6,7 +7,7 @@
 // - Badge de seleção visível.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Music2, Check, Pause, Play, Star, Search } from "lucide-react";
+import { Music2, Check, Pause, Play, Star, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { listAudioLibrary } from "@/lib/audio-library/audio-library-service";
@@ -104,7 +105,7 @@ export function CampaignAudioPicker({ selectedId, onSelect }: Props) {
   if (!rows) {
     return (
       <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Carregando áudios…
+        <LumePulse className="h-4 w-4 animate-spin" /> Carregando áudios…
       </div>
     );
   }
@@ -227,9 +228,7 @@ export function CampaignAudioPicker({ selectedId, onSelect }: Props) {
                     aria-label={fav ? "Remover dos favoritos" : "Adicionar aos favoritos"}
                     title={fav ? "Remover dos favoritos" : "Favoritar"}
                   >
-                    <Star
-                      className={`h-4 w-4 ${fav ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground"}`}
-                    />
+                    <Star className={`h-4 w-4 ${fav ? "mkt-fav" : "text-muted-foreground"}`} />
                   </Button>
                 </div>
               </li>

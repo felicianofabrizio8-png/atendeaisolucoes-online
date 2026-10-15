@@ -106,7 +106,7 @@ export function AudioFilters({
 }) {
   const canClear = hasActiveAudioFilters(value);
   return (
-    <div className="space-y-2">
+    <div className="mkt-audio-filters space-y-2">
       <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
         <Input
           placeholder="Buscar por nome…"
@@ -134,60 +134,58 @@ export function AudioFilters({
         />
         <FilterSelect
           value={value.recommendedFor}
-          onChange={(v) =>
-            onChange({ recommendedFor: v as AudioFiltersState["recommendedFor"] })
-          }
+          onChange={(v) => onChange({ recommendedFor: v as AudioFiltersState["recommendedFor"] })}
           placeholder="Uso recomendado"
           options={AUDIO_RECOMMENDED_FOR}
         />
-        <FilterSelect
-          value={value.marketingObjective}
-          onChange={(v) =>
-            onChange({
-              marketingObjective: v as AudioFiltersState["marketingObjective"],
-            })
-          }
-          placeholder="Objetivo"
-          options={AUDIO_MARKETING_OBJECTIVES}
-        />
-        <FilterSelect
-          value={value.brandStyle}
-          onChange={(v) =>
-            onChange({ brandStyle: v as AudioFiltersState["brandStyle"] })
-          }
-          placeholder="Estilo"
-          options={AUDIO_BRAND_STYLES}
-        />
-        <FilterSelect
-          value={value.season}
-          onChange={(v) => onChange({ season: v as AudioFiltersState["season"] })}
-          placeholder="Estação"
-          options={AUDIO_SEASONS}
-        />
-        <FilterSelect
-          value={value.targetAudience}
-          onChange={(v) =>
-            onChange({
-              targetAudience: v as AudioFiltersState["targetAudience"],
-            })
-          }
-          placeholder="Público"
-          options={AUDIO_TARGET_AUDIENCES}
-        />
-        <FilterSelect
-          value={String(value.bestVideoDuration)}
-          onChange={(v) =>
-            onChange({
-              bestVideoDuration:
-                v === "all"
-                  ? "all"
-                  : (Number(v) as AudioVideoDuration),
-            })
-          }
-          placeholder="Duração"
-          options={AUDIO_VIDEO_DURATIONS}
-        />
       </div>
+      <details>
+        <summary>Refinar por objetivo, estilo e público</summary>
+        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+          <FilterSelect
+            value={value.marketingObjective}
+            onChange={(v) =>
+              onChange({
+                marketingObjective: v as AudioFiltersState["marketingObjective"],
+              })
+            }
+            placeholder="Objetivo"
+            options={AUDIO_MARKETING_OBJECTIVES}
+          />
+          <FilterSelect
+            value={value.brandStyle}
+            onChange={(v) => onChange({ brandStyle: v as AudioFiltersState["brandStyle"] })}
+            placeholder="Estilo"
+            options={AUDIO_BRAND_STYLES}
+          />
+          <FilterSelect
+            value={value.season}
+            onChange={(v) => onChange({ season: v as AudioFiltersState["season"] })}
+            placeholder="Estação"
+            options={AUDIO_SEASONS}
+          />
+          <FilterSelect
+            value={value.targetAudience}
+            onChange={(v) =>
+              onChange({
+                targetAudience: v as AudioFiltersState["targetAudience"],
+              })
+            }
+            placeholder="Público"
+            options={AUDIO_TARGET_AUDIENCES}
+          />
+          <FilterSelect
+            value={String(value.bestVideoDuration)}
+            onChange={(v) =>
+              onChange({
+                bestVideoDuration: v === "all" ? "all" : (Number(v) as AudioVideoDuration),
+              })
+            }
+            placeholder="Duração"
+            options={AUDIO_VIDEO_DURATIONS}
+          />
+        </div>
+      </details>
       {onClear ? (
         <div className="flex justify-end">
           <Button

@@ -1483,7 +1483,7 @@ function TestSendButton({
   >(null);
 
 
-  const DEFAULT_MSG = "Teste de conexão do Atende Ai realizado com sucesso.";
+  const DEFAULT_MSG = "Teste de conexão da Lume realizado com sucesso.";
 
   const send = async () => {
     setSending(true);

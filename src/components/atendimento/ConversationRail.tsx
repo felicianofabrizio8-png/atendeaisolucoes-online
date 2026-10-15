@@ -1,4 +1,5 @@
 import { Search, X } from "lucide-react";
+import { OwnerBadge } from "@/components/team/ConversationOwner";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/data/mock";
 import { ContactAvatar } from "./ContactAvatar";
@@ -30,8 +31,12 @@ export function ConversationRail({
   followupByConversation?: ReadonlyMap<string, FollowupCycleView>;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="relative">
+    <div className="at-rail flex h-full min-h-0 flex-col gap-3">
+      <div className="at-rail-heading">
+        <h1>Conversas</h1>
+        <span aria-label={`${contacts.length} conversas na lista`}>{contacts.length}</span>
+      </div>
+      <div className="at-search relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           value={query}
@@ -80,7 +85,7 @@ export function ConversationRail({
                     onClick={() => onSelect(conversation.id)}
                     aria-current={selected}
                     className={cn(
-                      "group flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
+                      "at-contact group flex w-full items-center gap-3 rounded-2xl px-2.5 py-2.5 text-left transition-colors",
                       selected ? "bg-secondary" : "hover:bg-secondary/50",
                     )}
                   >
@@ -92,8 +97,18 @@ export function ConversationRail({
                         {followup?.bucket === "overdue" ? (
                           <span
                             className="shrink-0 rounded-full border border-destructive/30 px-1.5 py-0.5 text-[9px] font-bold text-destructive"
-                            aria-label={"Follow-up vencido, tentativa " + followup.attempts + " de " + followup.maxAttempts}
-                            title={"Follow-up vencido · tentativa " + followup.attempts + " de " + followup.maxAttempts}
+                            aria-label={
+                              "Follow-up vencido, tentativa " +
+                              followup.attempts +
+                              " de " +
+                              followup.maxAttempts
+                            }
+                            title={
+                              "Follow-up vencido · tentativa " +
+                              followup.attempts +
+                              " de " +
+                              followup.maxAttempts
+                            }
                           >
                             FUP
                           </span>
@@ -110,13 +125,14 @@ export function ConversationRail({
                           {timeAgo(conversation.lastMessageAt)}
                         </span>
                       </span>
+                      <OwnerBadge userId={lead.assignedTo} />
                       <span className="mt-0.5 flex items-center gap-1.5">
                         <span className="truncate text-xs text-muted-foreground">
                           {last?.role === "agent" ? "Você: " : ""}
                           {(last && (sharedContactsPreview(last) ?? last.text)) ?? "—"}
                         </span>
                         {conversation.unread ? (
-                          <span className="ml-auto shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground tabular-nums">
+                          <span className="at-unread ml-auto shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground tabular-nums">
                             {conversation.unread}
                           </span>
                         ) : null}

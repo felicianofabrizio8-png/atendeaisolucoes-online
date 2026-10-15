@@ -1,3 +1,4 @@
+import { quoteDate } from "@/lib/quote-presentation";
 // Extraído de src/routes/orcamentos.tsx (Sprint 7 — Fase 7.2).
 // Movimento literal: JSX, estados, efeitos, queries, mutations, cálculos e
 // validações permanecem idênticos ao original.
@@ -21,11 +22,11 @@ export type BlockKey = "photos" | "base" | "inclusos" | "brindes" | "porConta" |
 export type BlockStatus = "pendente" | "enviando" | "enviado" | "erro";
 
 export function buildBaseText(quote: Quote): string {
-  const validStr = /^\d{4}-\d{2}-\d{2}$/.test(quote.validUntil)
-    ? quote.validUntil.split("-").reverse().join("/")
-    : new Date(quote.validUntil).toLocaleDateString("pt-BR");
+  const validStr = quoteDate(quote.validUntil);
   const lines: string[] = [];
   lines.push(`Seu orçamento de *${quote.productName}* ficou em *${formatBRL(quote.finalValue)}*.`);
+  if (quote.productDescription?.trim()) lines.push(`Descrição: ${quote.productDescription.trim()}`);
+  if (quote.benefits?.trim()) lines.push(`Benefícios: ${quote.benefits.trim()}`);
   if (quote.installments > 1) {
     const parcela = quote.finalValue / quote.installments;
     lines.push(
@@ -56,7 +57,7 @@ export function SendWhatsAppModal({
   phone: string;
   onClose: () => void;
   onSent: (conversationId?: string) => void;
-  /** Chamado quando o envio em sequência termina sem falhas. */
+  /** Called after every selected block has been sent successfully. */
   onDone?: () => void;
 }) {
   const product = getProduct(quote.productId);
@@ -388,7 +389,7 @@ export function SendWhatsAppModal({
           </div>
 
           {/* Fotos */}
-          <BlockRow blockKey="photos" title="Fotos do produto">
+          <BlockRow blockKey="photos" title="1. Fotos do produto">
             {availableImages.length > 0 ? (
               <>
                 <div className="flex items-center justify-between">
@@ -440,33 +441,25 @@ export function SendWhatsAppModal({
             )}
           </BlockRow>
 
-          <BlockRow blockKey="base" title="Mensagem do orçamento">
+          <BlockRow blockKey="base" title="2. Mensagem principal do orçamento">
             <TextBlock blockKey="base" />
           </BlockRow>
 
-          {available.inclusos && (
-            <BlockRow blockKey="inclusos" title="Itens inclusos">
-              <TextBlock blockKey="inclusos" />
-            </BlockRow>
-          )}
+          <BlockRow blockKey="inclusos" title="3. Itens inclusos">
+            <TextBlock blockKey="inclusos" />
+          </BlockRow>
 
-          {available.brindes && (
-            <BlockRow blockKey="brindes" title="Brindes">
-              <TextBlock blockKey="brindes" />
-            </BlockRow>
-          )}
+          <BlockRow blockKey="brindes" title="4. Brindes">
+            <TextBlock blockKey="brindes" />
+          </BlockRow>
 
-          {available.porConta && (
-            <BlockRow blockKey="porConta" title="Por conta do cliente">
-              <TextBlock blockKey="porConta" />
-            </BlockRow>
-          )}
+          <BlockRow blockKey="porConta" title="5. Por conta do cliente">
+            <TextBlock blockKey="porConta" />
+          </BlockRow>
 
-          {available.notes && (
-            <BlockRow blockKey="notes" title="Observações">
-              <TextBlock blockKey="notes" />
-            </BlockRow>
-          )}
+          <BlockRow blockKey="notes" title="6. Observações">
+            <TextBlock blockKey="notes" />
+          </BlockRow>
         </div>
 
         <div className="sticky bottom-0 bg-card p-4 border-t border-border flex flex-col-reverse md:flex-row md:flex-wrap items-stretch md:items-center md:justify-end gap-2 safe-bottom">

@@ -11,7 +11,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery, isFailure } from "@/lib/outbound/MetaOutboundContract";
 import { assertOutbound } from "@/lib/environment/EnvironmentGuard.server";
@@ -149,7 +149,7 @@ async function graphFetch<T>(
 }
 
 export const publishCampaign = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((input) => PublishInput.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;

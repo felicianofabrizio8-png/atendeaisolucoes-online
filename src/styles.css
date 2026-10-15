@@ -68,7 +68,7 @@
 /* Dark is the default theme — applied on :root */
 :root {
   --radius: 0.5rem;
-  --app-font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --app-font-family: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 
   /* Surfaces — deep neutral gray (sem matiz) */
   --background: oklch(0.18 0 0);
@@ -176,8 +176,8 @@
   --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.9 0.008 250);
-  --input: oklch(0.93 0.008 250);
+  --border: oklch(0.84 0.008 250);
+  --input: oklch(0.86 0.008 250);
   --ring: oklch(0.45 0 0);
 
   /* Status — darken slightly for contrast on light backgrounds */
@@ -202,7 +202,7 @@
   /* Sidebar — subtle off-white, distinct from main bg */
   --sidebar: oklch(0.97 0.005 250);
   --sidebar-foreground: oklch(0.25 0.014 250);
-  --sidebar-border: oklch(0.9 0.008 250);
+  --sidebar-border: oklch(0.84 0.008 250);
   --sidebar-accent: oklch(0.93 0.008 250);
   --sidebar-accent-foreground: oklch(0.2 0.014 250);
 
@@ -254,6 +254,7 @@
 
   html,
   body {
+    font-family: var(--app-font-family);
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -520,6 +521,23 @@
   }
 }
 
+/* Mantém a paleta escura do formulário quando o navegador preenche os campos. */
+.quote-form .quote-form-input:-webkit-autofill,
+.quote-form .quote-form-input:-webkit-autofill:hover,
+.quote-form .quote-form-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #1d1d1d inset !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff;
+}
+
+.quote-form .quote-form-search:-webkit-autofill,
+.quote-form .quote-form-search:-webkit-autofill:hover,
+.quote-form .quote-form-search:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #000 inset !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff;
+}
+
 /* NEXUS-PRO:WATERMARK-HIDE:START */
 /* Overlay do badge oficial ocultado por conflito com UI custom.
    Bloco idempotente gerenciado pela extensão Nexus Pro.
@@ -549,6 +567,17 @@ iframe[src*="lovable.dev/badge"] {
   }
   to {
     width: 100%;
+  }
+}
+
+@keyframes atendimento-stat-content {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -807,7 +836,7 @@ iframe[src*="lovable.dev/badge"] {
   --viz-3: #a78000;
 
   --viz-grid: oklch(0.9 0.008 250);
-  --viz-track: oklch(0.94 0.006 250);
+  --viz-track: oklch(0.86 0.006 250);
   --viz-drop: oklch(0.82 0.01 20);
 
   --viz-flow-0: oklch(0.72 0.11 200);

@@ -1,16 +1,15 @@
+import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useState } from "react";
+import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
-import { Loader2, X } from "lucide-react";
-import { toast } from "sonner";
+import { X } from "lucide-react";
+import { lumeToast as toast } from "./MarketingFeedback";
 import {
   apiListPublishSchedule,
   apiListPublishContents,
   apiCancelSchedule,
 } from "@/data/marketingRepo";
-import type {
-  MarketingScheduleRow,
-  MarketingContentRow,
-} from "@/lib/marketing/marketing.types";
+import type { MarketingScheduleRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
 
 import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
 import { MediaThumb } from "./ui/MarketingUi";
@@ -29,8 +28,18 @@ const SCHEDULE_STATUS: Record<string, string> = {
   failed: "Com problema",
   cancelled: "Cancelada",
 };
-const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp", carousel: "Carrossel" };
-const CHANNEL_LABEL: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp" };
+const FORMAT_LABEL: Record<string, string> = {
+  feed: "Feed",
+  story: "Story",
+  reel: "Reel",
+  whatsapp_cta: "WhatsApp",
+  carousel: "Carrossel",
+};
+const CHANNEL_LABEL: Record<string, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  whatsapp: "WhatsApp",
+};
 
 export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {
   const [schedule, setSchedule] = useState<MarketingScheduleRow[]>([]);
@@ -40,7 +49,10 @@ export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {
   async function refresh() {
     setLoading(true);
     try {
-      const [sched, conts] = await Promise.all([apiListPublishSchedule(), apiListPublishContents()]);
+      const [sched, conts] = await Promise.all([
+        apiListPublishSchedule(),
+        apiListPublishContents(),
+      ]);
       setSchedule(sched);
       setContents(Object.fromEntries(conts.map((c) => [c.id, c])));
     } catch (e) {
@@ -57,8 +69,15 @@ export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {
   const grouped = useMemo(() => {
     const map = new Map<string, MarketingScheduleRow[]>();
     for (const s of schedule) {
-      if (upcomingOnly && s.status !== "planned" && s.status !== "queued" && s.status !== "publishing") continue;
-      const day = s.scheduled_at.slice(0, 10);
+      if (
+        upcomingOnly &&
+        s.status !== "planned" &&
+        s.status !== "queued" &&
+        s.status !== "publishing"
+      )
+        continue;
+      const date = new Date(s.scheduled_at);
+      const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
       const arr = map.get(day) ?? [];
       arr.push(s);
       map.set(day, arr);
@@ -86,48 +105,68 @@ export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {
   if (loading) {
     return (
       <div className="text-sm text-muted-foreground flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+        <LumePulse className="h-4 w-4 animate-spin" /> Carregando…
       </div>
     );
   }
 
   if (grouped.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Nada agendado. Aprove uma publicação em <strong>Para revisar</strong> e agende em{" "}
-        <strong>Aprovadas</strong>.
+      <div className="mkt-empty-state">
+        <MarketingArtwork kind="ring" />
+        <h3>Sua próxima história tem lugar aqui.</h3>
+        <p>
+          Aprove uma publicação em <strong>Para revisar</strong> e agende em{" "}
+          <strong>Aprovadas</strong>. Seus próximos envios aparecerão nesta agenda.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-muted-foreground">
+      <div className="mkt-tool-toolbar text-xs text-muted-foreground">
         Publicações agendadas saem sozinhas no horário, pelo canal conectado.
       </div>
       {grouped.map(([day, items]) => (
-        <div key={day} className="rounded-2xl border bg-card overflow-hidden">
-          <div className="px-4 py-2 bg-muted text-xs font-semibold first-letter:uppercase">
-            {new Date(day).toLocaleDateString("pt-BR", {
-              weekday: "long",
-              day: "2-digit",
-              month: "long",
-            })}
+        <div key={day} className="mkt-schedule-day rounded-lg border bg-card overflow-hidden">
+          <div className="mkt-schedule-date">
+            <strong>
+              {new Date(`${day}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit" })}
+            </strong>
+            <span>
+              {new Date(`${day}T12:00:00`).toLocaleDateString("pt-BR", {
+                weekday: "long",
+                month: "long",
+              })}
+            </span>
           </div>
           <div className="divide-y">
             {items.map((s) => {
               const c = contents[s.content_id];
               return (
                 <div key={s.id} className="p-3 flex items-center gap-3" data-testid="schedule-item">
-                  <MediaThumb preview={c ? previews[c.id] : null} className="h-14 w-14 shrink-0 rounded-lg" />
+                  <MediaThumb
+                    preview={c ? previews[c.id] : null}
+                    className="h-14 w-14 shrink-0 rounded-lg"
+                  />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        {new Date(s.scheduled_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    <div className="text-xs flex flex-wrap items-center gap-2">
+                      <span className="mkt-badge mkt-tone-neutral">
+                        {new Date(s.scheduled_at).toLocaleTimeString("pt-BR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
-                      <span>{FORMAT_LABEL[c?.format ?? ""] ?? c?.format ?? ""}</span>
-                      <span>{CHANNEL_LABEL[s.channel] ?? s.channel}</span>
-                      <span className={`rounded-full bg-muted px-2 py-0.5 font-medium ${s.status === "failed" ? "text-destructive" : "text-foreground"}`}>
+                      <span className="mkt-badge mkt-tone-quiet">
+                        {FORMAT_LABEL[c?.format ?? ""] ?? c?.format ?? ""}
+                      </span>
+                      <span className="mkt-badge mkt-tone-quiet">
+                        {CHANNEL_LABEL[s.channel] ?? s.channel}
+                      </span>
+                      <span
+                        className={`mkt-badge ${s.status === "failed" ? "mkt-tone-danger" : "mkt-tone-quiet"}`}
+                      >
                         {SCHEDULE_STATUS[s.status] ?? s.status}
                       </span>
                     </div>

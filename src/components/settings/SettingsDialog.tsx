@@ -1,7 +1,7 @@
 // Popup de Configurações — aberto pela engrenagem ao lado do perfil.
 // Menu lateral com busca + conteúdo da aba ativa; fundo com blur suave.
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   MessageSquareText,
@@ -13,6 +13,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { cn } from "@/lib/utils";
 import {
   closeSettings,
@@ -79,15 +80,18 @@ function normalize(s: string) {
 
 export function SettingsDialog() {
   const { open, tab } = useSettingsDialog();
+  const access=useTeamAccess();
+  const allowedTabs=TABS.filter(t=>t.value==="aparencia" || (t.value==="usuarios" ? access.isAdmin : access.can("settings.manage")));
   const [query, setQuery] = useState("");
 
-  const visibleTabs = useMemo(() => {
+  const visibleTabs = (() => {
     const q = normalize(query.trim());
-    if (!q) return TABS;
-    return TABS.filter((t) => normalize(`${t.label} ${t.keywords}`).includes(q));
-  }, [query]);
+    if (!q) return allowedTabs;
+    return allowedTabs.filter((t) => normalize(`${t.label} ${t.keywords}`).includes(q));
+  })();
 
-  const Content = TAB_CONTENT[tab];
+  const safeTab=allowedTabs.some(t=>t.value===tab)?tab:"aparencia";
+  const Content = TAB_CONTENT[safeTab];
 
   return (
     <DialogPrimitive.Root

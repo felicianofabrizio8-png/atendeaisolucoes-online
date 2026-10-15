@@ -191,7 +191,7 @@ describe("telas que carregam imagens de campanha", () => {
   it("a busca de caminhos de mídia é restrita à empresa autenticada", () => {
     const source = read("src/lib/marketing/marketing.functions.ts");
     const fn = source.slice(source.indexOf("export const getMarketingMediaPaths"), source.indexOf("const UpdateMediaSchema"));
-    expect(fn).toContain("requireSupabaseAuth");
+    expect(fn).toMatch(/requireSupabaseAuth|requireTeamPermission\(/);
     expect(fn).toContain('.eq("company_id", companyId)');
     expect(fn).toContain('.is("deleted_at", null)');
   });

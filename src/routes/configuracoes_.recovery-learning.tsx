@@ -37,13 +37,13 @@ export const Route = createFileRoute("/configuracoes_/recovery-learning")({
   component: RecoveryLearningPage,
   head: () => ({
     meta: [
-      { title: "Aprendizado da Recuperação • Atende Aí" },
+      { title: "Aprendizado da Recuperação • Lume" },
       {
         name: "description",
         content:
           "Veja o que realmente funciona para recuperar clientes: padrões por produto, horário, template e vendedor, com amostra e confiança de cada conclusão.",
       },
-      { property: "og:title", content: "Aprendizado da Recuperação • Atende Aí" },
+      { property: "og:title", content: "Aprendizado da Recuperação • Lume" },
       {
         property: "og:description",
         content:

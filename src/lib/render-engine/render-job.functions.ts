@@ -5,7 +5,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   createRenderJobSchema,
   validateAudioRange,
@@ -20,7 +20,7 @@ import { buildVideoBrandSnapshot } from "./video-brand-snapshot";
 
 // --------------------------------------------------------------------- create
 export const createRenderJob = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => createRenderJobSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ job: RenderJobRow }> => {
     const { supabase, userId } = context;
@@ -229,7 +229,7 @@ export const createRenderJob = createServerFn({ method: "POST" })
 
 // ---------------------------------------------------------------------- list
 export const listRenderJobs = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) =>
     z.object({ limit: z.number().int().min(1).max(100).optional() }).parse(data ?? {}),
   )
@@ -246,7 +246,7 @@ export const listRenderJobs = createServerFn({ method: "GET" })
 
 // -------------------------------------------------------------------- cancel
 export const cancelRenderJob = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
@@ -263,7 +263,7 @@ export const cancelRenderJob = createServerFn({ method: "POST" })
 
 // ------------------------------------------------------------------- videos
 export const listVideos = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) =>
     z.object({ limit: z.number().int().min(1).max(100).optional() }).parse(data ?? {}),
   )
@@ -280,7 +280,7 @@ export const listVideos = createServerFn({ method: "GET" })
 
 // -------------------------------------------------------- signed url (video)
 export const getVideoSignedUrl = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data, context }): Promise<{ url: string; expires_in: number }> => {
     const { supabase, userId } = context;
@@ -310,7 +310,7 @@ export const getVideoSignedUrl = createServerFn({ method: "POST" })
 
 // ----------------------------------------------------------- set video active
 export const setVideoActive = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) =>
     z.object({ id: z.string().uuid(), active: z.boolean() }).parse(data),
   )
@@ -326,7 +326,7 @@ export const setVideoActive = createServerFn({ method: "POST" })
 
 // ------------------------------------------------------------ delete video
 export const deleteVideo = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => z.object({ id: z.string().uuid() }).parse(data))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;

@@ -1,4 +1,5 @@
-import { Edit3, Loader2, Pause, Play, Trash2 } from "lucide-react";
+import { LumePulse } from "../MarketingMotion";
+import { Edit3, Pause, Play, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -41,14 +42,17 @@ export function AudioCard({
 }) {
   const showPause = isActiveTrack && isPlaying;
   return (
-    <article className="rounded-xl border bg-card p-4 flex flex-col gap-3">
+    <article className="mkt-audio-card rounded-xl border bg-card p-4 flex flex-col gap-3">
+      <div className="mkt-audio-art" aria-hidden="true">
+        {Array.from({ length: 24 }, (_, index) => (
+          <i key={index} />
+        ))}
+      </div>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-medium truncate">{row.name}</h3>
           {row.description ? (
-            <p className="text-xs text-muted-foreground line-clamp-2">
-              {row.description}
-            </p>
+            <p className="text-xs text-muted-foreground line-clamp-2">{row.description}</p>
           ) : null}
         </div>
         <Button
@@ -59,7 +63,7 @@ export function AudioCard({
           disabled={isLoading && isActiveTrack}
         >
           {isLoading && isActiveTrack ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <LumePulse className="h-4 w-4 animate-spin" />
           ) : showPause ? (
             <Pause className="h-4 w-4" />
           ) : (
@@ -71,19 +75,14 @@ export function AudioCard({
       <div className="flex flex-wrap gap-1">
         {row.category ? <Badge variant="secondary">{row.category}</Badge> : null}
         {row.mood ? <Badge variant="outline">{row.mood}</Badge> : null}
-        {row.energy ? (
-          <Badge variant="outline">energia {row.energy}</Badge>
-        ) : null}
+        {row.energy ? <Badge variant="outline">energia {row.energy}</Badge> : null}
         {row.vocal_type ? <Badge variant="outline">{row.vocal_type}</Badge> : null}
       </div>
 
       {row.recommended_for.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {row.recommended_for.map((r) => (
-            <span
-              key={r}
-              className="text-[10px] rounded bg-muted px-1.5 py-0.5"
-            >
+            <span key={r} className="text-[10px] rounded bg-muted px-1.5 py-0.5">
               {r}
             </span>
           ))}
@@ -99,27 +98,14 @@ export function AudioCard({
 
       <div className="flex items-center justify-between pt-2 border-t">
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Switch
-            checked={row.is_active}
-            onCheckedChange={(v) => onToggleActive(row, v)}
-          />
+          <Switch checked={row.is_active} onCheckedChange={(v) => onToggleActive(row, v)} />
           {row.is_active ? "Ativa" : "Inativa"}
         </label>
         <div className="flex gap-1">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onEdit(row)}
-            aria-label="Editar"
-          >
+          <Button size="icon" variant="ghost" onClick={() => onEdit(row)} aria-label="Editar">
             <Edit3 className="h-4 w-4" />
           </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onDelete(row)}
-            aria-label="Excluir"
-          >
+          <Button size="icon" variant="ghost" onClick={() => onDelete(row)} aria-label="Excluir">
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>
@@ -141,18 +127,14 @@ function MetaLine({
   const { visible, extra } = splitWithMore(items, max);
   return (
     <p className="text-[11px] text-muted-foreground truncate">
-      <span className="font-medium text-foreground">{label}:</span>{" "}
-      {visible.join(", ")}
+      <span className="font-medium text-foreground">{label}:</span> {visible.join(", ")}
       {extra > 0 ? ` +${extra}` : ""}
     </p>
   );
 }
 
 function EnrichmentMeta({ row }: { row: AudioLibraryRow }) {
-  const range = formatPreferredRange(
-    row.preferred_start_second,
-    row.preferred_end_second,
-  );
+  const range = formatPreferredRange(row.preferred_start_second, row.preferred_end_second);
   const hasAny =
     row.marketing_objectives.length > 0 ||
     row.brand_styles.length > 0 ||
@@ -164,16 +146,8 @@ function EnrichmentMeta({ row }: { row: AudioLibraryRow }) {
     <div className="space-y-0.5">
       <MetaLine label="Objetivos" items={row.marketing_objectives} />
       <MetaLine label="Estilo" items={row.brand_styles} />
-      <MetaLine
-        label="Público"
-        items={row.target_audiences}
-        max={1}
-      />
-      <MetaLine
-        label="Durações"
-        items={row.best_video_durations.map((n) => `${n}s`)}
-        max={3}
-      />
+      <MetaLine label="Público" items={row.target_audiences} max={1} />
+      <MetaLine label="Durações" items={row.best_video_durations.map((n) => `${n}s`)} max={3} />
       {range ? (
         <p className="text-[11px] text-muted-foreground">
           <span className="font-medium text-foreground">Trecho:</span> {range}

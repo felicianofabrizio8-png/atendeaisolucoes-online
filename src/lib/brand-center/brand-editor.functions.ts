@@ -19,7 +19,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   ALLOWED_LOGO_MIMES,
   MAX_LOGO_BYTES,
@@ -141,7 +141,7 @@ function toEditorVersion(v: BrandVersionDTO): BrandEditorVersion {
 // ---------------------------------------------------------------------------
 
 export const getBrandEditorState = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .handler(async ({ context }): Promise<BrandEditorState> => {
     const auth = context as AuthCtx;
     const { companyId, isAdmin } = await resolveCompanyAndRole(auth);
@@ -188,7 +188,7 @@ export const getBrandEditorState = createServerFn({ method: "GET" })
 // ---------------------------------------------------------------------------
 
 export const saveBrandDraft = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => BrandDraftPayloadSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ versionId: string }> => {
     const auth = context as AuthCtx;
@@ -224,7 +224,7 @@ export const saveBrandDraft = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 export const publishBrandVersion = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => PublishBrandVersionSchema.parse(data))
   .handler(
     async (
@@ -242,7 +242,7 @@ export const publishBrandVersion = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 export const signBrandAssetUpload = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => SignBrandAssetUploadSchema.parse(data))
   .handler(
     async ({ data, context }): Promise<SignBrandAssetUploadResult> => {
@@ -275,7 +275,7 @@ export const signBrandAssetUpload = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 export const registerBrandAsset = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => RegisterBrandAssetSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ assetId: string; deduped: boolean }> => {
     const auth = context as AuthCtx;
@@ -392,7 +392,7 @@ export const registerBrandAsset = createServerFn({ method: "POST" })
 // ---------------------------------------------------------------------------
 
 export const deactivateBrandAsset = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("campaigns.manage")])
   .inputValidator((data: unknown) => DeactivateBrandAssetSchema.parse(data))
   .handler(async ({ data, context }): Promise<{ ok: true }> => {
     const auth = context as AuthCtx;

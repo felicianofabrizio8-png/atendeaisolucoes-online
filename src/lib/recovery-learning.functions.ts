@@ -18,7 +18,7 @@
 // ============================================================================
 
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireTeamPermission } from "@/lib/team/middleware";
 import {
   buildLearningReport,
   serializeModel,
@@ -61,7 +61,7 @@ function parsePeriod(input: unknown): LearningPeriod {
 }
 
 export const getRecoveryLearning = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireTeamPermission("admin")])
   .inputValidator((input: { period?: string } | undefined) => ({ period: parsePeriod(input) }))
   .handler(async ({ data, context }): Promise<RecoveryLearningResult> => {
     const ctx = context as unknown as { supabase: Db };

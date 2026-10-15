@@ -22,7 +22,7 @@ function WhatsAppDeprecatedPage() {
               Conexão via QR Code foi descontinuada
             </h1>
             <p className="text-sm text-muted-foreground mb-4">
-              O Atende Ai agora opera exclusivamente com o{" "}
+              A Lume agora opera exclusivamente com o{" "}
               <strong>WhatsApp Oficial da Meta (Cloud API)</strong> para
               garantir estabilidade, conformidade e suporte profissional a
               múltiplos atendentes. Conecte seu número oficial para continuar

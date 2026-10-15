@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/whatsapp/test-send")({
         const toRaw = String(body.to ?? "").trim();
         const text =
           (typeof body.text === "string" && body.text.trim()) ||
-          "Mensagem de teste do Atende AI ✅";
+          "Mensagem de teste da Lume ✅";
         const to = toRaw.replace(/\D/g, "");
         if (!integrationId || !to || to.length < 8 || to.length > 15) {
           return Response.json(

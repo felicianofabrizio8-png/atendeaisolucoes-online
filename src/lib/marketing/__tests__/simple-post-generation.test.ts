@@ -25,6 +25,7 @@ vi.mock("@tanstack/react-start", () => {
   return { createServerFn, createMiddleware: () => ({ server: () => ({}) }) };
 });
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
+vi.mock("@/lib/team/middleware", () => ({ requireTeamPermission: () => ({}) }));
 
 import { SimpleMarketingPostInputSchema, generateSimpleMarketingPost } from "../marketing-ai.functions";
 

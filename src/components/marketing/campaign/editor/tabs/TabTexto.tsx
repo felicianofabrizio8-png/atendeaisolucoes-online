@@ -1,4 +1,5 @@
-// Aba TEXTO — edição de título/sub/CTA + botões "Gerar nova sugestão IA" e
+import { LumePulse } from "../../../MarketingMotion";
+// Aba TEXTO — edição de título/sub/CTA + botões "Pedir outra ideia à Lume" e
 // "Restaurar texto original". Toda alteração atualiza o preview do editor.
 
 import { OVERLAY_LIMITS } from "@/lib/marketing/manual-campaign";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { RotateCcw, Sparkles } from "lucide-react";
 
 // Limites do texto sobre o vídeo (iguais aos do banco).
 const HEADLINE_MAX = OVERLAY_LIMITS.headline;
@@ -102,11 +103,11 @@ export function TabTexto({
           disabled={regenerating || disabled}
         >
           {regenerating ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            <LumePulse className="h-4 w-4 animate-spin mr-1" />
           ) : (
             <Sparkles className="h-4 w-4 mr-1" />
           )}
-          Gerar nova sugestão IA
+          Pedir outra ideia à Lume
         </Button>
         <Button variant="ghost" size="sm" onClick={onRestore} disabled={regenerating || disabled}>
           <RotateCcw className="h-4 w-4 mr-1" />
