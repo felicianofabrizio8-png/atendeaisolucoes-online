@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { format, formatDistanceToNowStrict } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Plus, Sparkles } from "lucide-react";
 import type { AgendaPulse } from "./agenda-model";
-import { AgendaArtwork } from "./AgendaArtwork";
+import { SaturnRing } from "./SaturnRing";
 
-/** Topo da Agenda: tipografia editorial, pulso do dia e a escultura de vidro da Lume. */
+/** Topo da Agenda: tipografia editorial e pulso do dia sobre o anel de Saturno. */
 export function AgendaHero({
   pulse,
   onCreate,
@@ -16,10 +16,10 @@ export function AgendaHero({
   onAskLume?: () => void;
 }) {
   const now = useNow();
-  const next = pulse.next;
   return (
     <section className="ag-hero" aria-label="Resumo da agenda">
-      <div className="flex min-w-0 flex-col justify-between gap-8">
+      <SaturnRing />
+      <div className="relative z-[1] flex min-w-0 flex-col justify-between gap-8">
         <div>
           <p className="ag-mono">Lume · Agenda da equipe</p>
           <h1 className="ag-hero-title mt-4">
@@ -55,35 +55,8 @@ export function AgendaHero({
         </div>
       </div>
 
-      <figure className="ag-hero-art">
-        <AgendaArtwork />
-        <figcaption className="ag-hero-caption">
-          {next ? (
-            <>
-              <span className="ag-mono">Próximo</span>
-              <span className="text-sm">
-                <b className="font-semibold tabular-nums">
-                  {format(new Date(next.scheduled_at), "HH:mm")}
-                </b>{" "}
-                · {next.title}
-              </span>
-              <span className="text-xs text-[var(--ag-muted)]">
-                {formatDistanceToNowStrict(new Date(next.scheduled_at), {
-                  locale: ptBR,
-                  addSuffix: true,
-                })}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="ag-mono">Agenda livre</span>
-              <span className="text-sm text-[var(--ag-muted)]">
-                Nenhum compromisso pela frente.
-              </span>
-            </>
-          )}
-        </figcaption>
-      </figure>
+      {/* Espaço do anel: ele mora no fundo do bloco inteiro. */}
+      <div className="ag-hero-space" aria-hidden="true" />
     </section>
   );
 }

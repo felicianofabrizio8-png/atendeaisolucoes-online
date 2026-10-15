@@ -44,7 +44,7 @@
   border-radius: 28px;
   padding: 28px;
   overflow: hidden;
-  background: linear-gradient(160deg, #0f0d16, #08070b 60%);
+  background: #0b0a10;
 }
 @media (max-width: 1023px) {
   .ag-hero {
@@ -96,48 +96,52 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Escultura de vidro do topo: solta, sem moldura, flutuando de leve. */
-.ag-hero-art {
-  position: relative;
-  display: flex;
-  min-height: 280px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
+/* Anel de Saturno: fundo do bloco inteiro, some em direção ao texto. */
+.ag-saturn {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  -webkit-mask-image: linear-gradient(90deg, transparent 22%, #000 62%);
+  mask-image: linear-gradient(90deg, transparent 22%, #000 62%);
 }
-.ag-art {
-  width: min(460px, 100%);
-}
-.ag-art svg {
+.ag-saturn svg {
   display: block;
   width: 100%;
-  height: auto;
-  overflow: visible;
+  height: 100%;
 }
-.ag-art-float {
-  animation: ag-float 9s var(--ag-ease) infinite alternate;
-  will-change: transform;
+.ag-saturn-sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ag-twinkle 6s ease-in-out infinite;
 }
-@keyframes ag-float {
-  from {
-    transform: translate3d(0, 6px, 0) rotate(-1deg);
+@keyframes ag-twinkle {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
   }
-  to {
-    transform: translate3d(0, -8px, 0) rotate(1.2deg);
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
   }
 }
-.ag-hero-caption {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px 10px;
-  margin-top: 4px;
-  text-align: center;
+.ag-hero-space {
+  min-height: 240px;
+}
+@media (max-width: 1023px) {
+  .ag-hero-space {
+    display: none;
+  }
+  .ag-saturn {
+    opacity: 0.5;
+    -webkit-mask-image: linear-gradient(90deg, transparent 10%, #000 70%);
+    mask-image: linear-gradient(90deg, transparent 10%, #000 70%);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ag-art-float {
+  .ag-saturn-sparkle {
     animation: none;
   }
 }
@@ -521,4 +525,16 @@
 .lume-agenda .peer:focus-visible + .ag-switch {
   outline: 2px solid var(--ag-violet);
   outline-offset: 2px;
+}
+
+/* Seletores da barra: seta própria com respiro (a nativa colava na borda). */
+.lume-agenda select.ag-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a29db0' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  background-size: 12px;
+  cursor: pointer;
 }
