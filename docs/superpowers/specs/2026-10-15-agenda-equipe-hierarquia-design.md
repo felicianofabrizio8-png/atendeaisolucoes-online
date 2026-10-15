@@ -164,6 +164,35 @@ Na primeira entrada do admin de uma equipe ainda chamada "Minha Empresa", aparec
 - **Tela**: Usuários e Permissões (permissões, links, aprovação) e formulário (alcance oculto para funcionário).
 - **Regressão**: suítes da vendedora, do atendimento, do follow-up e da Lume.
 
+## 9.1 Ajuste de 16/10 — entrar pelo link com confirmação e popups no estilo Orçamentos
+
+Substitui o fluxo "Entrar pelo link" da seção 3.4.
+
+- **Clicar no link nunca cria equipe.** A rota `/convite?link=TOKEN` guarda o token no navegador e:
+  - **Sem login:** abre o popup de login/criar conta com o aviso "Convite para X". O cadastro **não pede nome da empresa** e envia `invite_link` nos metadados.
+  - **Com login:** abre o popup **"Entrar na equipe X?"**.
+- **Conta criada pelo link.** O cadastro coloca o perfil na equipe do link **sem acesso** (`join_confirmation_pending = true`), reservando um uso do link. Depois do login, o popup pergunta:
+  - **Confirmar:** libera o acesso, ou deixa aguardando aprovação se o link exigir.
+  - **Recusar:** cria a equipe própria da pessoa (ela vira admin) e devolve o uso reservado.
+- **Conta que já existe em outra equipe.** Confirmar move a conta para a nova equipe **só se ela for a única pessoa da equipe atual**. O popup avisa que a equipe atual fica sem acesso, com os dados preservados. Se houver outras pessoas, a troca é recusada com explicação.
+- **Popup global.** Enquanto houver confirmação pendente ou aprovação aguardando, aparece um popup no lugar do app:
+  - "Entrar na equipe X?"
+  - "Aguardando aprovação de X", com a opção Sair.
+  - Ele aparece mesmo se o token se perder (por exemplo, o e-mail foi confirmado em outro aparelho), porque a pendência fica no servidor.
+- **RPCs novas:**
+  - `team_join_via_link(_token text DEFAULT NULL)`: confirma a pendência ou troca de equipe.
+  - `team_decline_link_join()`.
+  - `team_my_pending_join()`: estado `confirm` ou `waiting`, com o nome da equipe.
+  - `team_invite_link_info` passa a devolver também `currentTeam` e `canSwitch`, só para quem está logado.
+- **Troca de empresa do perfil.** Hoje o gatilho `team_guard_profile` a bloqueia. Ele passa a permitir só quando a marca `lume.team_move` está ligada naquela transação, e só as RPCs de entrar e recusar ligam essa marca.
+- **Visual.** Todos os popups seguem o formulário de Orçamentos (`quotes.css`): `lq-black lq-panel`, brilho roxo, campos `quote-form-input` e botões `lq-primary` / `lq-secondary`. Vale para:
+  - login e criar conta da tela inicial (`AuthDialog`/`AuthForm`);
+  - entrar na equipe;
+  - aguardando aprovação;
+  - "Crie sua equipe";
+  - gerar link de convite;
+  - gaveta de permissões.
+
 ## 10. Fora do escopo
 - Uma conta em várias equipes (workspaces múltiplos).
 - E-mail automático de convite (o link é copiado e compartilhado).

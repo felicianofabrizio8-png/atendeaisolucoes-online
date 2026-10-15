@@ -27,7 +27,8 @@
 2. Um **link com limite de usos** usado por duas pessoas ao mesmo tempo não pode passar do limite. O cadastro trava a linha do link; teste de uso esgotado na Task 2.
 3. O **funcionário** não pode transformar o próprio compromisso pessoal em compromisso de equipe, nem passar o dono para outra pessoa, mesmo com uma chamada direta à API. Teste na Task 1.
 4. A **tag pessoal** de uma pessoa não pode ser vista nem anexada por outra, inclusive pelo gestor. Teste na Task 1.
-5. **Antes da migração** de hierarquia, a Agenda não pode quebrar: sem o seletor de escopo, sem tags e com o formulário como hoje. Teste de detecção na Task 6.
+5. Quem **cria a conta pelo link** nunca vê "Crie sua equipe" e só entra depois de confirmar no popup; recusar cria a equipe própria. Testes na Task 2 (SQL) e na Task 5 (tela).
+6. **Antes da migração** de hierarquia, a Agenda não pode quebrar: sem o seletor de escopo, sem tags e com o formulário como hoje. Teste de detecção na Task 6.
 
 ---
 
@@ -41,7 +42,8 @@
 | `src/lib/users.functions.ts` | APIs de links, aprovação e renomear equipe |
 | `src/components/settings/UsersTab.tsx` | Tela Usuários e Permissões redesenhada |
 | `src/components/settings/team/*` (novos) | Gaveta de permissões, links e pendentes |
-| `src/routes/convite.tsx`, `src/auth/AuthContext.tsx` | Entrar pelo link |
+| `src/routes/convite.tsx`, `src/auth/AuthContext.tsx`, `src/components/auth/*` | Entrar pelo link; login e criar conta no estilo Orçamentos |
+| `src/lib/team/invite-link.ts`, `src/components/team/LumePopup.tsx`, `JoinTeamDialog.tsx`, `PendingInviteGate.tsx` (novos) | Confirmação para entrar na equipe e popups pretos/roxos |
 | `src/components/team/WelcomeTeamDialog.tsx` (novo) | "Crie sua equipe" |
 | `src/components/agenda/agenda-model.ts`, `agenda-schema.ts` | Tipos e detecção da hierarquia |
 | `src/components/agenda/useAgendaTags.ts`, `useTeamDirectory.ts` (novos) | Dados de tags e membros |
@@ -481,7 +483,9 @@ git commit -m "feat(agenda): hierarquia pessoal × equipe e tags no banco"
   - `team_invite_link_info(_token text) → jsonb {valid, company, requiresApproval}` (anon)
   - `team_approve_member(_user uuid)`, `team_reject_member(_user uuid)`, `team_rename_company(_name text)`
   - `team_list_users()` passa a incluir `approvalPending`
-- Cadastro: metadado `invite_link` em `auth.users.raw_user_meta_data`.
+- Cadastro: metadado `invite_link` em `auth.users.raw_user_meta_data` (entra sem acesso, aguardando confirmação).
+- `team_my_pending_join() → {state: "confirm"|"waiting", company, requiresApproval?} | null`, `team_join_via_link(_token text DEFAULT NULL) → {status: "joined"|"pending_approval"|"already_member"}`, `team_decline_link_join() → {company}`
+- `team_invite_link_info` logado acrescenta `currentTeam`, `alreadyMember`, `canSwitch`.
 
 - [ ] **Step 1: Escrever os testes (falhando)**
 
@@ -515,7 +519,7 @@ describe.sequential("equipe: convite por link", () => {
     expect((await value<Record<string, unknown>>(`SELECT team_invite_link_info('nao-existe') AS v`)).valid).toBe(false);
   });
 
-  it("cadastro pelo link entra na equipe com o papel e as permissões do link", async () => {
+  it("cadastro pelo link entra na equipe sem acesso, aguardando a confirmação da pessoa", async () => {
     await root();
     const novo = "00000000-0000-4000-8000-0000000000a1";
     await db.query(
@@ -523,9 +527,16 @@ describe.sequential("equipe: convite por link", () => {
       [novo, token],
     );
     expect(await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${novo}'`)).toBe(company);
-    expect(await value<string[]>(`SELECT permissions AS v FROM company_member_access WHERE user_id='${novo}'`)).toEqual(["agenda.manage", "conversations.read"]);
-    expect(await value<boolean>(`SELECT active AS v FROM company_member_access WHERE user_id='${novo}'`)).toBe(true);
+    expect(await value<boolean>(`SELECT active AS v FROM company_member_access WHERE user_id='${novo}'`)).toBe(false);
+    expect(await value<boolean>(`SELECT join_confirmation_pending AS v FROM company_member_access WHERE user_id='${novo}'`)).toBe(true);
     expect(await value<number>(`SELECT uses AS v FROM company_invite_links WHERE token='${token}'`)).toBe(1);
+    await asUser(novo);
+    expect(await value<Record<string, unknown>>(`SELECT team_my_pending_join() AS v`)).toMatchObject({ state: "confirm" });
+    // Sem o token (outro aparelho), a confirmação continua funcionando.
+    expect(await value<Record<string, unknown>>(`SELECT team_join_via_link(NULL) AS v`)).toMatchObject({ status: "joined" });
+    await root();
+    expect(await value<boolean>(`SELECT active AS v FROM company_member_access WHERE user_id='${novo}'`)).toBe(true);
+    expect(await value<string[]>(`SELECT permissions AS v FROM company_member_access WHERE user_id='${novo}'`)).toEqual(["agenda.manage", "conversations.read"]);
   });
 
   it("respeita o limite de usos", async () => {
@@ -536,13 +547,25 @@ describe.sequential("equipe: convite por link", () => {
     ).toBe(true);
   });
 
-  it("link com aprovação deixa pendente até o admin aprovar", async () => {
+  it("recusar o convite cria a equipe própria da pessoa e devolve o uso", async () => {
+    await root();
+    const usesBefore = await value<number>(`SELECT uses AS v FROM company_invite_links WHERE token='${token}'`);
+    await asUser("00000000-0000-4000-8000-0000000000a2");
+    const own = await value<string>(`SELECT (team_decline_link_join()->>'company') AS v`);
+    await root();
+    expect(own).not.toBe(company);
+    expect(await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='00000000-0000-4000-8000-0000000000a2'`)).toBe(own);
+    expect(await value<string>(`SELECT role::text AS v FROM user_roles WHERE user_id='00000000-0000-4000-8000-0000000000a2'`)).toBe("admin");
+    expect(await value<number>(`SELECT uses AS v FROM company_invite_links WHERE token='${token}'`)).toBe(usesBefore - 1);
+  });
+
+  it("link com aprovação: confirma e fica aguardando até o admin aprovar", async () => {
     await root();
     const pend = "00000000-0000-4000-8000-0000000000a4";
     await db.query(`INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES($1,'pend@x.test',jsonb_build_object('invite_link',$2::text))`, [pend, approvalToken]);
-    expect(await value<boolean>(`SELECT active AS v FROM company_member_access WHERE user_id='${pend}'`)).toBe(false);
-    expect(await value<boolean>(`SELECT approval_pending AS v FROM company_member_access WHERE user_id='${pend}'`)).toBe(true);
     await asUser(pend);
+    expect(await value<Record<string, unknown>>(`SELECT team_join_via_link('${approvalToken}') AS v`)).toMatchObject({ status: "pending_approval" });
+    expect(await value<Record<string, unknown>>(`SELECT team_my_pending_join() AS v`)).toMatchObject({ state: "waiting" });
     expect(await value<string | null>(`SELECT public.current_company_id()::text AS v`)).toBeNull();
     await asUser(empA);
     expect(await fails(`SELECT team_approve_member('${pend}')`)).toBe(true);
@@ -550,6 +573,34 @@ describe.sequential("equipe: convite por link", () => {
     await db.query(`SELECT team_approve_member('${pend}')`);
     const users = await value<Array<{ id: string; approvalPending: boolean; active: boolean }>>(`SELECT team_list_users() AS v`);
     expect(users.find((u) => u.id === pend)).toMatchObject({ active: true, approvalPending: false });
+  });
+
+  it("conta existente sozinha na própria equipe troca de equipe; com colegas é recusada", async () => {
+    await root();
+    const solo = "00000000-0000-4000-8000-0000000000b1";
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'solo@x.test')`, [solo]);
+    const fresh = (await value<{ token: string }>(
+      `SELECT jsonb_build_object('token', token) AS v FROM company_invite_links WHERE company_id='${company}' AND revoked_at IS NULL AND max_uses IS NULL LIMIT 1`,
+    )).token;
+    await asUser(solo);
+    const info = await value<Record<string, unknown>>(`SELECT team_invite_link_info('${fresh}') AS v`);
+    expect(info).toMatchObject({ valid: true, canSwitch: true });
+    await db.query(`SELECT team_join_via_link('${fresh}')`);
+    await root();
+    expect(await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${solo}'`)).toBe(company);
+    expect(await value<number>(`SELECT count(*)::int AS v FROM user_roles WHERE user_id='${solo}' AND role='admin'`)).toBe(0);
+    // O dono da outra empresa tem colega (outsider sozinho → damos um colega e tentamos).
+    await db.query(`INSERT INTO auth.users(id,email) VALUES('00000000-0000-4000-8000-0000000000b2','colega@x.test')`);
+    await db.query(`UPDATE profiles SET company_id=(SELECT company_id FROM profiles WHERE id='${outsider}') WHERE id='00000000-0000-4000-8000-0000000000b2'`);
+    await db.query(`UPDATE company_member_access SET company_id=(SELECT company_id FROM profiles WHERE id='${outsider}') WHERE user_id='00000000-0000-4000-8000-0000000000b2'`);
+    await asUser(outsider);
+    expect((await value<Record<string, unknown>>(`SELECT team_invite_link_info('${fresh}') AS v`)).canSwitch).toBe(false);
+    expect(await fails(`SELECT team_join_via_link('${fresh}')`)).toBe(true);
+  });
+
+  it("perfil continua sem poder trocar de empresa direto", async () => {
+    await asUser(empA);
+    expect(await fails(`UPDATE profiles SET company_id=(SELECT company_id FROM profiles WHERE id='${outsider}') WHERE id='${empA}'`)).toBe(true);
   });
 
   it("link revogado ou vencido não funciona", async () => {
@@ -593,6 +644,7 @@ Expected: FAIL com "function team_create_invite_link(...) does not exist".
 -- ---------- 4. Convite por link e aprovação ----------
 ALTER TABLE public.company_member_access
   ADD COLUMN IF NOT EXISTS approval_pending boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS join_confirmation_pending boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS joined_via_link uuid;
 
 CREATE TABLE IF NOT EXISTS public.company_invite_links (
@@ -658,7 +710,14 @@ BEGIN
     RETURN jsonb_build_object('valid', false, 'company', NULL, 'requiresApproval', false);
   END IF;
   SELECT name INTO v_name FROM public.companies WHERE id = v_link.company_id;
-  RETURN jsonb_build_object('valid', true, 'company', v_name, 'requiresApproval', v_link.requires_approval);
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('valid', true, 'company', v_name, 'requiresApproval', v_link.requires_approval);
+  END IF;
+  -- Logado: em qual equipe está e se pode trocar (só sendo a única pessoa da equipe atual).
+  RETURN jsonb_build_object('valid', true, 'company', v_name, 'requiresApproval', v_link.requires_approval,
+    'currentTeam', (SELECT c.name FROM public.profiles p JOIN public.companies c ON c.id = p.company_id WHERE p.id = auth.uid()),
+    'alreadyMember', EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.company_id = v_link.company_id),
+    'canSwitch', NOT EXISTS (SELECT 1 FROM public.profiles me JOIN public.profiles other ON other.company_id = me.company_id AND other.id <> me.id WHERE me.id = auth.uid()));
 END; $$;
 GRANT EXECUTE ON FUNCTION public.team_invite_link_info(text) TO anon, authenticated;
 
@@ -718,7 +777,7 @@ DECLARE
   v_link_token text := NEW.raw_user_meta_data->>'invite_link';
   v_role app_role := 'admin';
   v_active boolean := true;
-  v_pending boolean := false;
+  v_confirm boolean := false;
   v_permissions text[] := ARRAY['conversations.read','conversations.reply','quotes.manage','agenda.manage','products.view'];
 BEGIN
   IF EXISTS (SELECT 1 FROM profiles WHERE id = NEW.id) THEN RETURN NEW; END IF;
@@ -740,9 +799,9 @@ BEGIN
     v_company := v_link.company_id;
     v_role := v_link.role;
     v_permissions := v_link.permissions;
-    v_active := NOT v_link.requires_approval;
-    v_pending := v_link.requires_approval;
-    UPDATE company_invite_links SET uses = uses + 1 WHERE id = v_link.id;
+    v_active := false;          -- só depois de a pessoa confirmar no popup
+    v_confirm := true;
+    UPDATE company_invite_links SET uses = uses + 1 WHERE id = v_link.id;  -- reserva o uso
   ELSE
     INSERT INTO companies(name) VALUES (COALESCE(NULLIF(trim(NEW.raw_user_meta_data->>'company_name'), ''), 'Minha Empresa'))
       RETURNING id INTO v_company;
@@ -753,14 +812,118 @@ BEGIN
   INSERT INTO profiles(id, company_id, display_name, email)
   VALUES (NEW.id, v_company, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)), NEW.email);
   INSERT INTO user_roles(company_id, user_id, role) VALUES (v_company, NEW.id, v_role);
-  INSERT INTO company_member_access(company_id, user_id, active, permissions, approval_pending, joined_via_link)
-  VALUES (v_company, NEW.id, v_active, v_permissions, v_pending, v_link.id);
+  INSERT INTO company_member_access(company_id, user_id, active, permissions, approval_pending, join_confirmation_pending, joined_via_link)
+  VALUES (v_company, NEW.id, v_active, v_permissions, false, v_confirm, v_link.id);
   IF v_token IS NOT NULL THEN
     UPDATE company_invites SET accepted_at = now(), accepted_by = NEW.id WHERE id = v_inv.id;
   END IF;
   RETURN NEW;
 END; $$;
 REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
+
+-- Troca de empresa do perfil: liberada só pelas RPCs de convite (marca da transação).
+CREATE OR REPLACE FUNCTION public.team_guard_profile() RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND (
+       (NEW.company_id IS DISTINCT FROM OLD.company_id AND COALESCE(current_setting('lume.team_move', true), '') <> 'on')
+    OR NEW.id IS DISTINCT FROM OLD.id
+    OR (OLD.id <> auth.uid() AND NOT public.has_role(auth.uid(), OLD.company_id, 'admin'))) THEN
+    RAISE EXCEPTION 'Alteração de perfil não autorizada' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END; $$;
+REVOKE ALL ON FUNCTION public.team_guard_profile() FROM PUBLIC, anon, authenticated;
+
+-- Link válido para um uso novo?
+CREATE OR REPLACE FUNCTION public.team_link_usable(_link public.company_invite_links)
+RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+  SELECT _link.id IS NOT NULL AND _link.revoked_at IS NULL
+    AND (_link.expires_at IS NULL OR _link.expires_at > now())
+    AND (_link.max_uses IS NULL OR _link.uses < _link.max_uses);
+$$;
+
+-- Estado do convite de quem está logado (funciona mesmo sem acesso ativo).
+CREATE OR REPLACE FUNCTION public.team_my_pending_join()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_access public.company_member_access; v_name text; v_link public.company_invite_links;
+BEGIN
+  SELECT a.* INTO v_access FROM public.company_member_access a JOIN public.profiles p
+    ON p.id = a.user_id AND p.company_id = a.company_id WHERE a.user_id = auth.uid();
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  SELECT name INTO v_name FROM public.companies WHERE id = v_access.company_id;
+  IF v_access.join_confirmation_pending THEN
+    SELECT * INTO v_link FROM public.company_invite_links WHERE id = v_access.joined_via_link;
+    RETURN jsonb_build_object('state', 'confirm', 'company', v_name, 'requiresApproval', COALESCE(v_link.requires_approval, false));
+  END IF;
+  IF v_access.approval_pending THEN RETURN jsonb_build_object('state', 'waiting', 'company', v_name); END IF;
+  RETURN NULL;
+END; $$;
+
+-- Confirmar a entrada: pendência do cadastro (sem token) ou troca de equipe de conta existente.
+CREATE OR REPLACE FUNCTION public.team_join_via_link(_token text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_profile public.profiles;
+  v_access public.company_member_access;
+  v_link public.company_invite_links;
+  v_old uuid;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'Entre na sua conta' USING ERRCODE = '42501'; END IF;
+  SELECT * INTO v_profile FROM public.profiles WHERE id = v_uid;
+  SELECT * INTO v_access FROM public.company_member_access WHERE user_id = v_uid AND company_id = v_profile.company_id;
+  IF v_access.join_confirmation_pending THEN
+    SELECT * INTO v_link FROM public.company_invite_links WHERE id = v_access.joined_via_link;
+    UPDATE public.company_member_access
+      SET join_confirmation_pending = false,
+          active = NOT COALESCE(v_link.requires_approval, false),
+          approval_pending = COALESCE(v_link.requires_approval, false)
+      WHERE user_id = v_uid AND company_id = v_profile.company_id;
+    RETURN jsonb_build_object('status', CASE WHEN v_link.requires_approval THEN 'pending_approval' ELSE 'joined' END);
+  END IF;
+  IF _token IS NULL THEN RAISE EXCEPTION 'Convite não encontrado'; END IF;
+  SELECT * INTO v_link FROM public.company_invite_links WHERE token = _token FOR UPDATE;
+  IF NOT public.team_link_usable(v_link) THEN RAISE EXCEPTION 'Link de convite inválido, expirado ou esgotado'; END IF;
+  IF v_profile.company_id = v_link.company_id THEN RETURN jsonb_build_object('status', 'already_member'); END IF;
+  IF EXISTS (SELECT 1 FROM public.profiles p WHERE p.company_id = v_profile.company_id AND p.id <> v_uid) THEN
+    RAISE EXCEPTION 'Sua conta faz parte de uma equipe com outras pessoas. Use outro e-mail para entrar nesta equipe.';
+  END IF;
+  v_old := v_profile.company_id;
+  PERFORM set_config('lume.team_move', 'on', true);
+  DELETE FROM public.user_roles WHERE user_id = v_uid AND company_id = v_old;
+  DELETE FROM public.company_member_access WHERE user_id = v_uid AND company_id = v_old;
+  UPDATE public.profiles SET company_id = v_link.company_id WHERE id = v_uid;
+  INSERT INTO public.user_roles(company_id, user_id, role) VALUES (v_link.company_id, v_uid, v_link.role);
+  INSERT INTO public.company_member_access(company_id, user_id, active, permissions, approval_pending, joined_via_link)
+  VALUES (v_link.company_id, v_uid, NOT v_link.requires_approval, v_link.permissions, v_link.requires_approval, v_link.id);
+  UPDATE public.company_invite_links SET uses = uses + 1 WHERE id = v_link.id;
+  PERFORM set_config('lume.team_move', 'off', true);
+  RETURN jsonb_build_object('status', CASE WHEN v_link.requires_approval THEN 'pending_approval' ELSE 'joined' END);
+END; $$;
+
+-- Recusar o convite do cadastro: a pessoa ganha a própria equipe (admin) e o uso volta.
+CREATE OR REPLACE FUNCTION public.team_decline_link_join()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_uid uuid := auth.uid(); v_profile public.profiles; v_access public.company_member_access; v_company uuid;
+BEGIN
+  SELECT * INTO v_profile FROM public.profiles WHERE id = v_uid;
+  SELECT * INTO v_access FROM public.company_member_access WHERE user_id = v_uid AND company_id = v_profile.company_id;
+  IF NOT FOUND OR NOT v_access.join_confirmation_pending THEN RAISE EXCEPTION 'Não há convite pendente'; END IF;
+  UPDATE public.company_invite_links SET uses = GREATEST(uses - 1, 0) WHERE id = v_access.joined_via_link;
+  INSERT INTO public.companies(name) VALUES ('Minha Empresa') RETURNING id INTO v_company;
+  INSERT INTO public.company_settings(company_id) VALUES (v_company);
+  PERFORM set_config('lume.team_move', 'on', true);
+  DELETE FROM public.user_roles WHERE user_id = v_uid AND company_id = v_profile.company_id;
+  DELETE FROM public.company_member_access WHERE user_id = v_uid AND company_id = v_profile.company_id;
+  UPDATE public.profiles SET company_id = v_company WHERE id = v_uid;
+  INSERT INTO public.user_roles(company_id, user_id, role) VALUES (v_company, v_uid, 'admin');
+  INSERT INTO public.company_member_access(company_id, user_id) VALUES (v_company, v_uid);
+  PERFORM set_config('lume.team_move', 'off', true);
+  RETURN jsonb_build_object('company', v_company);
+END; $$;
+
+GRANT EXECUTE ON FUNCTION public.team_my_pending_join(), public.team_join_via_link(text),
+  public.team_decline_link_join() TO authenticated;
 ```
 
 - [ ] **Step 4: Rodar a migração inteira com os testes antigos de equipe**
@@ -1380,6 +1543,10 @@ export function InviteLinksSection({ links, onChanged }: { links: InviteLink[]; 
 }
 ```
 
+- [ ] **Step 5b: Visual Orçamentos nos popups da equipe**
+
+O formulário "Gerar link" abre em `LumePopup` (Task 5, Step 4; crie o componente já aqui se a Task 5 ainda não rodou), com campos `quote-form-input`, chips `lq-chips` e botões `lq-primary`/`lq-secondary`. A gaveta de permissões usa as classes `lq-black lq-panel` no `SheetContent`, com interruptores roxos (`bg-violet-600`).
+
 - [ ] **Step 6: Montar em `UsersTab.tsx`**
 
 - A consulta (`query`) passa a buscar também `listInviteLinks()`, só para admin.
@@ -1402,87 +1569,288 @@ git commit -m "feat(equipe): Usuários e Permissões com perfis, aprovação e l
 
 ---
 
-### Task 5: Entrar pelo link e boas-vindas "Crie sua equipe"
+### Task 5: Entrar pelo link com confirmação, popups no estilo Orçamentos e login/criar conta
 
 **Files:**
-- Modify: `src/routes/convite.tsx`
-- Modify: `src/auth/AuthContext.tsx` (função de cadastro aceita `inviteLink`)
-- Create: `src/components/team/WelcomeTeamDialog.tsx`
-- Modify: `src/components/AppShell.tsx` (montar o diálogo)
-- Test: `src/routes/__tests__/invite-link-page.test.tsx`
+- Create: `src/lib/team/invite-link.ts` (guardar token e chamar as RPCs de convite)
+- Create: `src/components/team/LumePopup.tsx` (moldura única dos popups: `lq-black lq-panel` + brilho roxo)
+- Create: `src/components/team/JoinTeamDialog.tsx` ("Entrar na equipe X?" / "Aguardando aprovação")
+- Create: `src/components/team/PendingInviteGate.tsx` (popup global enquanto houver convite pendente)
+- Create: `src/components/team/WelcomeTeamDialog.tsx` ("Crie sua equipe")
+- Modify: `src/routes/convite.tsx` (`?link=`), `src/auth/AuthContext.tsx` (`signUp` aceita `inviteLink`), `src/components/auth/AuthDialog.tsx` e `AuthForm.tsx` (visual Orçamentos + modo convite), `src/routes/__root.tsx` (montar o portão e as boas-vindas)
+- Test: `src/routes/__tests__/invite-link-flow.test.tsx`
 
 **Interfaces:**
-- Consumes: RPC `team_invite_link_info`, `renameTeam` (Task 4).
-- Produces: `signUp(email, password, name, companyName?, options?: { inviteLink?: string })`. Ler a assinatura atual em `AuthContext.tsx:~130` e acrescentar só o parâmetro opcional, que vai para `options.data.invite_link`.
+- Consumes: RPCs da Task 2 (`team_invite_link_info`, `team_join_via_link`, `team_decline_link_join`, `team_my_pending_join`), `renameTeam` (Task 4).
+- Produces:
 
-- [ ] **Step 1: Teste (falhando)**
+```ts
+// src/lib/team/invite-link.ts
+export interface LinkInfo { valid: boolean; company: string | null; requiresApproval: boolean;
+  currentTeam?: string | null; alreadyMember?: boolean; canSwitch?: boolean }
+export type PendingJoin = { state: "confirm"; company: string; requiresApproval: boolean } | { state: "waiting"; company: string } | null;
+export function savePendingInvite(token: string): void
+export function readPendingInvite(): string | null
+export function clearPendingInvite(): void
+export function linkInfo(token: string): Promise<LinkInfo>
+export function myPendingJoin(): Promise<PendingJoin>
+export function joinViaLink(token: string | null): Promise<"joined" | "pending_approval" | "already_member">
+export function declineLinkJoin(): Promise<void>
+// src/components/team/LumePopup.tsx
+export function LumePopup(props: { open: boolean; title: string; description?: ReactNode; onClose?: () => void;
+  children?: ReactNode; footer?: ReactNode; size?: "sm" | "md" }): JSX.Element | null
+// AuthContext.signUp({ email, password, displayName, companyName, inviteLink? })
+// AuthDialog/AuthForm ganham a prop opcional `invite?: { token: string; company: string | null }`
+```
+
+- [ ] **Step 1: Testes (falhando)**
 
 ```tsx
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
-const rpc = vi.hoisted(() => vi.fn());
-vi.mock("@tanstack/react-router", () => ({
-  createFileRoute: () => (opts: unknown) => ({ ...(opts as object), useSearch: () => ({ link: "tok" }) }),
-  useNavigate: () => vi.fn(),
-  Link: ({ children }: { children: unknown }) => children,
+const api = vi.hoisted(() => ({
+  pending: null as unknown,
+  info: { valid: true, company: "Clínica Sol", requiresApproval: false, currentTeam: "Minha Empresa", alreadyMember: false, canSwitch: true },
+  join: vi.fn(),
+  decline: vi.fn(),
+  saved: null as string | null,
 }));
-vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc } }));
-vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ user: null, signUp: vi.fn() }) }));
-import { InviteLinkJoin } from "@/routes/convite";
+vi.mock("@/lib/team/invite-link", () => ({
+  myPendingJoin: async () => api.pending,
+  linkInfo: async () => api.info,
+  joinViaLink: api.join,
+  declineLinkJoin: api.decline,
+  readPendingInvite: () => api.saved,
+  clearPendingInvite: () => { api.saved = null; },
+  savePendingInvite: (token: string) => { api.saved = token; },
+}));
+vi.mock("@/auth/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" }, signOut: vi.fn() }) }));
+import { PendingInviteGate } from "@/components/team/PendingInviteGate";
 
-describe("entrar pelo link", () => {
-  it("mostra o nome da equipe e pede cadastro", async () => {
-    rpc.mockResolvedValue({ data: { valid: true, company: "Clínica Sol", requiresApproval: true }, error: null });
-    render(<InviteLinkJoin token="tok" />);
-    expect(await screen.findByText(/Clínica Sol/)).toBeInTheDocument();
-    expect(screen.getByText(/aprovação do administrador/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /criar conta e entrar/i })).toBeInTheDocument();
+beforeEach(() => { api.pending = null; api.saved = null; api.join.mockReset(); api.decline.mockReset(); });
+afterEach(cleanup);
+
+describe("entrar na equipe pelo link", () => {
+  it("conta criada pelo link: popup pede confirmação e não fala em criar equipe", async () => {
+    api.pending = { state: "confirm", company: "Clínica Sol", requiresApproval: false };
+    api.join.mockResolvedValue("joined");
+    render(<PendingInviteGate />);
+    expect(await screen.findByRole("dialog", { name: /entrar na equipe clínica sol/i })).toBeInTheDocument();
+    expect(screen.queryByText(/crie sua equipe/i)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /entrar na equipe/i }));
+    await waitFor(() => expect(api.join).toHaveBeenCalledWith(null));
   });
-  it("link inválido explica e não mostra formulário", async () => {
-    rpc.mockResolvedValue({ data: { valid: false, company: null, requiresApproval: false }, error: null });
-    render(<InviteLinkJoin token="tok" />);
-    expect(await screen.findByText(/link expirou, foi revogado ou atingiu o limite/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /criar conta/i })).toBeNull();
+
+  it("conta existente com link guardado: avisa a troca de equipe e confirma com o token", async () => {
+    api.saved = "tok";
+    api.join.mockResolvedValue("pending_approval");
+    render(<PendingInviteGate />);
+    expect(await screen.findByText(/sua equipe atual “minha empresa” fica sem acesso/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /entrar na equipe/i }));
+    await waitFor(() => expect(api.join).toHaveBeenCalledWith("tok"));
+    expect(await screen.findByText(/aguardando aprovação/i)).toBeInTheDocument();
+  });
+
+  it("conta com colegas não pode trocar: explica e não oferece confirmar", async () => {
+    api.saved = "tok";
+    api.info = { ...api.info, canSwitch: false };
+    render(<PendingInviteGate />);
+    expect(await screen.findByText(/use outro e-mail/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /entrar na equipe/i })).toBeNull();
+  });
+
+  it("recusar o convite do cadastro cria a equipe própria", async () => {
+    api.pending = { state: "confirm", company: "Clínica Sol", requiresApproval: false };
+    render(<PendingInviteGate />);
+    await userEvent.click(await screen.findByRole("button", { name: /agora não/i }));
+    await waitFor(() => expect(api.decline).toHaveBeenCalled());
   });
 });
 ```
 
 - [ ] **Step 2: Rodar e ver falhar**
 
-Run: `npx vitest run src/routes/__tests__/invite-link-page.test.tsx`
-Expected: FAIL, porque `InviteLinkJoin` não está exportado.
+Run: `npx vitest run src/routes/__tests__/invite-link-flow.test.tsx`
+Expected: FAIL, porque `@/components/team/PendingInviteGate` não existe.
 
-- [ ] **Step 3: Implementar `InviteLinkJoin` em `convite.tsx`**
+- [ ] **Step 3: `invite-link.ts`**
 
-Exportar o componente `InviteLinkJoin({ token })`:
-- busca `supabase.rpc("team_invite_link_info", { _token: token })`;
-- se `valid` for falso, mostra "Este link expirou, foi revogado ou atingiu o limite. Peça um novo ao administrador.";
-- se valer, mostra "Você foi convidado para **{company}**", o aviso "Seu acesso começa após a aprovação do administrador." quando `requiresApproval`, e o formulário (nome, e-mail, senha) com o botão "Criar conta e entrar", que chama `signUp(email, password, name, undefined, { inviteLink: token })`;
-- se `user` já estiver logado, mostra "Você já está conectado. Para entrar nesta equipe, saia e crie a conta com outro e-mail." (uma empresa por conta).
+```ts
+import { supabase } from "@/integrations/supabase/client";
+import { teamRpc } from "./client";
 
-Na rota, ler `?link=`; com ele, renderizar `InviteLinkJoin`, e sem ele manter o fluxo atual de `?token=`.
+const KEY = "lume.pendingInvite";
+export interface LinkInfo {
+  valid: boolean;
+  company: string | null;
+  requiresApproval: boolean;
+  currentTeam?: string | null;
+  alreadyMember?: boolean;
+  canSwitch?: boolean;
+}
+export type PendingJoin =
+  | { state: "confirm"; company: string; requiresApproval: boolean }
+  | { state: "waiting"; company: string }
+  | null;
 
-- [ ] **Step 4: `WelcomeTeamDialog.tsx`**
+export function savePendingInvite(token: string) {
+  try { localStorage.setItem(KEY, token); } catch { /* navegação privada */ }
+}
+export function readPendingInvite(): string | null {
+  try { return localStorage.getItem(KEY); } catch { return null; }
+}
+export function clearPendingInvite() {
+  try { localStorage.removeItem(KEY); } catch { /* navegação privada */ }
+}
+export async function linkInfo(token: string): Promise<LinkInfo> {
+  const { data, error } = await (supabase as unknown as {
+    rpc: (n: string, a: object) => Promise<{ data: LinkInfo; error: { message: string } | null }>;
+  }).rpc("team_invite_link_info", { _token: token });
+  if (error) throw new Error(error.message);
+  return data;
+}
+export const myPendingJoin = () => teamRpc<PendingJoin>("team_my_pending_join");
+export async function joinViaLink(token: string | null) {
+  const result = await teamRpc<{ status: "joined" | "pending_approval" | "already_member" }>(
+    "team_join_via_link",
+    { _token: token },
+  );
+  return result.status;
+}
+export async function declineLinkJoin() {
+  await teamRpc("team_decline_link_join");
+}
+```
 
-Diálogo que abre uma vez (marca em `localStorage` `lume.welcomeTeam.{companyId}`, com try/catch) quando `isAdmin` e o nome da empresa é "Minha Empresa":
-- título "Crie sua equipe" e o campo "Nome da equipe";
-- "Continuar" chama `renameTeam(name)` e depois mostra "Convide sua equipe", com o botão "Gerar link de convite" que abre as Configurações na aba usuários (`SettingsRedirect tab="usuarios"`) e "Agora não".
+- [ ] **Step 4: `LumePopup.tsx`, a moldura padrão (igual ao formulário de Orçamentos)**
 
-Montar no `AppShell` ao lado dos outros elementos globais.
+```tsx
+import { useEffect, type ReactNode } from "react";
+import { X } from "lucide-react";
+import "@/components/orcamentos/quotes.css";
 
-- [ ] **Step 5: Rodar e ver passar**
+/** Popup preto com brilho roxo — o mesmo desenho do formulário de Orçamentos. */
+export function LumePopup({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+  footer,
+  size = "md",
+}: {
+  open: boolean;
+  title: string;
+  description?: ReactNode;
+  onClose?: () => void;
+  children?: ReactNode;
+  footer?: ReactNode;
+  size?: "sm" | "md";
+}) {
+  useEffect(() => {
+    if (!open || !onClose) return;
+    const close = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="lq-black-backdrop" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+        className="lq-black lq-panel w-full"
+        style={{ maxWidth: size === "sm" ? 440 : 560 }}
+      >
+        <span className="lq-panel-glow" aria-hidden="true" />
+        <div className="lq-form-head">
+          <div className="lq-form-title">
+            <div>
+              <h2>{title}</h2>
+              {description && <p>{description}</p>}
+            </div>
+            {onClose && (
+              <button type="button" onClick={onClose} aria-label="Fechar" className="lq-close">
+                <X className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+        </div>
+        {children && <div className="lq-form-body">{children}</div>}
+        {footer && <div className="lq-form-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+```
 
-Run: `npx vitest run src/routes/__tests__/invite-link-page.test.tsx && npx tsc --noEmit -p .`
+- [ ] **Step 5: `JoinTeamDialog.tsx` e `PendingInviteGate.tsx`**
+
+`JoinTeamDialog` recebe `{ company, requiresApproval, mode: "signup" | "switch", currentTeam?, canSwitch?, onConfirm, onDecline, onClose? }` e usa `LumePopup` com o título `Entrar na equipe ${company}?`. Corpo:
+- Com `requiresApproval`: "Depois de confirmar, o administrador precisa aprovar seu acesso."
+- Em `switch` com `canSwitch`: `Sua equipe atual “${currentTeam}” fica sem acesso. Os dados dela ficam guardados.`
+- Em `switch` sem `canSwitch`: "Sua conta faz parte de uma equipe com outras pessoas. Use outro e-mail para entrar nesta equipe." Nesse caso, o rodapé só tem "Fechar".
+
+Rodapé: `lq-secondary` "Agora não" (`onDecline`) e `lq-primary` "Entrar na equipe" (`onConfirm`).
+
+`PendingInviteGate`:
+- Com `user` logado, ao montar, busca `myPendingJoin()`.
+  - `confirm`: mostra `JoinTeamDialog` em modo `signup`.
+    - Confirmar: `joinViaLink(null)`. Com `joined`: `clearPendingInvite()` e `window.location.reload()`. Com `pending_approval`: mostra o estado "aguardando".
+    - Agora não: `declineLinkJoin()`, `clearPendingInvite()` e `reload()`.
+  - `waiting`: `LumePopup` "Aguardando aprovação de {company}", com o texto "Avisaremos quando o administrador liberar seu acesso." e o botão "Sair" (`signOut`).
+  - Sem pendência, mas com `readPendingInvite()`: chama `linkInfo(token)`.
+    - `valid && !alreadyMember`: `JoinTeamDialog` em modo `switch`. Confirmar: `joinViaLink(token)`. Agora não: `clearPendingInvite()` e fechar.
+    - Inválido ou `alreadyMember`: `clearPendingInvite()` em silêncio.
+- Erros aparecem no próprio popup (`<p role="alert">`).
+
+- [ ] **Step 6: Rota `/convite?link=` e login/criar conta no estilo Orçamentos**
+
+`convite.tsx`:
+- Com `link`: chamar `savePendingInvite(link)`.
+  - Sem login: abrir `AuthDialog` com `invite={{ token: link, company: info.company }}`. Nunca abrir "criar equipe".
+  - Com login: redirecionar para `/`, onde o `PendingInviteGate` mostra o popup de confirmação.
+- Link inválido: `LumePopup` "Convite indisponível", com o texto "Este link expirou, foi revogado ou atingiu o limite. Peça um novo ao administrador."
+- O fluxo de `?token=` (convite por e-mail) não muda.
+
+`AuthContext.signUp`: aceitar `inviteLink?: string`. Com ele, enviar `data: { display_name, invite_link }` sem `company_name`.
+
+`AuthDialog`/`AuthForm`, visual de Orçamentos:
+- a moldura vira `LumePopup` (ou as mesmas classes `lq-black lq-panel` + `lq-panel-glow` direto no conteúdo do Dialog);
+- campos com `className="quote-form-input"` e rótulos `lq-field-label`;
+- alternância Entrar/Criar conta com `lq-chips` (`aria-pressed`);
+- botão principal `lq-primary`, links secundários `lq-secondary`.
+
+Com a prop `invite`:
+- faixa no topo `Convite para ${invite.company}: entre ou crie sua conta para continuar.`;
+- o campo "Nome da empresa" some;
+- `signUp({ ..., inviteLink: invite.token })`;
+- depois do cadastro, a mensagem diz "Confirme seu e-mail e entre para aceitar o convite."
+
+- [ ] **Step 7: `WelcomeTeamDialog` e montagem global**
+
+`WelcomeTeamDialog` usa `LumePopup` com o título "Crie sua equipe", o campo "Nome da equipe" (`quote-form-input`) e "Continuar" (`lq-primary`), que chama `renameTeam`. Depois mostra "Convide sua equipe", com "Gerar link de convite" (abre Configurações › Usuários) e "Agora não".
+- Abre só para admin, quando o nome da empresa é "Minha Empresa" e **não existe pendência de convite** (`myPendingJoin() === null` e `readPendingInvite() === null`).
+- A marca de "já visto" fica em `localStorage`, com try/catch.
+
+Em `src/routes/__root.tsx`, montar `<PendingInviteGate />` e `<WelcomeTeamDialog />` dentro do provedor de autenticação, fora do controle de acesso, porque a pessoa pendente não tem acesso às páginas.
+
+- [ ] **Step 8: Rodar e ver passar**
+
+Run: `npx vitest run src/routes/__tests__/invite-link-flow.test.tsx && npx tsc --noEmit -p .`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/routes/convite.tsx src/auth/AuthContext.tsx src/components/team/WelcomeTeamDialog.tsx src/components/AppShell.tsx src/routes/__tests__/invite-link-page.test.tsx
-git commit -m "feat(equipe): entrar pelo link e boas-vindas para criar a equipe"
+git add src/lib/team/invite-link.ts src/components/team src/routes/convite.tsx src/routes/__root.tsx src/auth/AuthContext.tsx src/components/auth src/routes/__tests__/invite-link-flow.test.tsx
+git commit -m "feat(equipe): entrar pelo link com confirmação e popups no estilo Orçamentos"
 ```
 
 ---
