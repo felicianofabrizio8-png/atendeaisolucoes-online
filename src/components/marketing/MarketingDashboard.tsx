@@ -5,16 +5,17 @@ import {
   CalendarDays,
   CheckCheck,
   Images,
+  Library,
   Megaphone,
   Music2,
+  Send,
+  Sparkles,
   Upload,
-  Library,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingHero } from "./MarketingHero";
 import { LumeNumber } from "./MarketingMotion";
-import { MarketingArtwork } from "./MarketingArtwork";
 
 import {
   apiListMedia,
@@ -33,6 +34,23 @@ interface Overview {
   planned: number;
   upcoming: MarketingScheduleRow[];
   contents: MarketingContentRow[];
+  /** Active schedule entries per day, today first, for the next seven days. */
+  week: { date: Date; count: number }[];
+}
+
+function nextSevenDays(schedule: MarketingScheduleRow[]) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const count = schedule.filter((s) => {
+      if (s.status !== "planned" && s.status !== "queued") return false;
+      const at = new Date(s.scheduled_at);
+      return at.toDateString() === date.toDateString();
+    }).length;
+    return { date, count };
+  });
 }
 const channelLabel = { instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp" };
 const formatLabel = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "Mensagem" };
@@ -66,6 +84,7 @@ export function MarketingDashboard({
             .sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at))
             .slice(0, 3),
           contents,
+          week: nextSevenDays(schedule),
         });
       })
       .catch(() => {
@@ -105,10 +124,6 @@ export function MarketingDashboard({
       <MarketingHero onCreate={() => onNavigate("generator")} />
       <div className="mkt-hero-grid">
         <section className="mkt-next mkt-card">
-          <span className="mkt-eyebrow">SEU PRÓXIMO PASSO</span>
-          <span className="mkt-next-symbol" aria-hidden>
-            <ArrowUpRight />
-          </span>
           <h2>
             {next?.title ??
               (error ? "Vamos retomar de onde parou." : "Preparando sua visão geral…")}
@@ -120,10 +135,12 @@ export function MarketingDashboard({
                 : "Reunindo sua biblioteca, conteúdos e agenda.")}
           </p>
           {error ? (
-            <Button onClick={() => setReload((v) => v + 1)}>Tentar novamente</Button>
+            <Button className="mkt-primary" onClick={() => setReload((v) => v + 1)}>
+              Tentar novamente
+            </Button>
           ) : (
             next && (
-              <Button onClick={() => onNavigate(next.target)}>
+              <Button className="mkt-primary" onClick={() => onNavigate(next.target)}>
                 {next.action}
                 <ArrowRight />
               </Button>
@@ -133,22 +150,29 @@ export function MarketingDashboard({
         <div className="mkt-metrics" aria-label="Resumo do marketing" aria-busy={!data && !error}>
           <button
             data-lume-light
-            className="mkt-metric mkt-metric-review"
+            className="mkt-metric mkt-metric-vivid"
             onClick={() => onNavigate("approvals")}
           >
             <span className="mkt-metric-top">
-              <CheckCheck size={17} />
+              <CheckCheck size={16} />
               Para revisar
-              <ArrowUpRight size={16} />
+              <ArrowUpRight size={15} />
             </span>
             <strong>{<LumeNumber value={data?.drafts ?? null} />}</strong>
+            <span className="mkt-metric-ratio" aria-hidden>
+              <i
+                style={{
+                  transform: `scaleX(${
+                    data && data.drafts + data.approved > 0
+                      ? data.approved / (data.drafts + data.approved)
+                      : 0
+                  })`,
+                }}
+              />
+            </span>
             <span className="mkt-metric-foot">
-              <i />
               {value("approved")}{" "}
               {data?.approved === 1 ? "conteúdo aprovado" : "conteúdos aprovados"}
-            </span>
-            <span className="mkt-metric-art" aria-hidden>
-              <MarketingArtwork kind="prism" />
             </span>
           </button>
           <button
@@ -157,15 +181,20 @@ export function MarketingDashboard({
             onClick={() => onNavigate("schedule")}
           >
             <span className="mkt-metric-top">
-              <CalendarDays size={17} />
+              <CalendarDays size={16} />
               Na programação
-              <ArrowUpRight size={16} />
+              <ArrowUpRight size={15} />
             </span>
             <strong>{<LumeNumber value={data?.planned ?? null} />}</strong>
-            <span className="mkt-metric-foot">Agendamentos planejados</span>
-            <span className="mkt-metric-art" aria-hidden>
-              <MarketingArtwork kind="capsule" />
+            <span className="mkt-week" aria-hidden>
+              {(data?.week ?? nextSevenDays([])).map(({ date, count }, i) => (
+                <span key={i} data-today={i === 0 || undefined} data-busy={count > 0 || undefined}>
+                  <i style={{ animationDelay: `${120 + i * 60}ms` }} />
+                  {date.toLocaleDateString("pt-BR", { weekday: "narrow" })}
+                </span>
+              ))}
             </span>
+            <span className="mkt-metric-foot">Agendamentos nos próximos dias</span>
           </button>
           <button
             data-lume-light
@@ -173,15 +202,12 @@ export function MarketingDashboard({
             onClick={() => onNavigate("library")}
           >
             <span className="mkt-metric-top">
-              <Images size={17} />
+              <Images size={16} />
               Seu acervo
-              <ArrowUpRight size={16} />
+              <ArrowUpRight size={15} />
             </span>
             <strong>{<LumeNumber value={data?.media ?? null} />}</strong>
             <span className="mkt-metric-foot">Fotos e vídeos na biblioteca</span>
-            <span className="mkt-metric-art" aria-hidden>
-              <MarketingArtwork kind="wave" />
-            </span>
           </button>
         </div>
       </div>
@@ -191,52 +217,28 @@ export function MarketingDashboard({
         </p>
       )}
       <div className="mkt-overview-heading">
-        <div>
-          <span className="mkt-eyebrow">DO PRIMEIRO RASCUNHO AO MUNDO</span>
-          <h2>Sua campanha, passo a passo.</h2>
-        </div>
+        <h2>Sua campanha, passo a passo.</h2>
         <span>Você está no controle de cada etapa.</span>
       </div>
       <nav className="mkt-workflow" aria-label="Etapas de uma campanha">
         {[
-          {
-            id: "generator",
-            n: "01",
-            title: "Crie",
-            text: "Escolha imagens e uma ideia",
-          },
-          { id: "approvals", n: "02", title: "Revise", text: "Deixe com a sua cara" },
-          {
-            id: "schedule",
-            n: "03",
-            title: "Agende",
-            text: "Escolha o melhor momento",
-          },
-          {
-            id: "publisher",
-            n: "04",
-            title: "Acompanhe",
-            text: "Veja o que já foi publicado",
-          },
-        ].map((step) => (
-          <button key={step.id} onClick={() => onNavigate(step.id as MarketingSection)}>
-            <span>{step.n}</span>
-            <div>
-              <strong>{step.title}</strong>
-              <small>{step.text}</small>
-            </div>
-            <ArrowUpRight aria-hidden size={16} />
-            <MarketingArtwork
-              kind={
-                step.id === "generator"
-                  ? "capsule"
-                  : step.id === "approvals"
-                    ? "prism"
-                    : step.id === "schedule"
-                      ? "orbit"
-                      : "wave"
-              }
-            />
+          { id: "generator", icon: Sparkles, title: "Crie", text: "Escolha imagens e uma ideia" },
+          { id: "approvals", icon: CheckCheck, title: "Revise", text: "Deixe com a sua cara" },
+          { id: "schedule", icon: CalendarDays, title: "Agende", text: "Escolha o melhor momento" },
+          { id: "publisher", icon: Send, title: "Acompanhe", text: "Veja o que já foi publicado" },
+        ].map(({ id, icon: Icon, title, text }, index) => (
+          <button
+            key={id}
+            data-hue={["blue", "violet", "orchid", "lilac"][index]}
+            onClick={() => onNavigate(id as MarketingSection)}
+          >
+            <span className="mkt-workflow-node" aria-hidden />
+            <span className="mkt-icon-chip" aria-hidden>
+              <Icon size={17} />
+            </span>
+            <strong>{title}</strong>
+            <small>{text}</small>
+            <ArrowUpRight aria-hidden size={16} className="mkt-workflow-arrow" />
           </button>
         ))}
       </nav>
@@ -244,10 +246,7 @@ export function MarketingDashboard({
       <div className="mkt-bottom-grid">
         <section className="mkt-agenda mkt-card">
           <header>
-            <div>
-              <span className="mkt-eyebrow">NO HORIZONTE</span>
-              <h2>Próximas publicações</h2>
-            </div>
+            <h2>Próximas publicações</h2>
             <button className="mkt-text-link" onClick={() => onNavigate("schedule")}>
               Ver calendário <ArrowUpRight size={14} />
             </button>
@@ -262,19 +261,19 @@ export function MarketingDashboard({
                 const content = data.contents.find((c) => c.id === item.content_id);
                 const date = new Date(item.scheduled_at);
                 return (
-                  <li key={item.id}>
+                  <li key={item.id} data-channel={item.channel}>
                     <time dateTime={item.scheduled_at}>
                       <strong>{date.toLocaleDateString("pt-BR", { day: "2-digit" })}</strong>
                       <span>{date.toLocaleDateString("pt-BR", { month: "short" })}</span>
                     </time>
                     <div>
-                      <span className={`mkt-channel mkt-channel-${item.channel}`}>
-                        {channelLabel[item.channel]}
-                      </span>
                       <h3>
                         {content?.title || content?.body?.slice(0, 80) || "Conteúdo agendado"}
                       </h3>
                       <p>
+                        <span className={`mkt-channel mkt-channel-${item.channel}`}>
+                          {channelLabel[item.channel]}
+                        </span>
                         {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} ·{" "}
                         {content ? formatLabel[content.format] : "Conteúdo"} ·{" "}
                         {item.status === "queued" ? "Na fila" : "Planejado"}
@@ -286,7 +285,6 @@ export function MarketingDashboard({
             </ol>
           ) : (
             <div className="mkt-empty-agenda">
-              <CalendarDays aria-hidden size={28} />
               <h3>Um espaço para suas próximas ideias.</h3>
               <p>Aprove um conteúdo e escolha uma data para ele aparecer aqui.</p>
               <Button variant="outline" size="sm" onClick={() => onNavigate("approvals")}>
@@ -294,21 +292,13 @@ export function MarketingDashboard({
               </Button>
             </div>
           )}
-          <div className="lume-agenda-note">
-            <span className="mkt-eyebrow">CONSTÂNCIA CRIA CONEXÃO</span>
-            <h3>Uma boa ideia merece um próximo capítulo.</h3>
-            <button className="mkt-text-link" onClick={() => onNavigate("generator")}>
-              Planejar minha próxima criação <ArrowUpRight size={16} />
-            </button>
-            <span className="lume-agenda-light lume-fluted" aria-hidden />
-          </div>
+          <button className="mkt-agenda-foot" onClick={() => onNavigate("generator")}>
+            Planejar a próxima criação <ArrowRight size={15} />
+          </button>
         </section>
         <section className="mkt-resources mkt-card">
           <header>
-            <div>
-              <span className="mkt-eyebrow">MATÉRIA-PRIMA</span>
-              <h2>Tudo para a próxima ideia.</h2>
-            </div>
+            <h2>Tudo para a próxima ideia.</h2>
           </header>
           <div className="mkt-resource-grid">
             {[
@@ -317,51 +307,43 @@ export function MarketingDashboard({
                 title: "Fotos e vídeos",
                 text: "Envie e organize seu acervo",
                 icon: Upload,
-                tone: "violet",
+                hue: "violet",
               },
               {
                 id: "audio",
                 title: "Trilhas e áudios",
                 text: "Encontre o ritmo da campanha",
                 icon: Music2,
-                tone: "cyan",
+                hue: "blue",
               },
               {
                 id: "promotions",
                 title: "Ofertas da vez",
                 text: `${value("promotions")} ${data?.promotions === 1 ? "promoção ativa" : "promoções ativas"}`,
                 icon: Megaphone,
-                tone: "pink",
+                hue: "orchid",
               },
               {
                 id: "knowledge",
-                title: "DNA da marca",
+                title: "Sua marca",
                 text: "Voz, diferenciais e informações",
                 icon: Library,
-                tone: "lime",
+                hue: "lilac",
               },
-            ].map(({ id, title, text, icon: Icon, tone }) => (
+            ].map(({ id, title, text, icon: Icon, hue }) => (
               <button
                 key={id}
+                data-hue={hue}
                 data-lume-light
-                className={`mkt-resource mkt-resource-${tone}`}
+                className="mkt-resource"
                 onClick={() => onNavigate(id as MarketingSection)}
               >
-                <Icon aria-hidden size={20} />
-                <ArrowUpRight aria-hidden size={14} />
+                <span className="mkt-icon-chip" aria-hidden>
+                  <Icon size={17} />
+                </span>
+                <ArrowUpRight aria-hidden size={15} className="mkt-resource-arrow" />
                 <strong>{title}</strong>
                 <span>{text}</span>
-                <MarketingArtwork
-                  kind={
-                    tone === "violet"
-                      ? "capsule"
-                      : tone === "cyan"
-                        ? "wave"
-                        : tone === "pink"
-                          ? "orbit"
-                          : "bloom"
-                  }
-                />
               </button>
             ))}
           </div>

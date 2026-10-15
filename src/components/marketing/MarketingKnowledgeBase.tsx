@@ -200,12 +200,12 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
     <div className="mkt-brand-layout">
       <aside className="mkt-brand-index">
         <div className="mkt-brand-cover">
-          <MarketingArtwork kind="bloom" />
-          <span>
-            IDENTIDADE
-            <br />
-            <em>é o que fica.</em>
-          </span>
+          <MarketingArtwork kind="prism" />
+          <strong>
+            {filled}
+            <span>/{FIELDS.length}</span>
+          </strong>
+          <small>informações que a Lume já conhece</small>
         </div>
         <nav aria-label="Partes da identidade da marca">
           {GROUPS.map((item, index) => {
@@ -223,7 +223,6 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
                     {item.fields.length} {item.fields.length === 1 ? "informação" : "informações"}
                   </small>
                 </span>
-                <b>0{index + 1}</b>
               </button>
             );
           })}
@@ -239,7 +238,6 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
       <div className="mkt-knowledge-form">
         {GROUPS.map((item, index) => (
           <section key={item.title} hidden={group !== index} className="mkt-brand-section">
-            <span className="mkt-eyebrow">SUA MARCA / 0{index + 1}</span>
             <h3>{item.title}</h3>
             <p>{item.help}</p>
             <div className="mkt-brand-fields">
@@ -267,7 +265,7 @@ export function MarketingKnowledgeBase({ companyId }: Props) {
                 : "Suas alterações serão aplicadas ao salvar."}
             </small>
           </div>
-          <Button onClick={save} disabled={saving}>
+          <Button className="mkt-primary" onClick={save} disabled={saving}>
             {saving ? <LumePulse className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{" "}
             Salvar base de conhecimento
           </Button>

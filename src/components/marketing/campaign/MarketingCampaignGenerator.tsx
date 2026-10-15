@@ -1,4 +1,4 @@
-import { LumePulse, LumeThinking } from "../MarketingMotion";
+import { LumePulse, LumeThinking, PillIndicator } from "../MarketingMotion";
 // Gerador de Campanha (Fase C.2).
 //
 // Evoluções vs. C.1:
@@ -17,7 +17,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Sparkles, PencilRuler } from "lucide-react";
+import {
+  Briefcase,
+  Images,
+  Library,
+  MessageSquareText,
+  Music2,
+  PartyPopper,
+  PencilRuler,
+  Plus,
+  Smile,
+  Sparkles,
+  Tag,
+  Users,
+  Zap,
+} from "lucide-react";
 import { lumeToast as toast } from "../MarketingFeedback";
 import { cn } from "@/lib/utils";
 import {
@@ -32,7 +46,6 @@ import {
 import { getSignedImageUrl } from "@/lib/storage";
 import type { MarketingPromotionRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
 import { MarketingLibrary } from "../MarketingLibrary";
-import { MarketingArtwork } from "../MarketingArtwork";
 import { type MediaSelection, selectionKey, sameSelection } from "@/lib/marketing/media-selection";
 import { CampaignAudioPicker } from "./CampaignAudioPicker";
 import { CampaignFramingPreview } from "./CampaignFramingPreview";
@@ -55,6 +68,36 @@ import type { AudioLibraryRow } from "@/lib/audio-library/audio-library.types";
 type Duration = 8 | 10 | 15 | 30 | 60;
 // Alinhado com MAX_CAMPAIGN_IMAGES do backend/worker (render.types.ts).
 const MAX_IMAGES = 8;
+
+const toneOptions = [
+  { value: "amigável", label: "Amigável", sample: "Chegou novidade pra você!", icon: Smile },
+  {
+    value: "profissional",
+    label: "Profissional",
+    sample: "Conheça nossa nova linha.",
+    icon: Briefcase,
+  },
+  {
+    value: "descontraído",
+    label: "Descontraído",
+    sample: "Bora conferir? Tá demais!",
+    icon: PartyPopper,
+  },
+  { value: "urgente", label: "Urgente", sample: "Só até domingo. Corre!", icon: Zap },
+] as const;
+
+const audienceSuggestions = [
+  "Clientes da região",
+  "Famílias com crianças",
+  "Jovens adultos",
+  "Pequenas empresas",
+];
+
+const creationSteps = [
+  { label: "Mensagem", icon: MessageSquareText },
+  { label: "Imagens", icon: Images },
+  { label: "Trilha e criação", icon: Music2 },
+];
 
 interface Props {
   companyId: string;
@@ -340,12 +383,13 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
   }
 
   const guided = !pendingReview && !campaignId;
+  const selectedPromotion = promotions.find((p) => p.id === promotionId);
   return (
     <div className="mkt-creation-shell">
       <div className="mkt-creation-form">
         {guided && (
-          <nav className="mkt-creation-nav" aria-label="Etapas da criação">
-            {["Mensagem", "Imagens", "Trilha e criação"].map((label, index) => (
+          <nav className="mkt-pill mkt-creation-nav" aria-label="Etapas da criação">
+            {creationSteps.map(({ label, icon: Icon }, index) => (
               <button
                 key={label}
                 type="button"
@@ -358,7 +402,8 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
                 }
                 onClick={() => setCreationStep(index)}
               >
-                <span>0{index + 1}</span>
+                {creationStep === index && <PillIndicator layoutId="mkt-creation-nav" />}
+                <Icon aria-hidden />
                 {label}
               </button>
             ))}
@@ -431,12 +476,20 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             hidden={guided && creationStep !== 0}
             className="rounded-lg border bg-card p-4 space-y-3"
           >
-            <h3 className="mkt-builder-step">
-              <span>01</span> O que você quer contar?
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <header className="mkt-form-head" data-hue="violet">
+              <span className="mkt-icon-chip" aria-hidden>
+                <MessageSquareText size={18} />
+              </span>
               <div>
-                <Label htmlFor="mkt-promotion">Quer divulgar uma oferta? (opcional)</Label>
+                <h3 className="mkt-builder-step">O que você quer contar?</h3>
+                <p>Quanto mais contexto, mais certeira a sugestão da Lume.</p>
+              </div>
+            </header>
+            <div className="mkt-form-grid">
+              <div className="mkt-field">
+                <Label htmlFor="mkt-promotion">
+                  Quer divulgar uma oferta? <span className="mkt-optional">opcional</span>
+                </Label>
                 <select
                   id="mkt-promotion"
                   className="w-full h-9 rounded-md border bg-background px-2 text-sm"
@@ -450,31 +503,72 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
                     </option>
                   ))}
                 </select>
+                {selectedPromotion ? (
+                  <p className="mkt-field-preview">
+                    <Tag size={14} aria-hidden />
+                    <b>{selectedPromotion.title}</b>
+                    {selectedPromotion.price_promo != null && (
+                      <span>
+                        {selectedPromotion.price_promo.toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </span>
+                    )}
+                    {selectedPromotion.discount_percent ? (
+                      <span>{selectedPromotion.discount_percent}% off</span>
+                    ) : null}
+                  </p>
+                ) : (
+                  <p className="mkt-hint">A Lume usa o preço e as condições da oferta no texto.</p>
+                )}
               </div>
-              <div>
-                <Label htmlFor="mkt-tone">Como sua marca fala?</Label>
-                <select
-                  id="mkt-tone"
-                  className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                  value={tone}
-                  onChange={(e) => setTone(e.target.value as typeof tone)}
-                >
-                  <option value="amigável">Amigável</option>
-                  <option value="profissional">Profissional</option>
-                  <option value="descontraído">Descontraído</option>
-                  <option value="urgente">Urgente</option>
-                </select>
+              <div className="mkt-field">
+                <span id="mkt-tone-label" className="mkt-label">
+                  Como sua marca fala?
+                </span>
+                <div className="mkt-choice-grid" role="radiogroup" aria-labelledby="mkt-tone-label">
+                  {toneOptions.map(({ value, label, sample, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={tone === value}
+                      onClick={() => setTone(value)}
+                    >
+                      <Icon size={16} aria-hidden />
+                      <b>{label}</b>
+                      <small>“{sample}”</small>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="md:col-span-2">
+              <div className="mkt-field mkt-field-wide">
                 <Label htmlFor="mkt-audience">Para quem é essa mensagem?</Label>
-                <Input
-                  id="mkt-audience"
-                  value={audience}
-                  onChange={(e) => setAudience(e.target.value)}
-                  placeholder="Ex.: famílias com crianças, moradores da região"
-                />
+                <div className="mkt-input-icon">
+                  <Users size={16} aria-hidden />
+                  <Input
+                    id="mkt-audience"
+                    value={audience}
+                    onChange={(e) => setAudience(e.target.value)}
+                    placeholder="Ex.: famílias com crianças, moradores da região"
+                  />
+                </div>
+                <div className="mkt-suggestions" role="group" aria-label="Sugestões de público">
+                  {audienceSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      aria-pressed={audience === suggestion}
+                      onClick={() => setAudience(suggestion)}
+                    >
+                      <Plus size={12} aria-hidden />
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="md:col-span-2">
+              <div className="mkt-field mkt-field-wide">
                 {/* Mesmo componente do modo manual — escolha visível e editável
                 ANTES de "Gerar campanha". */}
                 <CampaignFormatsField
@@ -485,15 +579,20 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
                   hint="Sua campanha será criada nos formatos que você escolher."
                 />
               </div>
-              <div className="md:col-span-2">
-                <Label htmlFor="mkt-extra">O que não pode faltar? (opcional)</Label>
+              <div className="mkt-field mkt-field-wide">
+                <Label htmlFor="mkt-extra">
+                  O que não pode faltar? <span className="mkt-optional">opcional</span>
+                </Label>
                 <Textarea
                   id="mkt-extra"
                   value={extra}
                   onChange={(e) => setExtra(e.target.value)}
-                  rows={2}
+                  rows={3}
                   placeholder="Ex.: destacar entrega grátis; mencionar 10 anos de mercado"
                 />
+                <p className="mkt-hint">
+                  Separe as ideias com ponto e vírgula. <span>{extra.length} caracteres</span>
+                </p>
               </div>
             </div>
           </div>
@@ -503,14 +602,25 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             hidden={guided && creationStep !== 1}
             className="rounded-lg border bg-card p-4 space-y-3"
           >
-            <div className="flex items-baseline justify-between flex-wrap gap-2">
-              <h3 className="mkt-builder-step">
-                <span>02</span> Escolha suas imagens ({slots.length}/{MAX_IMAGES})
-              </h3>
-              <div className="text-xs text-muted-foreground">
-                Arraste para reordenar · a 1ª é a principal
+            <header className="mkt-form-head" data-hue="blue">
+              <span className="mkt-icon-chip" aria-hidden>
+                <Images size={18} />
+              </span>
+              <div>
+                <h3 className="mkt-builder-step">
+                  Escolha suas imagens{" "}
+                  <span>
+                    {slots.length}/{MAX_IMAGES}
+                  </span>
+                </h3>
+                <p>Arraste para reordenar. A primeira imagem é a principal da campanha.</p>
               </div>
-            </div>
+              <span className="mkt-slot-meter" aria-hidden>
+                {Array.from({ length: MAX_IMAGES }, (_, i) => (
+                  <i key={i} data-filled={i < slots.length || undefined} />
+                ))}
+              </span>
+            </header>
             <CampaignImageList
               items={items}
               onReorder={reorder}
@@ -536,7 +646,15 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             hidden={guided && creationStep !== 1}
             className="rounded-lg border bg-card p-4 space-y-3"
           >
-            <div className="text-sm font-semibold">Escolher da biblioteca</div>
+            <header className="mkt-form-head mkt-form-head-sm" data-hue="lilac">
+              <span className="mkt-icon-chip" aria-hidden>
+                <Library size={16} />
+              </span>
+              <div>
+                <h3 className="mkt-builder-step">Escolher da biblioteca</h3>
+                <p>Toque nas fotos para adicionar ou remover da campanha.</p>
+              </div>
+            </header>
             <MarketingLibrary
               companyId={companyId}
               selectable
@@ -550,39 +668,59 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
             hidden={guided && creationStep !== 2}
             className="rounded-lg border bg-card p-4 space-y-3"
           >
-            <h3 className="mkt-builder-step">
-              <span>03</span> Escolha uma trilha para o vídeo
-            </h3>
+            <header className="mkt-form-head" data-hue="orchid">
+              <span className="mkt-icon-chip" aria-hidden>
+                <Music2 size={18} />
+              </span>
+              <div>
+                <h3 className="mkt-builder-step">Escolha uma trilha para o vídeo</h3>
+                <p>Ouça antes de escolher. A trilha define o ritmo do vídeo.</p>
+              </div>
+            </header>
             <CampaignAudioPicker selectedId={audio?.id ?? null} onSelect={setAudio} />
             {audio && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
+              <div className="mkt-form-grid">
+                <div className="mkt-field">
                   <Label htmlFor="lume-audio-start">Início no áudio (segundos)</Label>
-                  <Input
-                    id="lume-audio-start"
-                    type="number"
-                    min={0}
-                    max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))}
-                    value={audioStart}
-                    onChange={(e) =>
-                      setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))
-                    }
-                  />
+                  <div className="mkt-input-suffix">
+                    <Input
+                      id="lume-audio-start"
+                      type="number"
+                      min={0}
+                      max={Math.max(0, Math.floor(Number(audio.duration_seconds ?? 0) - 1))}
+                      value={audioStart}
+                      onChange={(e) =>
+                        setAudioStart(Math.max(0, parseInt(e.target.value || "0", 10)))
+                      }
+                    />
+                    <span aria-hidden>seg</span>
+                  </div>
+                  <p className="mkt-hint">Pule a introdução e comece no trecho mais marcante.</p>
                 </div>
-                <div>
-                  <Label htmlFor="lume-video-duration">Duração do vídeo</Label>
-                  <select
-                    className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                    id="lume-video-duration"
-                    value={duration}
-                    onChange={(e) => setDuration(Number(e.target.value) as Duration)}
+                <div className="mkt-field">
+                  <span id="lume-video-duration" className="mkt-label">
+                    Duração do vídeo
+                  </span>
+                  <div
+                    className="mkt-segmented"
+                    role="radiogroup"
+                    aria-labelledby="lume-video-duration"
                   >
-                    {[8, 10, 15, 30, 60].map((d) => (
-                      <option key={d} value={d}>
+                    {([8, 10, 15, 30, 60] as Duration[]).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        role="radio"
+                        aria-checked={duration === d}
+                        onClick={() => setDuration(d)}
+                      >
                         {d}s
-                      </option>
+                      </button>
                     ))}
-                  </select>
+                  </div>
+                  <p className="mkt-hint">
+                    Stories e reels funcionam melhor entre 10 e 15 segundos.
+                  </p>
                 </div>
               </div>
             )}
@@ -645,7 +783,7 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
                 onClick={generate}
                 disabled={!canGenerate}
                 size="lg"
-                className="w-full md:w-auto"
+                className="mkt-primary w-full md:w-auto"
               >
                 {generating ? (
                   <LumePulse className="h-4 w-4 animate-spin mr-1" />
@@ -691,17 +829,17 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
       </div>
       <aside className="mkt-creation-guide" aria-label="Resumo da campanha" aria-live="polite">
         <div className="mkt-brief-cover">
-          <span className="mkt-eyebrow">EM CONSTRUÇÃO / 0{creationStep + 1}</span>
-          <MarketingArtwork
-            kind={creationStep === 0 ? "capsule" : creationStep === 1 ? "bloom" : "wave"}
-          />
-          <strong>
-            {["Uma ideia.", "Seu olhar.", "Seu ritmo."][creationStep]}
-            <em>Mil possibilidades.</em>
-          </strong>
+          <span className="mkt-brief-step">
+            Etapa {creationStep + 1} de {creationSteps.length}
+          </span>
+          <strong>{creationSteps[creationStep].label}</strong>
+          <div className="mkt-brief-meter" aria-hidden>
+            {creationSteps.map(({ label }, index) => (
+              <i key={label} data-done={index <= creationStep || undefined} />
+            ))}
+          </div>
         </div>
-        <span className="mkt-eyebrow">RESUMO DA CAMPANHA</span>
-        <h3>Está ficando com a sua cara.</h3>
+        <h3>Resumo da campanha</h3>
         <p>
           {
             [
@@ -712,28 +850,28 @@ export function MarketingCampaignGenerator({ companyId, onGenerated }: Props) {
           }
         </p>
         <ul>
-          <li>
+          <li data-done>
             <span>Tom de voz</span>
             <strong>{tone}</strong>
           </li>
-          <li>
+          <li data-done>
             <span>Criação</span>
             <strong>{mode === "ai" ? "Com Lume" : "Manual"}</strong>
           </li>
-          <li>
+          <li data-done={slots.length > 0 || undefined}>
             <span>Imagens</span>
             <strong>
               {slots.length} / {MAX_IMAGES}
             </strong>
           </li>
-          <li>
+          <li data-done={!!audio || undefined}>
             <span>Trilha</span>
             <strong>{audio ? "Escolhida" : "A escolher"}</strong>
           </li>
         </ul>
         {audience.trim() && (
           <div className="mkt-brief-audience">
-            <span>PARA QUEM</span>
+            <span>Para quem</span>
             <p>{audience}</p>
           </div>
         )}

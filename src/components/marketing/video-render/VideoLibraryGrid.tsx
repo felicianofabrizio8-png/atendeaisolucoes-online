@@ -1,6 +1,5 @@
 import { LumePulse } from "../MarketingMotion";
 import { useEffect, useState } from "react";
-import { MarketingArtwork } from "../MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import { Play, Trash2, EyeOff, Eye } from "lucide-react";
 import { lumeToast as toast } from "../MarketingFeedback";
@@ -90,7 +89,6 @@ export function VideoLibraryGrid({ refreshKey }: Props) {
   if (videos.length === 0) {
     return (
       <div className="mkt-empty-state">
-        <MarketingArtwork kind="ribbon" />
         <h3>O próximo play pode ser seu.</h3>
         <p>
           Crie uma campanha em <strong>Criar com Lume</strong> e aprove o vídeo no editor. Seus
@@ -124,9 +122,9 @@ export function VideoLibraryGrid({ refreshKey }: Props) {
         {videos.map((v) => (
           <div key={v.id} className="mkt-video-card rounded-lg border bg-card p-3 space-y-2">
             <div className="mkt-video-art" aria-hidden="true">
-              <MarketingArtwork kind="ribbon" />
-              <Play />
-              <span>VÍDEO / {v.is_active ? "ATIVO" : "INATIVO"}</span>
+              <span className="mkt-video-play">
+                <Play />
+              </span>
             </div>
             <div className="text-sm font-semibold truncate">{v.name}</div>
             <div className="text-xs text-muted-foreground flex flex-wrap gap-x-2">
@@ -137,9 +135,7 @@ export function VideoLibraryGrid({ refreshKey }: Props) {
               <span>
                 {v.width}×{v.height}
               </span>
-              {!v.is_active && (
-                <span className="text-amber-600 dark:text-amber-400">· inativo</span>
-              )}
+              {!v.is_active && <span className="mkt-tone-warn-ink">· inativo</span>}
             </div>
             <div className="text-[10px] text-muted-foreground">
               {new Date(v.created_at).toLocaleString()}

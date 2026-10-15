@@ -2,7 +2,6 @@ import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useState } from "react";
 import { Music2, Upload } from "lucide-react";
 import { lumeToast as toast } from "./MarketingFeedback";
-import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import {
   getAudioLibraryQuota,
@@ -111,7 +110,7 @@ export function AudioLibrary({ companyId }: Props) {
             ) : null}
           </p>
         </div>
-        <Button onClick={() => setUploadOpen(true)}>
+        <Button className="mkt-primary" onClick={() => setUploadOpen(true)}>
           <Upload className="h-4 w-4 mr-2" /> Adicionar música
         </Button>
       </header>
@@ -128,7 +127,6 @@ export function AudioLibrary({ companyId }: Props) {
         </div>
       ) : filtered.length === 0 ? (
         <div className="mkt-empty-state">
-          <MarketingArtwork kind="wave" />
           <h3>{rows.length ? "Outro ritmo, talvez?" : "Toda campanha tem um ritmo."}</h3>
           <p>
             {rows.length

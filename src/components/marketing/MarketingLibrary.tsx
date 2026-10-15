@@ -1,6 +1,5 @@
 import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload, Trash2, Image as ImageIcon, Video, Package, Sparkles, X } from "lucide-react";
@@ -235,7 +234,11 @@ export function MarketingLibrary({ companyId, selectable, selected = [], onToggl
               Fotos até 15 MB · Vídeos até 50 MB · Imagens de produtos também ficam disponíveis.
             </p>
           </div>
-          <Button onClick={() => inputRef.current?.click()} disabled={uploading}>
+          <Button
+            className="mkt-primary"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+          >
             <Upload size={16} /> Adicionar ao acervo
           </Button>
         </div>
@@ -331,7 +334,6 @@ export function MarketingLibrary({ companyId, selectable, selected = [], onToggl
         </div>
       ) : filtered.length === 0 ? (
         <div className="mkt-empty-state">
-          <MarketingArtwork kind="bloom" />
           <h3>{unified.length ? "Vamos tentar outro olhar?" : "Dê espaço às suas imagens."}</h3>
           <p>
             {unified.length

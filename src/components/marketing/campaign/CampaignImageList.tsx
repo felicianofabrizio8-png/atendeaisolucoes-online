@@ -4,7 +4,7 @@ import { LumePulse } from "../MarketingMotion";
 // abrir o editor de focal point.
 
 import { useCallback, useState } from "react";
-import { GripVertical, Star, StarOff, X, Crop } from "lucide-react";
+import { GripVertical, Star, StarOff, X, Crop, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FocalPointInput } from "@/data/marketingRepo";
 
@@ -56,7 +56,10 @@ export function CampaignImageList({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-md border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
+      <div className="mkt-drop-hint rounded-md border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
+        <span aria-hidden>
+          <ArrowDown size={16} />
+        </span>
         Selecione uma ou mais imagens abaixo para montar a campanha.
       </div>
     );

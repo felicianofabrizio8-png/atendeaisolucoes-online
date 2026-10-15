@@ -1,5 +1,6 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 import { motion, useReducedMotion, useSpring, useTransform } from "framer-motion";
+import { MarketingArtwork } from "./MarketingArtwork";
 
 export const lumeEase = [0.22, 1, 0.36, 1] as const;
 export const lumeSpring = { stiffness: 150, damping: 24, mass: 1 };
@@ -82,19 +83,30 @@ export function LumePulse({ className = "" }: { className?: string }) {
   );
 }
 
+/** Active-item pill shared by every segmented bar; slides between items via layoutId. */
+export function PillIndicator({ layoutId }: { layoutId: string }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.span
+      aria-hidden
+      className="mkt-pill-indicator"
+      layoutId={layoutId}
+      transition={
+        reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 36, mass: 0.9 }
+      }
+    />
+  );
+}
+
 export function LumeThinking({
   label = "A Lume está conectando suas ideias.",
 }: {
   label?: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
   return (
-    <div className="lume-thinking" role="status" ref={ref}>
-      <div className="lume-thinking-object">
-        <LumePulse />
-      </div>
+    <div className="lume-thinking" role="status">
+      <MarketingArtwork kind="orb" className="lume-thinking-object" />
       <div>
-        <span className="mkt-eyebrow">CRIAÇÃO EM MOVIMENTO</span>
         <p aria-label={label}>
           {label.split(" ").map((word, index) => (
             <span aria-hidden key={index} style={{ animationDelay: `${index * 65}ms` }}>

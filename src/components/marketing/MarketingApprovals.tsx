@@ -1,4 +1,3 @@
-import { MarketingArtwork } from "./MarketingArtwork";
 import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -369,12 +368,9 @@ export function MarketingApprovals({ companyId }: Props) {
       {fbReadiness && !fbReadiness.ok ? (
         <div
           role="alert"
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100 flex items-start gap-3"
+          className="mkt-notice mkt-tone-warn rounded-lg border p-3 text-sm flex items-start gap-3"
         >
-          <AlertTriangle
-            className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
-            aria-hidden
-          />
+          <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
           <div className="flex-1 space-y-1">
             <div className="font-semibold">Publicação no Facebook bloqueada</div>
             <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
@@ -404,7 +400,6 @@ export function MarketingApprovals({ companyId }: Props) {
         </div>
       ) : filtered.length === 0 ? (
         <div className="mkt-empty-state">
-          <MarketingArtwork kind="prism" />
           <h3>Um olhar antes de ir ao mundo.</h3>
           <p>Nenhum conteúdo para este filtro. Suas criações aparecerão aqui para revisão.</p>
         </div>
@@ -458,9 +453,6 @@ export function MarketingApprovals({ companyId }: Props) {
               Agendar conteúdo: escolha o canal, a data e o horário.
             </DialogDescription>
           </DialogHeader>
-          <div className="lume-schedule-art">
-            <MarketingArtwork kind="orbit" />
-          </div>
           <div>
             <Label htmlFor="lume-schedule-channel">Canal</Label>
             <select
@@ -599,11 +591,11 @@ function ContentCard({
   const [dest, setDest] = useState(row.cta_destination ?? "");
 
   const statusColor: Record<string, string> = {
-    draft: "bg-muted text-foreground",
-    pending: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300",
-    approved: "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
-    rejected: "bg-destructive/20 text-destructive",
-    archived: "bg-muted text-muted-foreground",
+    draft: "mkt-tone-neutral",
+    pending: "mkt-tone-warn",
+    approved: "mkt-tone-ok",
+    rejected: "mkt-tone-danger",
+    archived: "mkt-tone-neutral",
   };
 
   const isVideo = isVideoContent(row);
@@ -625,20 +617,12 @@ function ContentCard({
       data-status={row.status}
     >
       <div className="mkt-review-meta flex items-center gap-2 text-xs">
-        <span className="uppercase font-semibold rounded bg-primary/10 text-primary px-1.5 py-0.5">
-          {row.format}
-        </span>
-        <span className="uppercase text-[10px] text-muted-foreground">{row.channel}</span>
-        <span
-          className={`rounded px-1.5 py-0.5 uppercase text-[10px] font-semibold ${statusColor[row.status] ?? ""}`}
-        >
+        <span className="mkt-badge mkt-tone-neutral">{row.format}</span>
+        <span className="mkt-badge mkt-tone-quiet">{row.channel}</span>
+        <span className={`mkt-badge ${statusColor[row.status] ?? "mkt-tone-neutral"}`}>
           {contentStatusLabel[row.status] ?? row.status}
         </span>
-        {isVideo && (
-          <span className="uppercase text-[10px] rounded bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 px-1.5 py-0.5">
-            vídeo
-          </span>
-        )}
+        {isVideo && <span className="mkt-badge mkt-tone-neutral">vídeo</span>}
         {row.ai_model && (
           <span className="text-[10px] text-muted-foreground ml-auto">{row.ai_model}</span>
         )}

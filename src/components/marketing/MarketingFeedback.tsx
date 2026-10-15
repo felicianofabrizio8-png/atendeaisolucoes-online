@@ -1,6 +1,5 @@
 import { toast, type ExternalToast } from "sonner";
 import { Check, AlertTriangle, Info } from "lucide-react";
-import { MarketingArtwork } from "./MarketingArtwork";
 
 function options(tone: "success" | "error" | "info", overrides?: ExternalToast): ExternalToast {
   const Icon = tone === "success" ? Check : tone === "error" ? AlertTriangle : Info;
@@ -8,8 +7,7 @@ function options(tone: "success" | "error" | "info", overrides?: ExternalToast):
     className: `lume-toast lume-toast-${tone}`,
     icon: (
       <span className="lume-toast-icon">
-        <MarketingArtwork kind={tone === "success" ? "signal" : "prism"} />
-        <Icon size={14} />
+        <Icon size={15} />
       </span>
     ),
     ...overrides,

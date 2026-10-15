@@ -1,11 +1,19 @@
 import { LumePulse } from "./MarketingMotion";
 import { useEffect, useState } from "react";
-import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Edit } from "lucide-react";
+import {
+  ArrowUpRight,
+  BadgePercent,
+  CalendarRange,
+  Edit,
+  FileText,
+  MessageCircle,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { lumeToast as toast } from "./MarketingFeedback";
 import { apiListPromotions, apiUpsertPromotion, apiDeletePromotion } from "@/data/marketingRepo";
 import type { MarketingPromotionRow } from "@/lib/marketing/marketing.types";
@@ -122,7 +130,7 @@ export function MarketingPromotions({ companyId }: Props) {
             Cadastre uma vez e reutilize nas suas campanhas.
           </p>
         </div>
-        <Button onClick={() => startEdit()}>
+        <Button className="mkt-primary" onClick={() => startEdit()}>
           <Plus className="h-4 w-4 mr-1" /> Nova promoção
         </Button>
       </div>
@@ -130,33 +138,52 @@ export function MarketingPromotions({ companyId }: Props) {
       {editing && (
         <div className="mkt-promotion-editor rounded-lg border bg-card p-4 space-y-3">
           <fieldset>
-            <legend>01 / O que você vai oferecer?</legend>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+            <legend className="mkt-legend" data-hue="violet">
+              <span className="mkt-icon-chip" aria-hidden>
+                <FileText size={16} />
+              </span>
+              <span>
+                O que você vai oferecer?
+                <small>Nome e descrição aparecem na lista e ajudam a Lume a escrever.</small>
+              </span>
+            </legend>
+            <div className="mkt-form-grid">
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-title">Título *</Label>
                 <Input
                   id="mkt-offer-title"
                   value={editing.title}
+                  placeholder="Ex.: Semana do cliente"
                   onChange={(e) => setEditing({ ...editing, title: e.target.value })}
                 />
               </div>
-              <div>
-                <Label htmlFor="mkt-offer-status">Status</Label>
-                <select
-                  id="mkt-offer-status"
-                  className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                  value={editing.status}
-                  onChange={(e) =>
-                    setEditing({ ...editing, status: e.target.value as typeof editing.status })
-                  }
-                >
-                  <option value="draft">Rascunho</option>
-                  <option value="active">Ativa</option>
-                  <option value="paused">Pausada</option>
-                  <option value="ended">Encerrada</option>
-                </select>
+              <div className="mkt-field">
+                <span id="mkt-offer-status" className="mkt-label">
+                  Status
+                </span>
+                <div className="mkt-segmented" role="radiogroup" aria-labelledby="mkt-offer-status">
+                  {(
+                    [
+                      ["draft", "Rascunho"],
+                      ["active", "Ativa"],
+                      ["paused", "Pausada"],
+                      ["ended", "Encerrada"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={editing.status === value}
+                      onClick={() => setEditing({ ...editing, status: value })}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mkt-hint">Só ofertas ativas aparecem na criação de campanhas.</p>
               </div>
-              <div className="md:col-span-2">
+              <div className="mkt-field mkt-field-wide">
                 <Label htmlFor="mkt-offer-description">Descrição</Label>
                 <Textarea
                   id="mkt-offer-description"
@@ -168,47 +195,97 @@ export function MarketingPromotions({ companyId }: Props) {
             </div>
           </fieldset>
           <fieldset>
-            <legend>02 / Qual é o benefício?</legend>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+            <legend className="mkt-legend" data-hue="orchid">
+              <span className="mkt-icon-chip" aria-hidden>
+                <BadgePercent size={16} />
+              </span>
+              <span>
+                Qual é o benefício?
+                <small>Preencha o que fizer sentido. A prévia ao lado mostra como fica.</small>
+              </span>
+            </legend>
+            <div className="mkt-offer-benefit">
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-price_original">Preço original</Label>
-                <Input
-                  id="mkt-offer-price_original"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={editing.price_original}
-                  onChange={(e) => setEditing({ ...editing, price_original: e.target.value })}
-                />
+                <div className="mkt-input-prefix">
+                  <span aria-hidden>R$</span>
+                  <Input
+                    id="mkt-offer-price_original"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={editing.price_original}
+                    onChange={(e) => setEditing({ ...editing, price_original: e.target.value })}
+                  />
+                </div>
               </div>
-              <div>
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-price_promo">Preço promocional</Label>
-                <Input
-                  id="mkt-offer-price_promo"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={editing.price_promo}
-                  onChange={(e) => setEditing({ ...editing, price_promo: e.target.value })}
-                />
+                <div className="mkt-input-prefix">
+                  <span aria-hidden>R$</span>
+                  <Input
+                    id="mkt-offer-price_promo"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    value={editing.price_promo}
+                    onChange={(e) => setEditing({ ...editing, price_promo: e.target.value })}
+                  />
+                </div>
               </div>
-              <div>
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-discount_percent">Desconto (%)</Label>
-                <Input
-                  id="mkt-offer-discount_percent"
-                  type="number"
-                  inputMode="decimal"
-                  value={editing.discount_percent}
-                  onChange={(e) => setEditing({ ...editing, discount_percent: e.target.value })}
-                />
+                <div className="mkt-input-suffix">
+                  <Input
+                    id="mkt-offer-discount_percent"
+                    type="number"
+                    inputMode="decimal"
+                    value={editing.discount_percent}
+                    onChange={(e) => setEditing({ ...editing, discount_percent: e.target.value })}
+                  />
+                  <span aria-hidden>%</span>
+                </div>
               </div>
-              <div />
+              <div className="mkt-offer-live" aria-live="polite">
+                <div className="mkt-offer-stamp" aria-hidden="true">
+                  <strong>
+                    {editing.discount_percent ? (
+                      `${editing.discount_percent}%`
+                    ) : (
+                      <ArrowUpRight size={24} />
+                    )}
+                  </strong>
+                  <span>{editing.discount_percent ? "de desconto" : "destaque"}</span>
+                </div>
+                <div>
+                  <b>{editing.title.trim() || "Sua oferta"}</b>
+                  <span>
+                    {editing.price_original && editing.price_promo ? (
+                      <>
+                        <s>R$ {editing.price_original}</s> R$ {editing.price_promo}
+                      </>
+                    ) : editing.price_promo ? (
+                      `R$ ${editing.price_promo}`
+                    ) : (
+                      "Prévia da oferta"
+                    )}
+                  </span>
+                </div>
+              </div>
             </div>
           </fieldset>
           <fieldset>
-            <legend>03 / Quando essa oferta vale?</legend>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+            <legend className="mkt-legend" data-hue="blue">
+              <span className="mkt-icon-chip" aria-hidden>
+                <CalendarRange size={16} />
+              </span>
+              <span>
+                Quando essa oferta vale?
+                <small>Deixe em branco para uma oferta sem prazo.</small>
+              </span>
+            </legend>
+            <div className="mkt-form-grid">
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-starts_at">Início</Label>
                 <Input
                   id="mkt-offer-starts_at"
@@ -217,7 +294,7 @@ export function MarketingPromotions({ companyId }: Props) {
                   onChange={(e) => setEditing({ ...editing, starts_at: e.target.value })}
                 />
               </div>
-              <div>
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-ends_at">Fim</Label>
                 <Input
                   id="mkt-offer-ends_at"
@@ -229,9 +306,17 @@ export function MarketingPromotions({ companyId }: Props) {
             </div>
           </fieldset>
           <fieldset>
-            <legend>04 / Como as pessoas entram em contato?</legend>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+            <legend className="mkt-legend" data-hue="lilac">
+              <span className="mkt-icon-chip" aria-hidden>
+                <MessageCircle size={16} />
+              </span>
+              <span>
+                Como as pessoas entram em contato?
+                <small>O botão leva direto para a conversa no WhatsApp.</small>
+              </span>
+            </legend>
+            <div className="mkt-form-grid">
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-whatsapp_cta_text">Texto do botão do WhatsApp</Label>
                 <Input
                   id="mkt-offer-whatsapp_cta_text"
@@ -240,7 +325,7 @@ export function MarketingPromotions({ companyId }: Props) {
                   onChange={(e) => setEditing({ ...editing, whatsapp_cta_text: e.target.value })}
                 />
               </div>
-              <div>
+              <div className="mkt-field">
                 <Label htmlFor="mkt-offer-whatsapp_destination">Destino do WhatsApp</Label>
                 <Input
                   id="mkt-offer-whatsapp_destination"
@@ -248,17 +333,17 @@ export function MarketingPromotions({ companyId }: Props) {
                   value={editing.whatsapp_destination}
                   onChange={(e) => setEditing({ ...editing, whatsapp_destination: e.target.value })}
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mkt-hint">
                   Informe o número com DDD e código do país, ou o link do WhatsApp da empresa.
                 </p>
               </div>
             </div>
           </fieldset>
-          <div className="flex gap-2 justify-end pt-2 border-t">
+          <div className="mkt-form-actions">
             <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={save} disabled={saving}>
+            <Button className="mkt-primary" onClick={save} disabled={saving}>
               {saving && <LumePulse className="h-4 w-4 animate-spin mr-1" />}
               Salvar
             </Button>
@@ -272,7 +357,6 @@ export function MarketingPromotions({ companyId }: Props) {
         </div>
       ) : items.length === 0 ? (
         <div className="mkt-empty-state">
-          <MarketingArtwork kind="orbit" />
           <h3>Um bom motivo para escolher você.</h3>
           <p>Reúna ofertas, condições e benefícios. Na hora de criar, basta escolher a promoção.</p>
           <Button variant="outline" onClick={() => startEdit()}>
@@ -287,8 +371,10 @@ export function MarketingPromotions({ companyId }: Props) {
               className="mkt-offer-card rounded-lg border bg-card p-3 flex items-start gap-3"
             >
               <div className="mkt-offer-stamp" aria-hidden="true">
-                <strong>{p.discount_percent ? `${p.discount_percent}%` : "↗"}</strong>
-                <span>{p.discount_percent ? "DE DESCONTO" : "DESTAQUE"}</span>
+                <strong>
+                  {p.discount_percent ? `${p.discount_percent}%` : <ArrowUpRight size={26} />}
+                </strong>
+                <span>{p.discount_percent ? "de desconto" : "destaque"}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">

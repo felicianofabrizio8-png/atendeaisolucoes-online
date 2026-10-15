@@ -228,9 +228,7 @@ export function CampaignAudioPicker({ selectedId, onSelect }: Props) {
                     aria-label={fav ? "Remover dos favoritos" : "Adicionar aos favoritos"}
                     title={fav ? "Remover dos favoritos" : "Favoritar"}
                   >
-                    <Star
-                      className={`h-4 w-4 ${fav ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground"}`}
-                    />
+                    <Star className={`h-4 w-4 ${fav ? "mkt-fav" : "text-muted-foreground"}`} />
                   </Button>
                 </div>
               </li>

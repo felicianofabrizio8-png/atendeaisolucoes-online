@@ -88,12 +88,17 @@ export function CampaignManualForm({
 
   return (
     <div className="mkt-manual-form rounded-lg border bg-card p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <PencilRuler className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">Escreva os textos da sua campanha</span>
-      </div>
+      <header className="mkt-form-head" data-hue="violet">
+        <span className="mkt-icon-chip" aria-hidden>
+          <PencilRuler size={18} />
+        </span>
+        <div>
+          <h3 className="mkt-builder-step">Escreva os textos da sua campanha</h3>
+          <p>Só o título é obrigatório. O restante aparece no vídeo se você preencher.</p>
+        </div>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="mkt-form-grid">
         <div className="md:col-span-2">
           <Label htmlFor={fieldId + "-title"}>Título *</Label>
           <Input
@@ -103,6 +108,9 @@ export function CampaignManualForm({
             maxLength={80}
             placeholder="Ex.: Piscina 3x2 com instalação"
           />
+          <p className="mkt-hint">
+            Frase principal do vídeo. <span>{v.title.length}/80</span>
+          </p>
         </div>
         <div>
           <Label htmlFor={fieldId + "-subtitle"}>Subtítulo</Label>
@@ -113,6 +121,9 @@ export function CampaignManualForm({
             maxLength={120}
             placeholder="Ex.: Entrega em 7 dias"
           />
+          <p className="mkt-hint">
+            <span>{v.subtitle.length}/120</span>
+          </p>
         </div>
         <div>
           <Label htmlFor={fieldId + "-price"}>Preço (opcional)</Label>
@@ -209,7 +220,7 @@ export function CampaignManualForm({
 
       <div className="space-y-2">
         <Label>Estilo do vídeo</Label>
-        <div className="flex flex-wrap gap-2">
+        <div className="mkt-style-choices flex flex-wrap gap-2">
           {THEME_PRESETS.map((t) => (
             <button
               key={t.id}

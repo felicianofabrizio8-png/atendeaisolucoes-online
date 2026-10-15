@@ -43,11 +43,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_CLASS: Record<string, string> = {
-  queued: "bg-muted text-foreground",
-  publishing: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  published: "bg-green-500/15 text-green-700 dark:text-green-300",
-  failed: "bg-destructive/15 text-destructive",
-  cancelled: "bg-muted text-muted-foreground",
+  queued: "mkt-tone-neutral",
+  publishing: "mkt-tone-info",
+  published: "mkt-tone-ok",
+  failed: "mkt-tone-danger",
+  cancelled: "mkt-tone-quiet",
 };
 
 const AUTO_REFRESH_MS = 15_000;
@@ -144,7 +144,7 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
             </div>
           ) : operational.length === 0 ? (
             <div className="py-8 text-center space-y-1">
-              <CheckCircle2 className="h-6 w-6 text-green-500 mx-auto" />
+              <CheckCircle2 className="mkt-tone-ok-ink h-6 w-6 mx-auto" />
               <div className="text-sm font-medium">Tudo certo por aqui.</div>
               <div className="text-xs text-muted-foreground">
                 Não há publicações aguardando processamento ou correção.
@@ -360,7 +360,7 @@ function StatCard({
 }) {
   const toneCls =
     tone === "success"
-      ? "text-green-600 dark:text-green-400"
+      ? "mkt-tone-ok-ink"
       : tone === "danger"
         ? "text-destructive"
         : "text-foreground";

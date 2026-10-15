@@ -1,115 +1,222 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, Sparkles, Heart, Bookmark, MoreHorizontal, Send } from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import {
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "framer-motion";
+import {
+  ArrowUpRight,
+  Bookmark,
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Play,
+  Send,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MarketingArtwork } from "./MarketingArtwork";
+import { lumeEase } from "./MarketingMotion";
+
+const headline = ["Dê", "luz", "à", "sua", "próxima", "ideia."];
 
 export function MarketingHero({ onCreate }: { onCreate: () => void }) {
   const ref = useRef<HTMLElement>(null);
   const [visible, setVisible] = useState(false);
+  const [finePointer, setFinePointer] = useState(false);
+  const reduce = useReducedMotion() ?? false;
+  const px = useMotionValue(0);
+  const py = useMotionValue(0);
+  const sx = useSpring(px, { stiffness: 110, damping: 20, mass: 0.7 });
+  const sy = useSpring(py, { stiffness: 110, damping: 20, mass: 0.7 });
+
   useEffect(() => {
+    if (typeof matchMedia !== "undefined") {
+      setFinePointer(matchMedia("(hover: hover) and (pointer: fine)").matches);
+    }
     if (!ref.current || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting));
     observer.observe(ref.current);
     return () => observer.disconnect();
   }, []);
+
+  const tilt = finePointer && !reduce;
+  function move(event: PointerEvent<HTMLElement>) {
+    if (!tilt || event.pointerType !== "mouse") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    px.set((event.clientX - rect.left) / rect.width - 0.5);
+    py.set((event.clientY - rect.top) / rect.height - 0.5);
+  }
+  function leave() {
+    px.set(0);
+    py.set(0);
+  }
+
   return (
     <section
       ref={ref}
       data-visible={visible}
-      className="mkt-hero mkt-card"
-      data-lume-light
-      aria-label="Inspiração para suas campanhas"
+      className="mkt-hero"
+      aria-label="Criar com a Lume"
+      onPointerMove={move}
+      onPointerLeave={leave}
     >
-      <div className="lume-aurora" aria-hidden>
-        <i />
-        <i />
+      <div className="mkt-aura" aria-hidden>
+        <i className="mkt-aura-haze" />
+        <i className="mkt-aura-columns" />
+        <i className="mkt-aura-arc" />
+        <i className="mkt-aura-flutes" />
       </div>
       <div className="mkt-hero-copy">
-        <span className="mkt-eyebrow">
-          <span className="mkt-live-dot" /> CRIATIVIDADE, EM OUTRA FREQUÊNCIA
-        </span>
         <h2>
-          DÊ LUZ À SUA
-          <br />
-          <em>
-            PRÓXIMA
-            <br />
-            IDEIA.
-          </em>
+          <span className="sr-only">{headline.join(" ")}</span>
+          {headline.map((word, index) => (
+            <motion.span
+              aria-hidden
+              key={word}
+              className={index >= 4 ? "mkt-hero-soft" : undefined}
+              initial={reduce ? false : { opacity: 0, y: 18, filter: "blur(8px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={{ duration: 0.9, ease: lumeEase, delay: 0.05 + index * 0.06 }}
+            >
+              {word}{" "}
+            </motion.span>
+          ))}
         </h2>
-        <p>
-          Da primeira ideia ao próximo post. Crie com Lume, dê seu toque e faça sua mensagem
-          encontrar o mundo.
-        </p>
-        <Button className="mkt-primary mkt-hero-button" onClick={onCreate}>
-          <Sparkles /> Criar com Lume <ArrowUpRight />
-        </Button>
-        <span className="mkt-hero-note">Sua ideia. Sua voz. A decisão continua sendo sua.</span>
+        <motion.p
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: lumeEase, delay: 0.45 }}
+        >
+          Conte o que você quer divulgar. A Lume sugere textos e vídeos, e você decide o que vai ao
+          ar.
+        </motion.p>
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: lumeEase, delay: 0.55 }}
+        >
+          <Button className="mkt-primary mkt-hero-button" onClick={onCreate}>
+            <Sparkles /> Criar com Lume <ArrowUpRight />
+          </Button>
+        </motion.div>
       </div>
-      <div className="mkt-poster-composition" aria-hidden="true">
-        <div className="mkt-inspiration-card mkt-inspiration-lime">
-          <div className="mkt-poster-label">
-            <span>01 / DESPERTAR</span>
+      <div className="mkt-posts" aria-hidden="true">
+        <PostSlot index={0} sx={sx} sy={sy} reduce={reduce}>
+          <span className="mkt-post-drip" />
+          <div className="mkt-post-progress">
+            <i data-done />
+            <i data-live />
+            <i />
+          </div>
+          <strong className="mkt-post-type">
+            Além do <span>óbvio.</span>
+          </strong>
+          <PostFooter />
+        </PostSlot>
+        <PostSlot index={1} sx={sx} sy={sy} reduce={reduce}>
+          <div className="mkt-post-head">
+            <span className="mkt-post-avatar" />
             <MoreHorizontal />
           </div>
-          <div className="lume-poster-optics lume-fluted" />
-          <strong>
-            Além
-            <br />
-            do
-            <br />
-            <em>óbvio.</em>
+          <MarketingArtwork kind="lens" tone="dark" className="mkt-post-object" />
+          <strong className="mkt-post-type">
+            Feito para <span>ficar.</span>
           </strong>
-          <small>UMA IDEIA MUDA TUDO.</small>
-          <div className="lume-social-footer">
-            <Heart />
-            <Send />
-            <Bookmark />
-          </div>
-        </div>
-        <div className="mkt-inspiration-card mkt-inspiration-violet">
-          <div className="mkt-poster-label">
-            <span>02 / CONECTAR</span>
+          <PostFooter />
+        </PostSlot>
+        <PostSlot index={2} sx={sx} sy={sy} reduce={reduce}>
+          <span className="mkt-post-bands">
+            <i />
+            <i />
+            <i />
+          </span>
+          <div className="mkt-post-head">
+            <span className="mkt-post-avatar" />
             <MoreHorizontal />
           </div>
-          <MarketingArtwork kind="signal" />
-          <strong>
-            Não passe.
+          <span className="mkt-post-play">
+            <Play />
+          </span>
+          <strong className="mkt-post-type">
+            Sua voz,
             <br />
-            <em>Marque.</em>
+            <span>em movimento.</span>
           </strong>
-          <small>FAÇA SUA MENSAGEM FICAR.</small>
-          <div className="lume-social-footer">
-            <Heart />
-            <Send />
-            <Bookmark />
+          <div className="mkt-post-reel">
+            <i />
           </div>
-        </div>
-        <div className="mkt-inspiration-card mkt-inspiration-coral">
-          <div className="mkt-poster-label">
-            <span>03 / MOVER</span>
-            <MoreHorizontal />
-          </div>
-          <MarketingArtwork kind="ribbon" />
-          <strong>
-            Feito
-            <br />
-            para
-            <br />
-            <em>sentir.</em>
-          </strong>
-          <small>O PRÓXIMO MOVIMENTO É SEU.</small>
-          <div className="lume-social-footer">
-            <Heart />
-            <Send />
-            <Bookmark />
-          </div>
-        </div>
-        <div className="mkt-gallery-caption">
-          <span>ESTUDOS DE LUZ / POSSIBILIDADES REAIS</span>
-          <span>01 — 03</span>
-        </div>
+        </PostSlot>
       </div>
     </section>
+  );
+}
+
+/** Pointer depth per card: the front card moves most, so the trio reads as layered. */
+const depth = [9, 16, 7];
+
+function PostSlot({
+  index,
+  sx,
+  sy,
+  reduce,
+  children,
+}: {
+  index: number;
+  sx: MotionValue<number>;
+  sy: MotionValue<number>;
+  reduce: boolean;
+  children: ReactNode;
+}) {
+  const d = depth[index];
+  const rotateY = useTransform(sx, (v) => v * d);
+  const rotateX = useTransform(sy, (v) => v * -d * 0.7);
+  const x = useTransform(sx, (v) => v * d * 1.6);
+  const y = useTransform(sy, (v) => v * d * 1.1);
+  return (
+    <motion.div
+      className={`mkt-post-slot mkt-post-slot-${index}`}
+      style={{ rotateX, rotateY, x, y }}
+    >
+      <div className="mkt-post-base">
+        <div className="mkt-post-float">
+          <motion.div
+            className="mkt-post-enter"
+            initial={reduce ? false : { opacity: 0, y: 40, scale: 0.94, filter: "blur(14px)" }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+            transition={{
+              type: "spring",
+              stiffness: 90,
+              damping: 17,
+              mass: 0.9,
+              delay: reduce ? 0 : 0.18 + [1, 0, 2][index] * 0.13,
+            }}
+          >
+            <motion.article
+              className="mkt-post"
+              whileHover={reduce ? undefined : { y: -10, scale: 1.025 }}
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            >
+              <span className="mkt-post-glow" />
+              {children}
+            </motion.article>
+          </motion.div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function PostFooter() {
+  return (
+    <div className="mkt-post-footer">
+      <Heart />
+      <MessageCircle />
+      <Send />
+      <Bookmark />
+    </div>
   );
 }

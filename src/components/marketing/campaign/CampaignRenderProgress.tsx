@@ -1,5 +1,4 @@
 import { LumePulse, LumeNumber, lumeSpring } from "../MarketingMotion";
-import { MarketingArtwork } from "../MarketingArtwork";
 import { motion, useReducedMotion } from "framer-motion";
 // Barra de progresso amigável para o render de uma campanha (Feed + Story).
 // Traduz stages do worker para PT-BR e mostra percentual quando disponível.
@@ -37,8 +36,7 @@ export function CampaignRenderProgress({ tracked, onRetry }: Props) {
     <div className="lume-render rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <span className="mkt-eyebrow">DA IDEIA AO MOVIMENTO</span>
-          <h3 className="text-xl font-semibold mt-2">
+          <h3 className="text-xl font-semibold">
             {tracked.done ? "Sua criação ganhou forma." : "Dando vida à sua campanha."}
           </h3>
         </div>
@@ -96,7 +94,6 @@ function RoleProgress({
       className="lume-render-card space-y-2 min-w-0"
       data-state={done ? "success" : failed ? "error" : "pending"}
     >
-      <MarketingArtwork kind={done ? "signal" : failed ? "prism" : "capsule"} />
       <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="min-w-0">
           <div className="text-sm font-medium truncate">{label}</div>
@@ -104,7 +101,7 @@ function RoleProgress({
         </div>
         <div className="shrink-0">
           {done ? (
-            <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            <CheckCircle2 className="mkt-tone-ok-ink h-5 w-5" />
           ) : failed ? (
             <AlertTriangle className="h-5 w-5 text-destructive" />
           ) : (

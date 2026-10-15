@@ -76,7 +76,7 @@ export function MarketingSchedule({ companyId }: Props) {
   if (grouped.length === 0) {
     return (
       <div className="mkt-empty-state">
-        <MarketingArtwork kind="orbit" />
+        <MarketingArtwork kind="ring" />
         <h3>Sua próxima história tem lugar aqui.</h3>
         <p>
           Aprove um conteúdo e escolha uma data em <strong>Revisar conteúdos</strong>. Seus próximos
@@ -93,7 +93,7 @@ export function MarketingSchedule({ companyId }: Props) {
       </div>
       {grouped.map(([day, items]) => (
         <div key={day} className="mkt-schedule-day rounded-lg border bg-card overflow-hidden">
-          <div className="mkt-schedule-date px-3 py-2 bg-muted text-xs font-semibold uppercase">
+          <div className="mkt-schedule-date">
             <strong>
               {new Date(`${day}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit" })}
             </strong>
@@ -117,13 +117,9 @@ export function MarketingSchedule({ companyId }: Props) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs flex items-center gap-2">
-                      <span className="uppercase font-semibold rounded bg-primary/10 text-primary px-1.5 py-0.5">
-                        {c?.format ?? "?"}
-                      </span>
-                      <span className="uppercase text-[10px] text-muted-foreground">
-                        {s.channel}
-                      </span>
-                      <span className="uppercase text-[10px] text-muted-foreground">
+                      <span className="mkt-badge mkt-tone-neutral">{c?.format ?? "?"}</span>
+                      <span className="mkt-badge mkt-tone-quiet">{s.channel}</span>
+                      <span className="mkt-badge mkt-tone-quiet">
                         {scheduleStatusLabel[s.status]}
                       </span>
                     </div>

@@ -51,17 +51,28 @@ export function CampaignFormatsField({
           ),
         )}
       </select>
+      {/* Mouse shortcut for the select above (which stays the accessible control):
+          each tile toggles its format, and at least one always stays selected. */}
       <div className="mkt-format-visuals" aria-hidden="true">
-        <span className={value !== "story" ? "is-selected" : ""}>
-          <i className="mkt-ratio-feed" />
-          <b>Feed</b>
-          <small>4:5 · na sua página</small>
-        </span>
-        <span className={value !== "feed" ? "is-selected" : ""}>
-          <i className="mkt-ratio-story" />
-          <b>Story</b>
-          <small>9:16 · tela inteira</small>
-        </span>
+        {(["feed", "story"] as const).map((format) => {
+          const selected = value === "feed_story" || value === format;
+          const other = format === "feed" ? "story" : "feed";
+          return (
+            <span
+              key={format}
+              className={selected ? "is-selected" : ""}
+              onClick={() => {
+                if (disabled) return;
+                if (!selected) onChange(value === other ? "feed_story" : format);
+                else if (value === "feed_story") onChange(other);
+              }}
+            >
+              <i className={format === "feed" ? "mkt-ratio-feed" : "mkt-ratio-story"} />
+              <b>{format === "feed" ? "Feed" : "Story"}</b>
+              <small>{format === "feed" ? "4:5 · na sua página" : "9:16 · tela inteira"}</small>
+            </span>
+          );
+        })}
       </div>
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>

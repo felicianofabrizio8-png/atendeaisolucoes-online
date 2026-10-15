@@ -1,6 +1,5 @@
 import { lazy, Suspense, useRef, useState, useId } from "react";
 import {
-  ArrowUpRight,
   CalendarDays,
   CheckCheck,
   Images,
@@ -18,9 +17,8 @@ import { MarketingDashboard } from "./MarketingDashboard";
 import { MarketingChapter } from "./MarketingChapter";
 
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
-import { LumePulse, lumeEase, useMarketingAmbient } from "./MarketingMotion";
+import { LumePulse, PillIndicator, lumeEase, useMarketingAmbient } from "./MarketingMotion";
 import "./marketing.css";
-import "./lume-optical.css";
 
 // O editor de vídeo e as bibliotecas só entram quando a seção é aberta.
 const MarketingGenerator = lazy(() =>
@@ -147,16 +145,12 @@ export function MarketingWorkspace({ companyId }: { companyId: string }) {
     <div className="lume-marketing" data-section={tab} ref={workspace}>
       <header className="mkt-page-header">
         <div>
-          <span className="mkt-eyebrow">SEU ESTÚDIO CRIATIVO</span>
-          <h1>
-            Marketing IA
-            <span className="mkt-title-dot" aria-hidden />
-          </h1>
-          <p>Ideias que conectam. Conteúdos que movem.</p>
+          <h1>Marketing IA</h1>
+          <p>Crie, revise e publique campanhas com a Lume.</p>
         </div>
         <div className="mkt-header-actions">
-          <Button variant="outline" onClick={() => navigate("knowledge")}>
-            Sua marca <ArrowUpRight />
+          <Button variant="outline" className="mkt-secondary" onClick={() => navigate("knowledge")}>
+            Sua marca
           </Button>
           <Button className="mkt-primary" onClick={() => navigate("generator")}>
             <Sparkles /> Criar conteúdo
@@ -166,46 +160,38 @@ export function MarketingWorkspace({ companyId }: { companyId: string }) {
       <LayoutGroup id={motionId}>
         <Tabs value={tab} onValueChange={(v) => setTab(v as MarketingSection)}>
           <div className="mkt-navigation">
-            <TabsList className="mkt-main-nav" aria-label="Fluxo de marketing">
-              {sections.slice(0, 5).map(({ id, label, icon: Icon }, index) => (
+            <TabsList className="mkt-pill mkt-main-nav" aria-label="Fluxo de marketing">
+              {sections.slice(0, 5).map(({ id, label, icon: Icon }) => (
                 <TabsTrigger key={id} value={id}>
-                  {tab === id && (
-                    <motion.span
-                      className="lume-nav-glow"
-                      layoutId="navigation-glow"
-                      transition={{ duration: reduced ? 0 : 0.55, ease: lumeEase }}
-                    />
-                  )}
-                  <Icon aria-hidden className="h-4 w-4" />
+                  {tab === id && <PillIndicator layoutId="mkt-main-nav" />}
+                  <Icon aria-hidden />
                   {label}
-                  <span className="mkt-nav-index" aria-hidden>
-                    {index === 0 ? "00" : `0${index}`}
-                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>
-            <div className="mkt-resource-nav">
-              <span>ACERVO E MARCA</span>
-              <TabsList aria-label="Recursos de marketing">
-                {sections.slice(5).map(({ id, label }) => (
-                  <TabsTrigger key={id} value={id}>
-                    {label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
+            <TabsList
+              className="mkt-pill mkt-pill-quiet mkt-resource-nav"
+              aria-label="Recursos de marketing"
+            >
+              {sections.slice(5).map(({ id, label }) => (
+                <TabsTrigger key={id} value={id}>
+                  {tab === id && <PillIndicator layoutId="mkt-resource-nav" />}
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </div>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={tab}
               className="lume-stage"
-              initial={{ opacity: 0, y: reduced ? 0 : 16 }}
+              initial={{ opacity: 0, y: reduced ? 0 : 14 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: reduced ? 0 : -8 }}
+              exit={{ opacity: 0, y: reduced ? 0 : -6 }}
               transition={{
-                duration: reduced ? 0 : 0.6,
+                duration: reduced ? 0 : 0.55,
                 ease: lumeEase,
-                opacity: { duration: reduced ? 0 : 0.24 },
+                opacity: { duration: reduced ? 0 : 0.22 },
               }}
             >
               {tab !== "dashboard" && (
