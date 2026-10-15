@@ -144,3 +144,10 @@ export function presetOf(permissions: Permission[], role: TeamRole | null) {
 export function canManageTeamAgenda(access: TeamAccess | undefined): boolean {
   return can(access, "agenda.team");
 }
+
+export const PROFILE_LABEL = {
+  funcionario: "Funcionário",
+  gestor_agenda: "Gestor da agenda",
+  admin: "Administrador",
+  personalizado: "Personalizado",
+} as const;

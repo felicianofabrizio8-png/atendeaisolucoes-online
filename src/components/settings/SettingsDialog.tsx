@@ -80,8 +80,12 @@ function normalize(s: string) {
 
 export function SettingsDialog() {
   const { open, tab } = useSettingsDialog();
-  const access=useTeamAccess();
-  const allowedTabs=TABS.filter(t=>t.value==="aparencia" || (t.value==="usuarios" ? access.isAdmin : access.can("settings.manage")));
+  const access = useTeamAccess();
+  const allowedTabs = TABS.filter(
+    (t) =>
+      t.value === "aparencia" ||
+      (t.value === "usuarios" ? access.isAdmin : access.can("settings.manage")),
+  );
   const [query, setQuery] = useState("");
 
   const visibleTabs = (() => {
@@ -90,7 +94,7 @@ export function SettingsDialog() {
     return allowedTabs.filter((t) => normalize(`${t.label} ${t.keywords}`).includes(q));
   })();
 
-  const safeTab=allowedTabs.some(t=>t.value===tab)?tab:"aparencia";
+  const safeTab = allowedTabs.some((t) => t.value === tab) ? tab : "aparencia";
   const Content = TAB_CONTENT[safeTab];
 
   return (

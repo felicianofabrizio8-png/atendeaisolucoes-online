@@ -10,6 +10,7 @@ export interface TeamUser {
   role: TeamRole | null;
   active: boolean;
   permissions: Permission[];
+  approvalPending?: boolean;
 }
 export interface TeamInvite {
   id: string;
@@ -47,4 +48,55 @@ export async function updateTeamMember(
     _active: data.active,
     _permissions: data.permissions,
   });
+}
+export interface InviteLink {
+  id: string;
+  token: string;
+  label: string | null;
+  role: TeamRole;
+  permissions: Permission[];
+  requires_approval: boolean;
+  expires_at: string | null;
+  max_uses: number | null;
+  uses: number;
+  revoked_at: string | null;
+  created_at: string;
+}
+export function inviteLinkUrl(
+  token: string,
+  origin = typeof window === "undefined" ? "" : window.location.origin,
+) {
+  return `${origin}/convite?link=${encodeURIComponent(token)}`;
+}
+export async function listInviteLinks() {
+  return teamRpc<InviteLink[]>("team_list_invite_links");
+}
+export async function createInviteLink(input: {
+  role: TeamRole;
+  permissions: Permission[];
+  requiresApproval: boolean;
+  expiresInDays: number | null;
+  maxUses: number | null;
+  label: string;
+}) {
+  return teamRpc<InviteLink>("team_create_invite_link", {
+    _role: input.role,
+    _permissions: input.permissions,
+    _requires_approval: input.requiresApproval,
+    _expires_in_days: input.expiresInDays,
+    _max_uses: input.maxUses,
+    _label: input.label,
+  });
+}
+export async function revokeInviteLink(id: string) {
+  await teamRpc("team_revoke_invite_link", { _link: id });
+}
+export async function approveMember(userId: string) {
+  await teamRpc("team_approve_member", { _user: userId });
+}
+export async function rejectMember(userId: string) {
+  await teamRpc("team_reject_member", { _user: userId });
+}
+export async function renameTeam(name: string) {
+  await teamRpc("team_rename_company", { _name: name });
 }
