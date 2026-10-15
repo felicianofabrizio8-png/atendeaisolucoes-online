@@ -76,4 +76,24 @@ describe("event-form", () => {
     expect(form.end).toBe("16:30");
     expect(form.technician).toBe("Bruno");
   });
+
+  it("com hierarquia grava alcance, toda a equipe e dono", () => {
+    const form = {
+      ...emptyForm(new Date(2026, 9, 15, 9, 0)),
+      title: "Treino",
+      scope: "equipe" as const,
+      everyone: true,
+      ownerId: "boss",
+    };
+    const row = buildEventRow(form, { companyId: "c1", extended: true, hierarchy: true });
+    expect(row).toMatchObject({ scope: "equipe", everyone: true, owner_id: "boss" });
+    const legacy = buildEventRow(form, { companyId: "c1", extended: true, hierarchy: false });
+    expect(legacy).not.toHaveProperty("scope");
+  });
+  it("pessoal nunca grava toda a equipe", () => {
+    const form = { ...emptyForm(), title: "x", scope: "pessoal" as const, everyone: true };
+    expect(buildEventRow(form, { companyId: "c1", extended: true, hierarchy: true }).everyone).toBe(
+      false,
+    );
+  });
 });

@@ -285,7 +285,7 @@ export const VIEW_LABEL: Record<AgendaView, string> = {
   semana: "Semana",
   mes: "Mês",
   linha: "Linha do tempo",
-  equipe: "Equipe",
+  equipe: "Pessoas",
   lista: "Lista",
 };
 
@@ -435,6 +435,8 @@ export interface AgendaFilters {
   types: AppointmentType[];
   /** Tipos criados pela empresa. */
   typeIds: string[];
+  /** Tags (hierarquia): o compromisso precisa ter ao menos uma delas. */
+  tagIds: string[];
   statuses: VisitStatus[];
   person: string | null;
 }
@@ -443,6 +445,7 @@ export const EMPTY_FILTERS: AgendaFilters = {
   search: "",
   types: [],
   typeIds: [],
+  tagIds: [],
   statuses: [],
   person: null,
 };
@@ -462,6 +465,8 @@ export function applyFilters<T extends AgendaEvent>(
   return events.filter((event) => {
     if (filters.types.length && !filters.types.includes(event.appointment_type)) return false;
     if (filters.typeIds.length && !filters.typeIds.includes(event.event_type_id ?? ""))
+      return false;
+    if (filters.tagIds.length && !(event.tag_ids ?? []).some((id) => filters.tagIds.includes(id)))
       return false;
     if (filters.statuses.length && !filters.statuses.includes(event.status)) return false;
     if (
@@ -562,3 +567,43 @@ export function teamLoad<T extends AgendaEvent>(
 }
 
 export const UNASSIGNED = "Sem responsável";
+
+export const WHOLE_TEAM = "Equipe toda";
+
+/** Visão Pessoas com hierarquia: cada membro vê os compromissos de que é dono ou participante. */
+export function teamLoadByMember<T extends AgendaEvent>(
+  events: readonly T[],
+  days: readonly Date[],
+  members: ReadonlyArray<{ id: string; name: string }>,
+): TeamRow<T>[] {
+  const nameOf = new Map(members.map((member) => [member.id, member.name]));
+  const rows = new Map<string, TeamRow<T>>();
+  const row = (person: string) => {
+    let current = rows.get(person);
+    if (!current) {
+      current = { person, minutes: 0, byDay: days.map(() => []) };
+      rows.set(person, current);
+    }
+    return current;
+  };
+  for (const event of events) {
+    const index = days.findIndex((day) => isSameDay(day, eventStart(event)));
+    if (index < 0) continue;
+    const ids = [
+      ...new Set([event.owner_id, ...(event.participant_ids ?? [])].filter(Boolean)),
+    ] as string[];
+    const people = ids.map((id) => nameOf.get(id) ?? "Membro da equipe");
+    for (const person of people.length ? people : [WHOLE_TEAM]) {
+      const target = row(person);
+      target.byDay[index].push(event);
+      if (event.status !== "cancelada") target.minutes += eventDurationMin(event);
+    }
+  }
+  return [...rows.values()].sort((a, b) =>
+    a.person === WHOLE_TEAM
+      ? 1
+      : b.person === WHOLE_TEAM
+        ? -1
+        : b.minutes - a.minutes || a.person.localeCompare(b.person, "pt-BR"),
+  );
+}

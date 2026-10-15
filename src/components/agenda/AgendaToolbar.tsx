@@ -10,9 +10,12 @@ import {
   VIEW_LABEL,
   EMPTY_FILTERS,
   type AgendaEventType,
+  type AgendaTag,
+  type ScopeFilter,
   type AgendaFilters,
   type AgendaView,
 } from "./agenda-model";
+import type { TeamMember } from "./useTeamDirectory";
 
 const VIEWS: AgendaView[] = ["dia", "semana", "mes", "linha", "equipe", "lista"];
 
@@ -38,6 +41,12 @@ export function AgendaToolbar({
   onFilters,
   onCustomize,
   customTypes = [],
+  tags,
+  manager = false,
+  scope,
+  members = [],
+  onScope,
+  hideTeamView = false,
 }: {
   view: AgendaView;
   focus: Date;
@@ -50,12 +59,22 @@ export function AgendaToolbar({
   onToday: () => void;
   onFilters: (filters: AgendaFilters) => void;
   onCustomize: () => void;
+  /** Com hierarquia: filtros por tag no lugar dos tipos. */
+  tags?: AgendaTag[];
+  /** Gestor da agenda ou admin: escolhe de quem é a agenda exibida. */
+  manager?: boolean;
+  scope?: ScopeFilter;
+  members?: TeamMember[];
+  onScope?: (scope: ScopeFilter) => void;
+  /** Funcionário não vê a visão Pessoas (agenda de todos). */
+  hideTeamView?: boolean;
 }) {
   const toggle = <T,>(list: T[], value: T) =>
     list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
   const active =
     filters.types.length +
     filters.typeIds.length +
+    filters.tagIds.length +
     filters.statuses.length +
     (filters.person ? 1 : 0) +
     (filters.search ? 1 : 0);
@@ -96,8 +115,51 @@ export function AgendaToolbar({
         >
           <SlidersHorizontal className="h-4 w-4" />
         </button>
+        {manager && scope && onScope && (
+          <div className="ag-pills" role="tablist" aria-label="De quem">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope.kind === "minha"}
+              className="ag-pill"
+              onClick={() => onScope({ kind: "minha" })}
+            >
+              Minha agenda
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope.kind === "equipe"}
+              className="ag-pill"
+              onClick={() => onScope({ kind: "equipe" })}
+            >
+              Equipe
+            </button>
+            {members.length > 0 && (
+              <select
+                aria-label="Agenda de uma pessoa"
+                className="ag-pill bg-transparent outline-none"
+                value={scope.kind === "pessoa" ? scope.userId : ""}
+                onChange={(e) =>
+                  onScope(
+                    e.target.value
+                      ? { kind: "pessoa", userId: e.target.value }
+                      : { kind: "equipe" },
+                  )
+                }
+              >
+                <option value="">Pessoa…</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
         <div className="ag-pills" role="tablist" aria-label="Visão da agenda">
-          {VIEWS.map((item) => (
+          {VIEWS.filter((item) => !(hideTeamView && item === "equipe")).map((item) => (
             <button
               key={item}
               type="button"
@@ -124,35 +186,49 @@ export function AgendaToolbar({
           />
         </label>
         <div className="flex flex-wrap gap-1.5" aria-label="Filtrar por tipo">
-          {customTypes.length
-            ? customTypes.map((type) => (
+          {tags
+            ? tags.map((tag) => (
                 <button
-                  key={type.id}
+                  key={tag.id}
                   type="button"
                   className="ag-chip"
-                  aria-pressed={filters.typeIds.includes(type.id)}
-                  style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${type.hue})` }}
-                  onClick={() =>
-                    onFilters({ ...filters, typeIds: toggle(filters.typeIds, type.id) })
-                  }
+                  aria-pressed={filters.tagIds.includes(tag.id)}
+                  style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${tag.hue})` }}
+                  onClick={() => onFilters({ ...filters, tagIds: toggle(filters.tagIds, tag.id) })}
                 >
                   <span className="ag-dot" />
-                  {type.name}
+                  {tag.name}
                 </button>
               ))
-            : TYPE_KEYS.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className="ag-chip"
-                  aria-pressed={filters.types.includes(type)}
-                  style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${TYPE_HUE[type]})` }}
-                  onClick={() => onFilters({ ...filters, types: toggle(filters.types, type) })}
-                >
-                  <span className="ag-dot" />
-                  {TYPE_LABEL[type].short}
-                </button>
-              ))}
+            : customTypes.length
+              ? customTypes.map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    className="ag-chip"
+                    aria-pressed={filters.typeIds.includes(type.id)}
+                    style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${type.hue})` }}
+                    onClick={() =>
+                      onFilters({ ...filters, typeIds: toggle(filters.typeIds, type.id) })
+                    }
+                  >
+                    <span className="ag-dot" />
+                    {type.name}
+                  </button>
+                ))
+              : TYPE_KEYS.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className="ag-chip"
+                    aria-pressed={filters.types.includes(type)}
+                    style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${TYPE_HUE[type]})` }}
+                    onClick={() => onFilters({ ...filters, types: toggle(filters.types, type) })}
+                  >
+                    <span className="ag-dot" />
+                    {TYPE_LABEL[type].short}
+                  </button>
+                ))}
         </div>
         <select
           aria-label="Filtrar por status"

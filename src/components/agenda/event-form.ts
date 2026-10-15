@@ -4,6 +4,7 @@ import {
   type AgendaEvent,
   type AgendaEventType,
   type AppointmentType,
+  type EventScope,
   type VisitStatus,
 } from "./agenda-model";
 
@@ -28,6 +29,12 @@ export interface EventForm {
   technician: string;
   notes: string;
   customFields: Record<string, string | number | boolean>;
+  // Hierarquia: alcance, toda a equipe, dono, participantes e tags.
+  scope: EventScope;
+  everyone: boolean;
+  ownerId: string | null;
+  participantIds: string[];
+  tagIds: string[];
 }
 
 export function emptyForm(
@@ -55,6 +62,11 @@ export function emptyForm(
     technician: "",
     notes: "",
     customFields: {},
+    scope: "pessoal",
+    everyone: false,
+    ownerId: null,
+    participantIds: [],
+    tagIds: [],
   };
 }
 
@@ -89,6 +101,11 @@ export function formFromEvent(event: AgendaEvent): EventForm {
     technician: event.technician ?? "",
     notes: event.notes ?? "",
     customFields: (event.custom_fields ?? {}) as EventForm["customFields"],
+    scope: event.scope ?? "pessoal",
+    everyone: event.everyone ?? false,
+    ownerId: event.owner_id ?? null,
+    participantIds: event.participant_ids ?? [],
+    tagIds: event.tag_ids ?? [],
   };
 }
 
@@ -125,7 +142,7 @@ const clean = (value: string) => value.trim() || null;
  */
 export function buildEventRow(
   form: EventForm,
-  options: { companyId: string; extended: boolean; source?: "tela" | "lume" },
+  options: { companyId: string; extended: boolean; hierarchy?: boolean; source?: "tela" | "lume" },
 ): Record<string, unknown> {
   const { start, end } = formTimes(form);
   const row: Record<string, unknown> = {
@@ -154,5 +171,40 @@ export function buildEventRow(
       source: options.source ?? "tela",
     });
   }
+  if (options.hierarchy) {
+    Object.assign(row, {
+      scope: form.scope,
+      everyone: form.scope === "equipe" && form.everyone,
+      ...(form.ownerId ? { owner_id: form.ownerId } : {}),
+    });
+  }
   return row;
+}
+
+/** Troca as tags e os participantes do compromisso pelos do formulário. */
+export async function saveEventRelations(
+  eventId: string,
+  form: EventForm,
+  companyId: string,
+  members: Array<{ id: string; name: string }>,
+) {
+  const { supabase } = await import("@/integrations/supabase/client");
+  const tags = supabase.from("agenda_event_tags" as never);
+  await tags.delete().eq("event_id", eventId);
+  if (form.tagIds.length)
+    await tags.insert(
+      form.tagIds.map((tag_id) => ({ company_id: companyId, event_id: eventId, tag_id })) as never,
+    );
+  const people = supabase.from("agenda_event_participants" as never);
+  await people.delete().eq("event_id", eventId);
+  if (form.scope === "equipe" && form.participantIds.length)
+    await people.insert(
+      form.participantIds.map((user_id) => ({
+        company_id: companyId,
+        event_id: eventId,
+        user_id,
+        name: members.find((member) => member.id === user_id)?.name ?? "Membro",
+        role: "participante",
+      })) as never,
+    );
 }

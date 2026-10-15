@@ -7,6 +7,7 @@ import {
   layoutDay,
   STATUS_LABEL,
   teamLoad,
+  teamLoadByMember,
   TYPE_HUE,
   TYPE_LABEL,
   type AgendaEvent,
@@ -336,8 +337,14 @@ export function TeamView({
   conflicts,
   onOpen,
   weeklyHours = 44,
-}: ViewProps & { days: Date[]; weeklyHours?: number }) {
-  const rows = teamLoad(events, days);
+  members,
+}: ViewProps & {
+  days: Date[];
+  weeklyHours?: number;
+  /** Com hierarquia: agrupa por dono e participantes. */
+  members?: ReadonlyArray<{ id: string; name: string }>;
+}) {
+  const rows = members ? teamLoadByMember(events, days, members) : teamLoad(events, days);
   if (!rows.length)
     return (
       <p className="p-10 text-center text-sm text-[var(--ag-muted)]">

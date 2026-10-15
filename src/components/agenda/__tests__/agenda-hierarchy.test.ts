@@ -64,3 +64,28 @@ describe("detecção da hierarquia no banco", () => {
     vi.doUnmock("@/integrations/supabase/client");
   });
 });
+
+describe("visão Pessoas com hierarquia", () => {
+  it("agrupa por dono e participantes; sem dono vai para Equipe toda", async () => {
+    const { teamLoadByMember } = await import("../agenda-model");
+    const day = new Date("2026-10-16T12:00:00Z");
+    const events = [
+      { ...base, id: "a", owner_id: "u1", scope: "pessoal" },
+      { ...base, id: "b", owner_id: "boss", scope: "equipe", participant_ids: ["u1"] },
+      { ...base, id: "c", owner_id: null, scope: "equipe", everyone: true },
+    ] as AgendaEvent[];
+    const rows = teamLoadByMember(
+      events,
+      [day],
+      [
+        { id: "u1", name: "Bruno" },
+        { id: "boss", name: "Ana" },
+      ],
+    );
+    const byName = Object.fromEntries(
+      rows.map((row) => [row.person, row.byDay[0].map((e) => e.id)]),
+    );
+    expect(byName).toEqual({ Bruno: ["a", "b"], Ana: ["b"], "Equipe toda": ["c"] });
+    expect(rows.at(-1)?.person).toBe("Equipe toda");
+  });
+});
