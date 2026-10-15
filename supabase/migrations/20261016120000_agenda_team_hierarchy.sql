@@ -190,3 +190,212 @@ CREATE POLICY agenda_event_tags_write ON public.agenda_event_tags FOR ALL TO aut
   USING (public.agenda_can_access(company_id, true) AND public.agenda_can_edit_event(event_id))
   WITH CHECK (public.agenda_can_access(company_id, true) AND public.agenda_can_edit_event(event_id));
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.agenda_tags, public.agenda_event_tags TO authenticated;
+
+-- ---------- 4. Convite por link e aprovação ----------
+-- Quem não tem conta cria a conta normalmente (com as verificações) e depois
+-- abre o link: o popup confirma e a conta passa para a equipe do convite.
+ALTER TABLE public.company_member_access
+  ADD COLUMN IF NOT EXISTS approval_pending boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS joined_via_link uuid;
+
+CREATE TABLE IF NOT EXISTS public.company_invite_links (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  -- 64 hex (2 × UUID v4 = 244 bits aleatórios), sem depender de pgcrypto.
+  token text NOT NULL UNIQUE DEFAULT replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+  label text CHECK (label IS NULL OR char_length(label) <= 60),
+  role public.app_role NOT NULL DEFAULT 'atendente' CHECK (role <> 'admin'),
+  permissions text[] NOT NULL DEFAULT ARRAY['conversations.read','conversations.reply','quotes.manage','agenda.manage','products.view'],
+  requires_approval boolean NOT NULL DEFAULT false,
+  expires_at timestamptz,
+  max_uses integer CHECK (max_uses IS NULL OR max_uses > 0),
+  uses integer NOT NULL DEFAULT 0,
+  created_by uuid,
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (permissions <@ ARRAY['dashboard.view','conversations.read','conversations.reply','conversations.view_all',
+    'conversations.assign','quotes.manage','agenda.manage','agenda.team','products.view','products.manage','reports.view']::text[])
+);
+ALTER TABLE public.company_invite_links ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.company_invite_links FROM anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.team_link_usable(_link public.company_invite_links)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT _link.id IS NOT NULL AND _link.revoked_at IS NULL
+    AND (_link.expires_at IS NULL OR _link.expires_at > now())
+    AND (_link.max_uses IS NULL OR _link.uses < _link.max_uses);
+$$;
+
+CREATE OR REPLACE FUNCTION public.team_create_invite_link(_role public.app_role, _permissions text[],
+  _requires_approval boolean, _expires_in_days integer, _max_uses integer, _label text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_company uuid := public.current_company_id(); v_link public.company_invite_links;
+BEGIN
+  IF NOT public.has_role(auth.uid(), v_company, 'admin') THEN
+    RAISE EXCEPTION 'Apenas administradores criam convites' USING ERRCODE = '42501';
+  END IF;
+  IF _role = 'admin' THEN
+    RAISE EXCEPTION 'Link de convite não concede administrador. Promova depois em Usuários e Permissões.';
+  END IF;
+  INSERT INTO public.company_invite_links (company_id, label, role, permissions, requires_approval, expires_at, max_uses, created_by)
+  VALUES (v_company, NULLIF(trim(_label), ''), _role, COALESCE(_permissions, ARRAY[]::text[]),
+    COALESCE(_requires_approval, false),
+    CASE WHEN _expires_in_days IS NULL THEN NULL ELSE now() + make_interval(days => _expires_in_days) END,
+    _max_uses, auth.uid())
+  RETURNING * INTO v_link;
+  RETURN to_jsonb(v_link);
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.team_list_invite_links()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT public.has_role(auth.uid(), public.current_company_id(), 'admin') THEN
+    RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501';
+  END IF;
+  RETURN COALESCE((SELECT jsonb_agg(to_jsonb(l) ORDER BY l.created_at DESC) FROM public.company_invite_links l
+    WHERE l.company_id = public.current_company_id()), '[]'::jsonb);
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.team_revoke_invite_link(_link uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT public.has_role(auth.uid(), public.current_company_id(), 'admin') THEN
+    RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501';
+  END IF;
+  UPDATE public.company_invite_links SET revoked_at = now()
+  WHERE id = _link AND company_id = public.current_company_id() AND revoked_at IS NULL;
+END; $$;
+
+-- Pública de propósito: sem login, só o nome da equipe e se o link vale.
+-- Logado: também a equipe atual, se já é membro e se pode trocar.
+CREATE OR REPLACE FUNCTION public.team_invite_link_info(_token text)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_link public.company_invite_links; v_name text; v_me public.profiles;
+BEGIN
+  SELECT * INTO v_link FROM public.company_invite_links WHERE token = _token;
+  IF NOT public.team_link_usable(v_link) THEN
+    RETURN jsonb_build_object('valid', false, 'company', NULL, 'requiresApproval', false);
+  END IF;
+  SELECT name INTO v_name FROM public.companies WHERE id = v_link.company_id;
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('valid', true, 'company', v_name, 'requiresApproval', v_link.requires_approval);
+  END IF;
+  SELECT * INTO v_me FROM public.profiles WHERE id = auth.uid();
+  RETURN jsonb_build_object(
+    'valid', true,
+    'company', v_name,
+    'requiresApproval', v_link.requires_approval,
+    'currentTeam', (SELECT name FROM public.companies WHERE id = v_me.company_id),
+    'alreadyMember', v_me.company_id = v_link.company_id,
+    'canSwitch', NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.company_id = v_me.company_id AND p.id <> v_me.id),
+    'currentTeamHasData', EXISTS (SELECT 1 FROM public.leads WHERE company_id = v_me.company_id)
+      OR EXISTS (SELECT 1 FROM public.visits WHERE company_id = v_me.company_id)
+      OR EXISTS (SELECT 1 FROM public.quotes WHERE company_id = v_me.company_id)
+  );
+END; $$;
+GRANT EXECUTE ON FUNCTION public.team_invite_link_info(text) TO anon, authenticated;
+
+-- Troca de empresa do perfil: liberada só pelas RPCs de convite (marca da transação).
+CREATE OR REPLACE FUNCTION public.team_guard_profile() RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND (
+       (NEW.company_id IS DISTINCT FROM OLD.company_id AND COALESCE(current_setting('lume.team_move', true), '') <> 'on')
+    OR NEW.id IS DISTINCT FROM OLD.id
+    OR (OLD.id <> auth.uid() AND NOT public.has_role(auth.uid(), OLD.company_id, 'admin'))) THEN
+    RAISE EXCEPTION 'Alteração de perfil não autorizada' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END; $$;
+REVOKE ALL ON FUNCTION public.team_guard_profile() FROM PUBLIC, anon, authenticated;
+
+-- Entrar pelo link: a conta (sozinha na equipe atual) passa para a equipe do convite.
+CREATE OR REPLACE FUNCTION public.team_join_via_link(_token text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_uid uuid := auth.uid(); v_me public.profiles; v_link public.company_invite_links;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'Entre na sua conta' USING ERRCODE = '42501'; END IF;
+  -- FOR UPDATE: duas pessoas ao mesmo tempo não passam do limite de usos.
+  SELECT * INTO v_link FROM public.company_invite_links WHERE token = _token FOR UPDATE;
+  IF NOT public.team_link_usable(v_link) THEN
+    RAISE EXCEPTION 'Link de convite inválido, expirado ou esgotado';
+  END IF;
+  SELECT * INTO v_me FROM public.profiles WHERE id = v_uid;
+  IF v_me.company_id = v_link.company_id THEN RETURN jsonb_build_object('status', 'already_member'); END IF;
+  IF EXISTS (SELECT 1 FROM public.profiles p WHERE p.company_id = v_me.company_id AND p.id <> v_uid) THEN
+    RAISE EXCEPTION 'Sua conta faz parte de uma equipe com outras pessoas. Use outro e-mail para entrar nesta equipe.';
+  END IF;
+  PERFORM set_config('lume.team_move', 'on', true);
+  DELETE FROM public.user_roles WHERE user_id = v_uid AND company_id = v_me.company_id;
+  DELETE FROM public.company_member_access WHERE user_id = v_uid AND company_id = v_me.company_id;
+  UPDATE public.profiles SET company_id = v_link.company_id WHERE id = v_uid;
+  INSERT INTO public.user_roles(company_id, user_id, role) VALUES (v_link.company_id, v_uid, v_link.role);
+  INSERT INTO public.company_member_access(company_id, user_id, active, permissions, approval_pending, joined_via_link)
+  VALUES (v_link.company_id, v_uid, NOT v_link.requires_approval, v_link.permissions, v_link.requires_approval, v_link.id);
+  UPDATE public.company_invite_links SET uses = uses + 1 WHERE id = v_link.id;
+  PERFORM set_config('lume.team_move', 'off', true);
+  RETURN jsonb_build_object('status', CASE WHEN v_link.requires_approval THEN 'pending_approval' ELSE 'joined' END);
+END; $$;
+
+-- Aguardando aprovação? (funciona sem acesso ativo: usa auth.uid() direto).
+CREATE OR REPLACE FUNCTION public.team_my_pending_join()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_access public.company_member_access; v_name text;
+BEGIN
+  SELECT a.* INTO v_access FROM public.company_member_access a
+    JOIN public.profiles p ON p.id = a.user_id AND p.company_id = a.company_id
+  WHERE a.user_id = auth.uid();
+  IF NOT FOUND OR NOT v_access.approval_pending THEN RETURN NULL; END IF;
+  SELECT name INTO v_name FROM public.companies WHERE id = v_access.company_id;
+  RETURN jsonb_build_object('state', 'waiting', 'company', v_name);
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.team_approve_member(_user uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_company uuid := public.current_company_id();
+BEGIN
+  IF NOT public.has_role(auth.uid(), v_company, 'admin') THEN RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501'; END IF;
+  UPDATE public.company_member_access SET active = true, approval_pending = false
+  WHERE user_id = _user AND company_id = v_company AND approval_pending;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.team_reject_member(_user uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_company uuid := public.current_company_id();
+BEGIN
+  IF NOT public.has_role(auth.uid(), v_company, 'admin') THEN RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501'; END IF;
+  UPDATE public.company_member_access SET active = false, approval_pending = false
+  WHERE user_id = _user AND company_id = v_company AND approval_pending;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.team_rename_company(_name text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_company uuid := public.current_company_id();
+BEGIN
+  IF NOT public.has_role(auth.uid(), v_company, 'admin') THEN RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501'; END IF;
+  IF _name IS NULL OR char_length(trim(_name)) NOT BETWEEN 2 AND 80 THEN
+    RAISE EXCEPTION 'Nome da equipe deve ter de 2 a 80 caracteres';
+  END IF;
+  UPDATE public.companies SET name = trim(_name) WHERE id = v_company;
+END; $$;
+
+-- Lista de membros com a pendência de aprovação.
+CREATE OR REPLACE FUNCTION public.team_list_users() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT public.has_role(auth.uid(), public.current_company_id(), 'admin') THEN
+    RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501';
+  END IF;
+  RETURN COALESCE((SELECT jsonb_agg(jsonb_build_object('id', p.id, 'displayName', p.display_name, 'email', p.email,
+    'createdAt', p.created_at, 'lastSeenAt', p.last_seen_at,
+    'role', (SELECT role FROM user_roles WHERE user_id = p.id AND company_id = p.company_id
+             ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'financeiro' THEN 1 ELSE 2 END LIMIT 1),
+    'active', a.active, 'permissions', a.permissions, 'approvalPending', a.approval_pending) ORDER BY p.created_at)
+    FROM profiles p JOIN company_member_access a ON a.user_id = p.id AND a.company_id = p.company_id
+    WHERE p.company_id = public.current_company_id()), '[]'::jsonb);
+END; $$;
+
+GRANT EXECUTE ON FUNCTION
+  public.team_create_invite_link(public.app_role, text[], boolean, integer, integer, text),
+  public.team_list_invite_links(), public.team_revoke_invite_link(uuid), public.team_join_via_link(text),
+  public.team_my_pending_join(), public.team_approve_member(uuid), public.team_reject_member(uuid),
+  public.team_rename_company(text) TO authenticated;

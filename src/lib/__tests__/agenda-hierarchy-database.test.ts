@@ -177,4 +177,158 @@ describe.sequential("agenda: hierarquia no banco", () => {
   });
 });
 
+// Revisão 2: quem não tem conta cria a conta normalmente e depois entra pelo link.
+describe.sequential("equipe: convite por link", () => {
+  const solo = "00000000-0000-4000-8000-0000000000b1";
+  const solo2 = "00000000-0000-4000-8000-0000000000b2";
+  const waiting = "00000000-0000-4000-8000-0000000000b3";
+  let token: string;
+  let single: string;
+  let approvalToken: string;
+  let linkId: string;
+
+  it("só admin cria link; link de admin é recusado", async () => {
+    await asUser(empA);
+    expect(
+      await fails(`SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], false, 7, null, 'Vendas')`),
+    ).toBe(true);
+    await asUser(admin);
+    expect(
+      await fails(`SELECT team_create_invite_link('admin', ARRAY[]::text[], false, 7, null, null)`),
+    ).toBe(true);
+    const link = await value<{ token: string; id: string }>(
+      `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage','conversations.read'], false, 7, null, 'Vendas') AS v`,
+    );
+    token = link.token;
+    linkId = link.id;
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    single = (
+      await value<{ token: string }>(
+        `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], false, null, 1, 'Um uso') AS v`,
+      )
+    ).token;
+    approvalToken = (
+      await value<{ token: string }>(
+        `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], true, null, null, null) AS v`,
+      )
+    ).token;
+  });
+
+  it("sem login, o link informa só o nome da equipe e se vale", async () => {
+    await asAnon();
+    const info = await value<Record<string, unknown>>(`SELECT team_invite_link_info('${token}') AS v`);
+    expect(info).toMatchObject({ valid: true, requiresApproval: false });
+    expect(Object.keys(info).sort()).toEqual(["company", "requiresApproval", "valid"]);
+    expect(
+      (await value<Record<string, unknown>>(`SELECT team_invite_link_info('nao-existe') AS v`)).valid,
+    ).toBe(false);
+  });
+
+  it("conta nova (cadastro normal) entra pelo link e leva as permissões do link", async () => {
+    await root();
+    await db.query(
+      `INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES($1,'solo@x.test','{"display_name":"Solo"}')`,
+      [solo],
+    );
+    const own = await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${solo}'`);
+    expect(own).not.toBe(company);
+    await asUser(solo);
+    const info = await value<Record<string, unknown>>(`SELECT team_invite_link_info('${token}') AS v`);
+    expect(info).toMatchObject({ valid: true, canSwitch: true, alreadyMember: false, currentTeamHasData: false });
+    expect(await value<Record<string, unknown>>(`SELECT team_join_via_link('${token}') AS v`)).toMatchObject({
+      status: "joined",
+    });
+    await root();
+    expect(await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${solo}'`)).toBe(company);
+    expect(await value<string>(`SELECT role::text AS v FROM user_roles WHERE user_id='${solo}'`)).toBe("atendente");
+    expect(
+      await value<string[]>(`SELECT permissions AS v FROM company_member_access WHERE user_id='${solo}'`),
+    ).toEqual(["agenda.manage", "conversations.read"]);
+    expect(await value<number>(`SELECT uses AS v FROM company_invite_links WHERE id='${linkId}'`)).toBe(1);
+    await asUser(solo);
+    expect(await value<string>(`SELECT public.current_company_id()::text AS v`)).toBe(company);
+    expect(
+      (await value<Record<string, unknown>>(`SELECT team_join_via_link('${token}') AS v`)).status,
+    ).toBe("already_member");
+  });
+
+  it("respeita o limite de usos", async () => {
+    await root();
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'s2@x.test')`, [solo2]);
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'s3@x.test')`, [waiting]);
+    await asUser(solo2);
+    await db.query(`SELECT team_join_via_link('${single}')`);
+    await asUser(waiting);
+    expect(await fails(`SELECT team_join_via_link('${single}')`)).toBe(true);
+  });
+
+  it("link com aprovação deixa aguardando até o admin aprovar", async () => {
+    await asUser(waiting);
+    expect(
+      (await value<Record<string, unknown>>(`SELECT team_join_via_link('${approvalToken}') AS v`)).status,
+    ).toBe("pending_approval");
+    expect(await value<Record<string, unknown>>(`SELECT team_my_pending_join() AS v`)).toMatchObject({
+      state: "waiting",
+    });
+    expect(await value<string | null>(`SELECT public.current_company_id()::text AS v`)).toBeNull();
+    await asUser(empA);
+    expect(await fails(`SELECT team_approve_member('${waiting}')`)).toBe(true);
+    await asUser(admin);
+    await db.query(`SELECT team_approve_member('${waiting}')`);
+    const users = await value<Array<{ id: string; approvalPending: boolean; active: boolean }>>(
+      `SELECT team_list_users() AS v`,
+    );
+    expect(users.find((u) => u.id === waiting)).toMatchObject({ active: true, approvalPending: false });
+    await asUser(waiting);
+    expect(await value<unknown>(`SELECT team_my_pending_join() AS v`)).toBeNull();
+  });
+
+  it("conta com colegas na equipe atual não troca; equipe com dados é sinalizada", async () => {
+    await root();
+    const theirs = await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${outsider}'`);
+    const mate = "00000000-0000-4000-8000-0000000000b4";
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'mate@x.test')`, [mate]);
+    await db.query(`UPDATE company_member_access SET company_id=$1 WHERE user_id=$2`, [theirs, mate]);
+    await db.query(`UPDATE profiles SET company_id=$1 WHERE id=$2`, [theirs, mate]);
+    await db.query(
+      `INSERT INTO leads(company_id,name,channel) VALUES($1,'Cliente B','whatsapp')`,
+      [theirs],
+    );
+    await asUser(outsider);
+    const info = await value<Record<string, unknown>>(`SELECT team_invite_link_info('${token}') AS v`);
+    expect(info).toMatchObject({ canSwitch: false, currentTeamHasData: true });
+    expect(await fails(`SELECT team_join_via_link('${token}')`)).toBe(true);
+  });
+
+  it("o perfil continua sem poder trocar de empresa direto", async () => {
+    await asUser(empA);
+    await db
+      .query(`UPDATE profiles SET company_id=(SELECT company_id FROM profiles WHERE id='${outsider}') WHERE id='${empA}'`)
+      .catch(() => undefined);
+    await root();
+    expect(await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${empA}'`)).toBe(company);
+  });
+
+  it("link revogado ou vencido não funciona; admin renomeia a equipe", async () => {
+    await asUser(admin);
+    await db.query(`SELECT team_revoke_invite_link('${linkId}')`);
+    const fresh = "00000000-0000-4000-8000-0000000000b5";
+    await root();
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'fresh@x.test')`, [fresh]);
+    await asUser(fresh);
+    expect(await fails(`SELECT team_join_via_link('${token}')`)).toBe(true);
+    await root();
+    await db.query(`UPDATE company_invite_links SET expires_at=now()-interval '1 day' WHERE token=$1`, [approvalToken]);
+    await asUser(fresh);
+    expect(await fails(`SELECT team_join_via_link('${approvalToken}')`)).toBe(true);
+    await db.query(`SELECT team_rename_company('Equipe Fresh')`);
+    await root();
+    expect(
+      await value<string>(
+        `SELECT c.name AS v FROM companies c JOIN profiles p ON p.company_id=c.id WHERE p.id='${fresh}'`,
+      ),
+    ).toBe("Equipe Fresh");
+  });
+});
+
 export { asAnon, root };
