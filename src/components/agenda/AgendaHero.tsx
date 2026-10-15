@@ -1,23 +1,22 @@
-import { useEffect, useState, type CSSProperties } from "react";
-import { format, formatDistanceToNowStrict, startOfDay } from "date-fns";
+import { useEffect, useState } from "react";
+import { format, formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Plus, Sparkles } from "lucide-react";
-import { eventEnd, TYPE_HUE, type AgendaEvent, type AgendaPulse } from "./agenda-model";
+import type { AgendaPulse } from "./agenda-model";
+import { AgendaArtwork } from "./AgendaArtwork";
 
-/** Topo da Agenda: tipografia editorial, pulso do dia e o mostrador do dia. */
+/** Topo da Agenda: tipografia editorial, pulso do dia e a escultura de vidro da Lume. */
 export function AgendaHero({
   pulse,
-  today,
   onCreate,
   onAskLume,
 }: {
   pulse: AgendaPulse;
-  /** Compromissos de hoje (já com a cor do tipo, se houver). */
-  today: AgendaEvent[];
   onCreate: () => void;
   onAskLume?: () => void;
 }) {
   const now = useNow();
+  const next = pulse.next;
   return (
     <section className="ag-hero" aria-label="Resumo da agenda">
       <div className="flex min-w-0 flex-col justify-between gap-8">
@@ -56,7 +55,35 @@ export function AgendaHero({
         </div>
       </div>
 
-      <DayDial events={today} next={pulse.next} now={now} />
+      <figure className="ag-hero-art">
+        <AgendaArtwork />
+        <figcaption className="ag-hero-caption">
+          {next ? (
+            <>
+              <span className="ag-mono">Próximo</span>
+              <span className="text-sm">
+                <b className="font-semibold tabular-nums">
+                  {format(new Date(next.scheduled_at), "HH:mm")}
+                </b>{" "}
+                · {next.title}
+              </span>
+              <span className="text-xs text-[var(--ag-muted)]">
+                {formatDistanceToNowStrict(new Date(next.scheduled_at), {
+                  locale: ptBR,
+                  addSuffix: true,
+                })}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="ag-mono">Agenda livre</span>
+              <span className="text-sm text-[var(--ag-muted)]">
+                Nenhum compromisso pela frente.
+              </span>
+            </>
+          )}
+        </figcaption>
+      </figure>
     </section>
   );
 }
@@ -68,122 +95,6 @@ function useNow() {
     return () => clearInterval(timer);
   }, []);
   return now;
-}
-
-const SIZE = 240;
-const CENTER = SIZE / 2;
-const RADIUS = 100;
-const WORK_START = 8;
-const WORK_END = 18;
-
-/** Ângulo (graus, 0 = topo, horário) de um instante dentro das 24 h do dia. */
-function angleOf(date: Date, dayStart: Date) {
-  const minutes = (date.getTime() - dayStart.getTime()) / 60_000;
-  return (Math.max(0, Math.min(1440, minutes)) / 1440) * 360;
-}
-
-function point(angle: number, radius = RADIUS) {
-  const radians = ((angle - 90) * Math.PI) / 180;
-  return { x: CENTER + radius * Math.cos(radians), y: CENTER + radius * Math.sin(radians) };
-}
-
-function arc(from: number, to: number, radius = RADIUS) {
-  const sweep = Math.max(0.6, to - from);
-  const start = point(from, radius);
-  const end = point(from + sweep, radius);
-  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${sweep > 180 ? 1 : 0} 1 ${end.x} ${end.y}`;
-}
-
-/**
- * Mostrador do dia: o anel são as 24 horas, o trecho mais claro é o expediente, cada
- * compromisso é um arco na sua cor e o ponto branco é o agora. No centro, o próximo.
- */
-function DayDial({
-  events,
-  next,
-  now,
-}: {
-  events: AgendaEvent[];
-  next: AgendaEvent | null;
-  now: Date;
-}) {
-  const dayStart = startOfDay(now);
-  const workFrom = (WORK_START / 24) * 360;
-  const workTo = (WORK_END / 24) * 360;
-  const nowPoint = point(angleOf(now, dayStart));
-  const visible = events.filter((event) => event.status !== "cancelada");
-  return (
-    <div className="ag-dial">
-      <p className="ag-dial-corner ag-mono">Seu dia · {visible.length} compromissos</p>
-      <svg
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        role="img"
-        aria-label="Compromissos de hoje ao longo do dia"
-      >
-        <circle className="ag-dial-track" cx={CENTER} cy={CENTER} r={RADIUS} strokeWidth={1} />
-        <path className="ag-dial-work" d={arc(workFrom, workTo)} strokeWidth={1.5} />
-        {[0, 6, 12, 18].map((hour) => {
-          const inner = point((hour / 24) * 360, RADIUS - 6);
-          const outer = point((hour / 24) * 360, RADIUS + 6);
-          const label = point((hour / 24) * 360, RADIUS + 16);
-          return (
-            <g key={hour}>
-              <line className="ag-dial-tick" x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} />
-              <text className="ag-dial-hour" x={label.x} y={label.y + 3} textAnchor="middle">
-                {String(hour).padStart(2, "0")}
-              </text>
-            </g>
-          );
-        })}
-        {visible.map((event) => (
-          <path
-            key={event.id}
-            className="ag-dial-arc"
-            data-past={eventEnd(event) < now}
-            d={arc(
-              angleOf(new Date(event.scheduled_at), dayStart),
-              angleOf(eventEnd(event), dayStart),
-            )}
-            strokeWidth={6}
-            style={
-              {
-                ["--ag-hue" as string]: String(
-                  event.type_hue ?? TYPE_HUE[event.appointment_type] ?? 300,
-                ),
-              } as CSSProperties
-            }
-          >
-            <title>
-              {format(new Date(event.scheduled_at), "HH:mm")} · {event.title}
-            </title>
-          </path>
-        ))}
-        <circle className="ag-dial-now" cx={nowPoint.x} cy={nowPoint.y} r={4} />
-      </svg>
-      <div className="ag-dial-center">
-        {next ? (
-          <>
-            <p className="ag-mono">Próximo</p>
-            <p className="mt-1 text-[34px] font-semibold leading-none tracking-tight tabular-nums">
-              {format(new Date(next.scheduled_at), "HH:mm")}
-            </p>
-            <p className="mt-2 line-clamp-2 text-[13px] font-medium leading-snug">{next.title}</p>
-            <p className="mt-1 text-[11.5px] text-[var(--ag-muted)]">
-              {formatDistanceToNowStrict(new Date(next.scheduled_at), {
-                locale: ptBR,
-                addSuffix: true,
-              })}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="ag-mono">Agenda livre</p>
-            <p className="mt-2 text-[15px] font-medium leading-snug">Nada pela frente.</p>
-          </>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function Pulse({ value, label }: { value: number; label: string }) {

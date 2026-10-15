@@ -66,7 +66,6 @@ import { LumeDock } from "@/components/lume/LumeDock";
 import {
   applyFilters,
   daysOf,
-  eventsOnDay,
   EMPTY_FILTERS,
   findConflicts,
   peopleOf,
@@ -235,14 +234,6 @@ function AgendaPage() {
     [eventTypes.types],
   );
   const pulse = useMemo(() => pulseOf(events), [events]);
-  const todayEvents = useMemo(
-    () =>
-      eventsOnDay(events, new Date()).map((event) => {
-        const type = event.event_type_id ? typeById.get(event.event_type_id) : undefined;
-        return type ? { ...event, type_hue: type.hue, type_name: type.name } : event;
-      }),
-    [events, typeById],
-  );
   const people = useMemo(() => peopleOf(events), [events]);
   const inRange = useMemo(
     () =>
@@ -318,7 +309,6 @@ function AgendaPage() {
       <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <AgendaHero
           pulse={pulse}
-          today={todayEvents}
           onCreate={() => openCreate()}
           onAskLume={() => setLumeSignal((n) => n + 1)}
         />

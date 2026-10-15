@@ -96,65 +96,50 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Mostrador do dia: anel de 24 h, um arco por compromisso, o agora marcado. */
-.ag-dial {
+/* Escultura de vidro do topo: solta, sem moldura, flutuando de leve. */
+.ag-hero-art {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  place-items: center;
-  min-height: 260px;
-  border-radius: 22px;
-  border: 1px solid var(--ag-edge);
-  background: #09080c;
-  overflow: hidden;
-}
-.ag-dial svg {
-  width: min(250px, 78%);
-  height: auto;
-  overflow: visible;
-}
-.ag-dial-track {
-  fill: none;
-  stroke: rgb(255 255 255 / 0.07);
-}
-.ag-dial-work {
-  fill: none;
-  stroke: rgb(255 255 255 / 0.14);
-}
-.ag-dial-tick {
-  stroke: rgb(255 255 255 / 0.22);
-}
-.ag-dial-arc {
-  fill: none;
-  stroke-linecap: round;
-  stroke: oklch(0.72 0.08 var(--ag-hue, 300));
-}
-.ag-dial-arc[data-past="true"] {
-  stroke: oklch(0.5 0.03 var(--ag-hue, 300));
-}
-.ag-dial-now {
-  fill: var(--ag-ink);
-}
-.ag-dial-hour {
-  fill: var(--ag-faint);
-  font: 9px ui-monospace, Menlo, monospace;
-  letter-spacing: 0.06em;
-}
-.ag-dial-center {
-  position: absolute;
-  inset: 0;
   display: flex;
+  min-height: 280px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0 24%;
-  text-align: center;
-  pointer-events: none;
+  margin: 0;
 }
-.ag-dial-corner {
-  position: absolute;
-  left: 16px;
-  top: 14px;
+.ag-art {
+  width: min(460px, 100%);
+}
+.ag-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.ag-art-float {
+  animation: ag-float 9s var(--ag-ease) infinite alternate;
+  will-change: transform;
+}
+@keyframes ag-float {
+  from {
+    transform: translate3d(0, 6px, 0) rotate(-1deg);
+  }
+  to {
+    transform: translate3d(0, -8px, 0) rotate(1.2deg);
+  }
+}
+.ag-hero-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 10px;
+  margin-top: 4px;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ag-art-float {
+    animation: none;
+  }
 }
 
 /* ---------- Superfícies e controles ---------- */
