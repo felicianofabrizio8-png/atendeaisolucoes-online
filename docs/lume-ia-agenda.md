@@ -46,3 +46,8 @@ Tudo que a Lume muda aparece no histórico do compromisso como "via Lume".
 - `src/components/lume/LumeDock.tsx` — cápsula e painel, reutilizáveis em qualquer tela
   (`page`, `suggestions`, `onChanged`).
 - Rotas: `POST /api/lume/chat`, `POST /api/lume/action`, `GET /api/lume/status`.
+
+## Hierarquia (16/10)
+- `agenda_criar` aceita `alcance` (`pessoal` | `equipe`), `participantes` (nomes, ou "todos") e `tags` (nomes); `agenda_alterar` muda o alcance (participantes e tags de um compromisso existente são ajustados pela tela).
+- Por padrão a Lume cria compromissos pessoais. Compromisso da equipe só para quem tem "Gerenciar agenda da equipe"; para os demais o banco recusa e a Lume explica.
+- Tags pessoais de outras pessoas nunca são usadas. Nomes que não existem voltam em `nao_encontrados`.
