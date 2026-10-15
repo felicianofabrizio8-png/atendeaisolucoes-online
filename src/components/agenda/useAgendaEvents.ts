@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   AGENDA_SELECT,
   AGENDA_SELECT_EXTENDED,
+  AGENDA_SELECT_HIERARCHY,
   type AgendaEvent,
   type VisitStatus,
 } from "./agenda-model";
@@ -23,8 +24,12 @@ export function useAgendaEvents(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [extended, setExtended] = useState(false);
+  const [hierarchy, setHierarchy] = useState(false);
   useEffect(() => {
-    void detectAgendaSchema().then((schema) => setExtended(schema.extended));
+    void detectAgendaSchema().then((schema) => {
+      setExtended(schema.extended);
+      setHierarchy(schema.hierarchy);
+    });
   }, []);
   const request = useRef(0);
 
@@ -46,10 +51,16 @@ export function useAgendaEvents(
     }
     const id = ++request.current;
     setLoading(true);
-    const { extended } = await detectAgendaSchema();
+    const schema = await detectAgendaSchema();
     const { data, error: loadError } = await supabase
       .from("visits")
-      .select(extended ? AGENDA_SELECT_EXTENDED : AGENDA_SELECT)
+      .select(
+        schema.hierarchy
+          ? AGENDA_SELECT_HIERARCHY
+          : schema.extended
+            ? AGENDA_SELECT_EXTENDED
+            : AGENDA_SELECT,
+      )
       .eq("company_id", companyId)
       .gte("scheduled_at", fromIso)
       .lte("scheduled_at", toIso)
@@ -60,7 +71,23 @@ export function useAgendaEvents(
       setError("Não foi possível carregar a agenda.");
     } else {
       setError(null);
-      setEvents((data ?? []) as unknown as AgendaEvent[]);
+      // Tags e participantes chegam aninhados; viram listas de ids no compromisso.
+      const rows = (data ?? []) as unknown as Array<
+        AgendaEvent & {
+          agenda_event_tags?: Array<{ tag_id: string }>;
+          agenda_event_participants?: Array<{ user_id: string | null }>;
+        }
+      >;
+      setEvents(
+        rows.map(({ agenda_event_tags, agenda_event_participants, ...event }) => ({
+          ...event,
+          tag_ids: agenda_event_tags?.map((row) => row.tag_id) ?? [],
+          participant_ids:
+            agenda_event_participants
+              ?.map((row) => row.user_id)
+              .filter((id): id is string => !!id) ?? [],
+        })),
+      );
     }
     setLoading(false);
   }, [companyId, fromIso, toIso]);
@@ -193,6 +220,7 @@ export function useAgendaEvents(
     loading,
     error,
     extended,
+    hierarchy,
     reload: load,
     setStatus,
     reschedule,
