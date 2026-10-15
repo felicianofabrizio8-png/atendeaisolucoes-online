@@ -1,5 +1,24 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Check, ChevronDown, Loader2, Pencil, RotateCcw, Settings2, X } from "lucide-react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ListChecks,
+  Loader2,
+  MapPin,
+  MessageCircle,
+  MessageSquareText,
+  Package as PackageIcon,
+  Pencil,
+  RotateCcw,
+  Search,
+  Settings2,
+  Sparkles,
+  UserPlus,
+  UserRound,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -22,6 +41,8 @@ import {
 } from "@/data/quotes";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizePhone } from "@/lib/phone";
+import { quoteHue, quoteInitials } from "@/lib/quote-presentation";
+import "./quotes.css";
 
 export const PAYMENT_METHODS: PaymentMethod[] = [
   "Pix",
@@ -86,8 +107,8 @@ const BRAZILIAN_STATES = [
   ["SE", "Sergipe"],
   ["TO", "Tocantins"],
 ] as const;
-const inputClass =
-  "quote-form-input w-full min-h-10 rounded-md border border-transparent bg-[#1d1d1d] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-white/50";
+// Styled by `.lq-form .quote-form-input` (quotes.css); the class also drives the autofill fix.
+const inputClass = "quote-form-input";
 function FormField({
   label,
   children,
@@ -99,7 +120,7 @@ function FormField({
 }) {
   return (
     <label className={`block min-w-0 ${className}`}>
-      <span className="mb-1.5 block text-sm font-semibold">{label}</span>
+      <span className="lq-field-label">{label}</span>
       {children}
     </label>
   );
@@ -165,6 +186,8 @@ export function QuoteFormModal({
   const { profile } = useAuth();
   const companyId = profile?.company_id;
   const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState(1);
+  const reduceMotion = useReducedMotion();
   const [clientMode, setClientMode] = useState<"existing" | "new">(
     defaultLeadId || quote ? "existing" : "new",
   );
@@ -471,268 +494,392 @@ export function QuoteFormModal({
     toast.success("Padrões da empresa atualizados");
   };
 
+  const steps = [
+    {
+      label: "Cliente",
+      hint: quote ? "Confira quem recebe a proposta." : "Para quem é a proposta?",
+    },
+    { label: "Produto", hint: "O que você está oferecendo?" },
+    { label: "Pagamento", hint: "Como o cliente vai pagar?" },
+  ];
+  const canReach = (target: number) =>
+    target <= step || (target === 2 && clientValid) || (target === 3 && clientValid && !!product);
+  const goTo = (target: number) => {
+    if (!canReach(target) || target === step) return;
+    setDirection(target > step ? 1 : -1);
+    setStep(target);
+  };
+  const discountPct = unitPrice > 0 ? Math.round((discount / unitPrice) * 100) : 0;
+  const validDays = Math.round(
+    (new Date(validUntil + "T12:00:00").getTime() -
+      new Date(todayPlusDays(0) + "T12:00:00").getTime()) /
+      86_400_000,
+  );
+  const extraCount = [inclusosText, brindesText, porContaText, observacoes].filter((value) =>
+    value.trim(),
+  ).length;
+
   return (
     <>
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-0 backdrop-blur-sm sm:p-4"
-        onClick={onCancel}
-      >
+      <div className="lq-black-backdrop" onClick={onCancel}>
         <div
           role="dialog"
           aria-modal="true"
           aria-label={quote ? "Editar orçamento" : "Novo Orçamento"}
           onClick={(event) => event.stopPropagation()}
-          className="quote-form relative flex h-[100dvh] w-full max-w-[560px] flex-col overflow-hidden bg-black text-white shadow-2xl sm:h-[min(760px,calc(100dvh-2rem))] sm:rounded-[20px] sm:border sm:border-white/10"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") onCancel();
+          }}
+          className="quote-form lq-black lq-panel lq-form"
         >
-          <div className="shrink-0 px-6 pt-7 sm:px-10 sm:pt-9">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-[clamp(2rem,4vw,2.5rem)] font-bold leading-tight tracking-tight">
-                {quote ? "Editar Orçamento" : "Novo Orçamento"}
-              </h2>
+          <span className="lq-panel-glow" aria-hidden="true" />
+          <div className="lq-form-head">
+            <div className="lq-form-title">
+              <div>
+                <h2>{quote ? "Editar orçamento" : "Novo orçamento"}</h2>
+                <p>{steps[step - 1].hint}</p>
+              </div>
               <button
                 type="button"
                 onClick={onCancel}
                 aria-label="Fechar formulário"
-                className="rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white"
+                className="lq-close"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="relative mt-4 flex h-9 items-center rounded-full border border-white/25 pl-3 pr-[3px]">
-              <input
-                value={clientSearch}
-                onFocus={() => setSearchOpen(true)}
-                onChange={(event) => {
-                  setClientSearch(event.target.value);
-                  setSearchOpen(true);
-                }}
-                placeholder="Pesquisar Cliente"
-                aria-label="Pesquisar Cliente"
-                className="quote-form-search min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/45"
-              />
-              <button
-                type="button"
-                onClick={addClient}
-                className="ml-2 flex h-[27px] min-w-12 items-center justify-center rounded-full bg-white px-3 text-xs font-bold text-black hover:bg-white/85"
-              >
-                Add
-              </button>
-              {searchOpen && clientSearch.trim() && (
-                <div className="absolute inset-x-0 top-full z-30 mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-[#171717] p-1 shadow-xl">
-                  {filteredLeads.length ? (
-                    filteredLeads.map((lead) => (
-                      <button
-                        type="button"
-                        key={lead.id}
-                        onClick={() => selectLead(lead)}
-                        className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10"
-                      >
-                        <span className="block font-semibold">{lead.name}</span>
-                        <span className="text-xs text-white/50">
-                          {lead.phone || lead.handle || lead.channel}
-                        </span>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="px-3 py-2 text-xs text-white/50">
-                      Nenhum cliente encontrado. Use Add para cadastrar.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div
-            className="min-h-0 flex-1 overflow-y-auto px-6 pb-5 pt-5 sm:px-10"
-            onClick={() => searchOpen && setSearchOpen(false)}
-          >
+            <nav className="lq-stepper" aria-label={`Etapa ${step} de 3`}>
+              {steps.map((item, index) => {
+                const target = index + 1;
+                return (
+                  <button
+                    type="button"
+                    key={item.label}
+                    onClick={() => goTo(target)}
+                    disabled={!canReach(target)}
+                    aria-current={target === step ? "step" : undefined}
+                    data-state={target === step ? "current" : target < step ? "done" : "todo"}
+                  >
+                    <i aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
             {step === 1 && (
-              <div className="space-y-5">
-                <section>
-                  <h3 className="mb-4 text-lg font-bold">Informações Pessoais</h3>
-                  <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                    <FormField label="Nome">
-                      <input
-                        value={customer.firstName}
-                        onChange={(event) => changeCustomer("firstName", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Sobrenome">
-                      <input
-                        value={customer.lastName}
-                        onChange={(event) => changeCustomer("lastName", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Email" className="col-span-2">
-                      <input
-                        type="email"
-                        value={customer.email}
-                        onChange={(event) => changeCustomer("email", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Telefone 1">
-                      <input
-                        type="tel"
-                        value={customer.phone1}
-                        onChange={(event) => changeCustomer("phone1", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Telefone 2">
-                      <input
-                        type="tel"
-                        value={customer.phone2}
-                        onChange={(event) => changeCustomer("phone2", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                  </div>
-                </section>
-                <section>
-                  <h3 className="mb-4 text-lg font-bold">Endereço</h3>
-                  <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                    <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_5rem] gap-x-5">
-                      <FormField label="Rua">
-                        <input
-                          value={customer.street}
-                          onChange={(event) => changeCustomer("street", event.target.value)}
-                          className={inputClass}
-                        />
-                      </FormField>
-                      <FormField label="Número">
-                        <input
-                          inputMode="numeric"
-                          value={customer.number}
-                          onChange={(event) => changeCustomer("number", event.target.value)}
-                          className={inputClass}
-                        />
-                      </FormField>
-                    </div>
-                    <FormField label="Cidade">
-                      <input
-                        value={customer.city}
-                        onChange={(event) => changeCustomer("city", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Bairro">
-                      <input
-                        value={customer.neighborhood}
-                        onChange={(event) => changeCustomer("neighborhood", event.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Estado">
-                      <div className="relative">
-                        <button
-                          type="button"
-                          aria-label="Selecionar estado"
-                          aria-expanded={stateMenuOpen}
-                          onClick={() => setStateMenuOpen((open) => !open)}
-                          className={`${inputClass} flex items-center justify-between text-left`}
-                        >
-                          <span className={customer.state ? "text-white" : "text-white/40"}>
-                            {customer.state || "Selecione a UF"}
+              <div className="lq-client-search">
+                <div className="lq-client-box">
+                  <Search aria-hidden="true" />
+                  <input
+                    value={clientSearch}
+                    onFocus={() => setSearchOpen(true)}
+                    onChange={(event) => {
+                      setClientSearch(event.target.value);
+                      setSearchOpen(true);
+                    }}
+                    placeholder="Buscar cliente por nome ou telefone"
+                    aria-label="Pesquisar Cliente"
+                    className="quote-form-search"
+                  />
+                  <button type="button" onClick={addClient}>
+                    <UserPlus aria-hidden="true" />
+                    Novo
+                  </button>
+                </div>
+                {searchOpen && clientSearch.trim() && (
+                  <div className="lq-client-results">
+                    {filteredLeads.length ? (
+                      filteredLeads.map((lead) => (
+                        <button type="button" key={lead.id} onClick={() => selectLead(lead)}>
+                          <span
+                            className="lq-avatar"
+                            aria-hidden="true"
+                            style={
+                              {
+                                "--hue": quoteHue(lead.id),
+                                width: 32,
+                                height: 32,
+                                fontSize: 11,
+                              } as CSSProperties
+                            }
+                          >
+                            {quoteInitials(lead.name)}
                           </span>
-                          <ChevronDown className="h-4 w-4" />
+                          <span className="min-w-0">
+                            <b className="truncate">{lead.name}</b>
+                            <small>{lead.phone || lead.handle || lead.channel}</small>
+                          </span>
                         </button>
-                        {stateMenuOpen && (
-                          <div className="absolute inset-x-0 top-full z-40 mt-1 max-h-52 overflow-y-auto rounded-md border border-white/15 bg-[#171717] p-1 shadow-xl">
-                            {BRAZILIAN_STATES.map(([uf, name]) => (
-                              <button
-                                type="button"
-                                key={uf}
-                                onClick={() => {
-                                  changeCustomer("state", uf);
-                                  setStateMenuOpen(false);
-                                }}
-                                className="flex w-full items-center justify-between rounded px-2.5 py-2 text-left text-sm hover:bg-white/10"
-                              >
-                                <span>{name}</span>
-                                <span className="font-semibold text-white/60">{uf}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </FormField>
-                    <FormField label="CEP">
-                      <input
-                        value={customer.postalCode}
-                        inputMode="numeric"
-                        autoComplete="postal-code"
-                        placeholder="00000-000"
-                        onChange={(event) => {
-                          const digits = event.target.value.replace(/\D/g, "").slice(0, 8);
-                          changeCustomer(
-                            "postalCode",
-                            digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits,
-                          );
-                        }}
-                        className={inputClass}
-                      />
-                      {cepLoading && (
-                        <span className="mt-1 block text-xs text-white/50">Buscando endereço…</span>
-                      )}
-                    </FormField>
+                      ))
+                    ) : (
+                      <p>Nenhum cliente encontrado. Toque em Novo para cadastrar.</p>
+                    )}
                   </div>
-                </section>
-                {clientMode === "new" && (
-                  <details className="text-sm text-white/60">
-                    <summary className="cursor-pointer">Canal do novo cliente</summary>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      <FormField label="Canal">
-                        <select
-                          value={channel}
-                          onChange={(event) => setChannel(event.target.value as Channel)}
-                          className={inputClass}
-                        >
-                          <option value="whatsapp">WhatsApp</option>
-                          <option value="instagram">Instagram</option>
-                          <option value="facebook">Facebook</option>
-                        </select>
-                      </FormField>
-                      {channel !== "whatsapp" && (
-                        <FormField label="@ usuário">
-                          <input
-                            value={handle}
-                            onChange={(event) => setHandle(event.target.value)}
-                            className={inputClass}
-                          />
-                        </FormField>
-                      )}
-                    </div>
-                  </details>
+                )}
+                {clientMode === "existing" && selectedLead && (
+                  <div className="lq-client-chip">
+                    <span
+                      className="lq-avatar"
+                      aria-hidden="true"
+                      style={{ "--hue": quoteHue(selectedLead.id) } as CSSProperties}
+                    >
+                      {quoteInitials(selectedLead.name)}
+                    </span>
+                    <span>
+                      <b>{selectedLead.name}</b> <small>· cliente cadastrado</small>
+                    </span>
+                    <button type="button" onClick={addClient}>
+                      Trocar
+                    </button>
+                  </div>
                 )}
               </div>
             )}
+          </div>
 
-            {step === 2 && (
-              <div className="space-y-5">
-                <section>
-                  <h3 className="mb-4 text-lg font-bold">Produto</h3>
-                  <div className="space-y-5">
-                    <FormField label="Nome do Produto">
-                      <select
-                        value={productId}
-                        onChange={(event) => chooseProduct(event.target.value)}
-                        className={inputClass}
-                      >
-                        {!productId && <option value="">Selecione um produto</option>}
-                        {products.map((item) => (
-                          <option value={item.id} key={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                    {defaultProductId && suggestionReason && productId === defaultProductId && (
-                      <p className="text-xs text-white/60">Sugerido pela IA: {suggestionReason}</p>
-                    )}
+          <div
+            className="lq-form-body"
+            onClick={() => {
+              if (searchOpen) setSearchOpen(false);
+              if (stateMenuOpen) setStateMenuOpen(false);
+            }}
+          >
+            <motion.div
+              key={step}
+              initial={reduceMotion ? false : { opacity: 0, x: direction * 28 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {step === 1 && (
+                <>
+                  <section className="lq-section">
+                    <h3 className="lq-section-title">
+                      <span aria-hidden="true">
+                        <UserRound />
+                      </span>
+                      Informações pessoais
+                    </h3>
+                    <div className="lq-fields">
+                      <FormField label="Nome">
+                        <input
+                          value={customer.firstName}
+                          autoComplete="given-name"
+                          onChange={(event) => changeCustomer("firstName", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Sobrenome">
+                        <input
+                          value={customer.lastName}
+                          autoComplete="family-name"
+                          onChange={(event) => changeCustomer("lastName", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Telefone 1">
+                        <input
+                          type="tel"
+                          value={customer.phone1}
+                          placeholder="(00) 00000-0000"
+                          onChange={(event) => changeCustomer("phone1", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Telefone 2">
+                        <input
+                          type="tel"
+                          value={customer.phone2}
+                          placeholder="Opcional"
+                          onChange={(event) => changeCustomer("phone2", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Email" className="lq-span-2">
+                        <input
+                          type="email"
+                          value={customer.email}
+                          placeholder="Opcional"
+                          onChange={(event) => changeCustomer("email", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
+                  </section>
+                  <section className="lq-section">
+                    <h3 className="lq-section-title">
+                      <span aria-hidden="true">
+                        <MapPin />
+                      </span>
+                      Endereço
+                    </h3>
+                    <div className="lq-fields">
+                      <FormField label="CEP">
+                        <input
+                          value={customer.postalCode}
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          placeholder="00000-000"
+                          onChange={(event) => {
+                            const digits = event.target.value.replace(/\D/g, "").slice(0, 8);
+                            changeCustomer(
+                              "postalCode",
+                              digits.length > 5
+                                ? `${digits.slice(0, 5)}-${digits.slice(5)}`
+                                : digits,
+                            );
+                          }}
+                          className={inputClass}
+                        />
+                        <span className="lq-hint">
+                          {cepLoading ? "Buscando endereço…" : "Preenche rua, bairro e cidade."}
+                        </span>
+                      </FormField>
+                      <FormField label="Estado">
+                        <div className="relative">
+                          <button
+                            type="button"
+                            aria-label="Selecionar estado"
+                            aria-expanded={stateMenuOpen}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setStateMenuOpen((open) => !open);
+                            }}
+                            className={`${inputClass} flex items-center justify-between text-left`}
+                          >
+                            <span className={customer.state ? "text-white" : "text-white/40"}>
+                              {customer.state
+                                ? (BRAZILIAN_STATES.find(([uf]) => uf === customer.state)?.[1] ??
+                                  customer.state)
+                                : "Selecione"}
+                            </span>
+                            <ChevronDown className="h-4 w-4 text-white/60" />
+                          </button>
+                          {stateMenuOpen && (
+                            <div className="lq-state-menu" role="listbox">
+                              {BRAZILIAN_STATES.map(([uf, name]) => (
+                                <button
+                                  type="button"
+                                  key={uf}
+                                  role="option"
+                                  aria-selected={customer.state === uf}
+                                  onClick={() => {
+                                    changeCustomer("state", uf);
+                                    setStateMenuOpen(false);
+                                  }}
+                                >
+                                  <span>{name}</span>
+                                  <small>{uf}</small>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </FormField>
+                      <div className="lq-span-2 grid grid-cols-[minmax(0,1fr)_6rem] gap-x-3.5">
+                        <FormField label="Rua">
+                          <input
+                            value={customer.street}
+                            onChange={(event) => changeCustomer("street", event.target.value)}
+                            className={inputClass}
+                          />
+                        </FormField>
+                        <FormField label="Número">
+                          <input
+                            inputMode="numeric"
+                            value={customer.number}
+                            onChange={(event) => changeCustomer("number", event.target.value)}
+                            className={inputClass}
+                          />
+                        </FormField>
+                      </div>
+                      <FormField label="Bairro">
+                        <input
+                          value={customer.neighborhood}
+                          onChange={(event) => changeCustomer("neighborhood", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Cidade">
+                        <input
+                          value={customer.city}
+                          onChange={(event) => changeCustomer("city", event.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
+                  </section>
+                  {clientMode === "new" && (
+                    <details className="lq-extra">
+                      <summary>
+                        <MessageCircle className="h-4 w-4 text-white/60" aria-hidden="true" />
+                        Canal do novo cliente
+                        <small>{channel === "whatsapp" ? "WhatsApp" : channel}</small>
+                        <ChevronDown aria-hidden="true" />
+                      </summary>
+                      <div className="lq-extra-body">
+                        <div className="lq-fields">
+                          <FormField label="Canal">
+                            <select
+                              value={channel}
+                              onChange={(event) => setChannel(event.target.value as Channel)}
+                              className={inputClass}
+                            >
+                              <option value="whatsapp">WhatsApp</option>
+                              <option value="instagram">Instagram</option>
+                              <option value="facebook">Facebook</option>
+                            </select>
+                          </FormField>
+                          {channel !== "whatsapp" && (
+                            <FormField label="@ usuário">
+                              <input
+                                value={handle}
+                                onChange={(event) => setHandle(event.target.value)}
+                                className={inputClass}
+                              />
+                            </FormField>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  )}
+                </>
+              )}
+
+              {step === 2 && (
+                <section className="lq-section">
+                  <FormField label="Nome do Produto">
+                    <select
+                      value={productId}
+                      onChange={(event) => chooseProduct(event.target.value)}
+                      className={inputClass}
+                    >
+                      {!productId && <option value="">Selecione um produto</option>}
+                      {products.map((item) => (
+                        <option value={item.id} key={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  {defaultProductId && suggestionReason && productId === defaultProductId && (
+                    <span className="lq-hint-ai">
+                      <Sparkles aria-hidden="true" />
+                      Sugerido pela IA: {suggestionReason}
+                    </span>
+                  )}
+                  {product && (
+                    <div className="lq-product">
+                      <span aria-hidden="true">
+                        <PackageIcon />
+                      </span>
+                      <div>
+                        <b>{product.name}</b>
+                        <small>Preço de tabela</small>
+                      </div>
+                      <strong>{formatBRL(activePrice(product))}</strong>
+                    </div>
+                  )}
+                  <div className="mt-5 grid gap-4">
                     <FormField label="Descrição">
                       <textarea
                         value={description}
@@ -740,8 +887,9 @@ export function QuoteFormModal({
                           setDescription(event.target.value);
                           setCustomMessage(null);
                         }}
-                        rows={7}
-                        className={`${inputClass} resize-y`}
+                        rows={6}
+                        placeholder="Detalhes do produto que o cliente precisa saber"
+                        className={inputClass}
                       />
                     </FormField>
                     <FormField label="Benefícios">
@@ -752,132 +900,164 @@ export function QuoteFormModal({
                           setCustomMessage(null);
                         }}
                         rows={3}
-                        className={`${inputClass} resize-y`}
+                        placeholder="Um benefício por linha"
+                        className={inputClass}
                       />
                     </FormField>
                   </div>
-                </section>
-                <details className="rounded-lg border border-white/10 px-3 py-2 text-sm">
-                  <summary className="cursor-pointer font-semibold text-white/70">
-                    Conteúdo adicional do orçamento
-                  </summary>
-                  <div className="mt-4 space-y-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={!defaults.loaded}
-                        onClick={() => {
-                          setInclusosText(defaults.included);
-                          setBrindesText(defaults.gifts);
-                          setPorContaText(defaults.customer);
-                          setCustomMessage(null);
-                        }}
-                        className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs disabled:opacity-40"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        Aplicar padrão
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditDefaultsOpen(true)}
-                        className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs"
-                      >
-                        <Settings2 className="h-3 w-3" />
-                        Editar padrão
-                      </button>
+                  <details className="lq-extra">
+                    <summary>
+                      <ListChecks className="h-4 w-4 text-white/60" aria-hidden="true" />
+                      Conteúdo adicional
+                      <small>
+                        {extraCount
+                          ? `${extraCount} preenchido${extraCount > 1 ? "s" : ""}`
+                          : "opcional"}
+                      </small>
+                      <ChevronDown aria-hidden="true" />
+                    </summary>
+                    <div className="lq-extra-body">
+                      <div className="lq-extra-actions">
+                        <button
+                          type="button"
+                          disabled={!defaults.loaded}
+                          onClick={() => {
+                            setInclusosText(defaults.included);
+                            setBrindesText(defaults.gifts);
+                            setPorContaText(defaults.customer);
+                            setCustomMessage(null);
+                          }}
+                        >
+                          <RotateCcw aria-hidden="true" />
+                          Aplicar padrão
+                        </button>
+                        <button type="button" onClick={() => setEditDefaultsOpen(true)}>
+                          <Settings2 aria-hidden="true" />
+                          Editar padrão
+                        </button>
+                      </div>
+                      <FormField label="Itens inclusos">
+                        <textarea
+                          value={inclusosText}
+                          onChange={(event) => {
+                            setInclusosText(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          placeholder="Um item por linha"
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Brindes">
+                        <textarea
+                          value={brindesText}
+                          onChange={(event) => {
+                            setBrindesText(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Por conta do cliente">
+                        <textarea
+                          value={porContaText}
+                          onChange={(event) => {
+                            setPorContaText(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <FormField label="Observações">
+                        <textarea
+                          value={observacoes}
+                          onChange={(event) => {
+                            setObservacoes(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          rows={3}
+                          className={inputClass}
+                        />
+                      </FormField>
                     </div>
-                    <FormField label="Itens inclusos">
-                      <textarea
-                        value={inclusosText}
-                        onChange={(event) => {
-                          setInclusosText(event.target.value);
-                          setCustomMessage(null);
-                        }}
-                        rows={3}
-                        className={`${inputClass} resize-y`}
-                      />
-                    </FormField>
-                    <FormField label="Brindes">
-                      <textarea
-                        value={brindesText}
-                        onChange={(event) => {
-                          setBrindesText(event.target.value);
-                          setCustomMessage(null);
-                        }}
-                        rows={3}
-                        className={`${inputClass} resize-y`}
-                      />
-                    </FormField>
-                    <FormField label="Por conta do cliente">
-                      <textarea
-                        value={porContaText}
-                        onChange={(event) => {
-                          setPorContaText(event.target.value);
-                          setCustomMessage(null);
-                        }}
-                        rows={3}
-                        className={`${inputClass} resize-y`}
-                      />
-                    </FormField>
-                    <FormField label="Observações">
-                      <textarea
-                        value={observacoes}
-                        onChange={(event) => {
-                          setObservacoes(event.target.value);
-                          setCustomMessage(null);
-                        }}
-                        rows={3}
-                        className={`${inputClass} resize-y`}
-                      />
-                    </FormField>
-                  </div>
-                </details>
-              </div>
-            )}
+                  </details>
+                </section>
+              )}
 
-            {step === 3 && (
-              <div className="space-y-6">
-                <section>
-                  <h3 className="mb-4 text-lg font-bold">Pagamento</h3>
-                  <div className="grid grid-cols-2 gap-x-5 gap-y-4">
-                    <FormField label="Valor" className="col-span-2 max-w-[48%]">
-                      <input
-                        inputMode="decimal"
-                        value={unitPriceRaw}
-                        onChange={(event) => {
-                          setUnitPriceRaw(event.target.value.replace(/[^\d,.]/g, ""));
-                          setCustomMessage(null);
-                        }}
-                        className={inputClass}
-                      />
+              {step === 3 && (
+                <section className="lq-section">
+                  <div className="lq-fields">
+                    <FormField label="Valor">
+                      <div className="lq-money" data-prefix="R$">
+                        <input
+                          inputMode="decimal"
+                          value={unitPriceRaw}
+                          onChange={(event) => {
+                            setUnitPriceRaw(event.target.value.replace(/[^\d,.]/g, ""));
+                            setCustomMessage(null);
+                          }}
+                          className={inputClass}
+                        />
+                      </div>
                     </FormField>
-                    <FormField label="Desconto (R$)">
-                      <input
-                        inputMode="decimal"
-                        value={discountRaw}
-                        onChange={(event) => {
-                          setDiscountRaw(event.target.value.replace(/[^\d,.]/g, ""));
-                          setCustomMessage(null);
-                        }}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Forma de Pagamento">
-                      <select
-                        value={paymentMethod}
-                        onChange={(event) => {
-                          setPaymentMethod(event.target.value as PaymentMethod);
-                          setCustomMessage(null);
-                        }}
-                        className={inputClass}
+                    <div>
+                      <FormField label="Desconto (R$)">
+                        <div className="lq-money" data-prefix="R$">
+                          <input
+                            inputMode="decimal"
+                            value={discountRaw}
+                            onChange={(event) => {
+                              setDiscountRaw(event.target.value.replace(/[^\d,.]/g, ""));
+                              setCustomMessage(null);
+                            }}
+                            className={inputClass}
+                          />
+                        </div>
+                      </FormField>
+                      <div className="lq-chips" role="group" aria-label="Desconto rápido">
+                        {[0, 5, 10, 15].map((pct) => (
+                          <button
+                            type="button"
+                            key={pct}
+                            aria-pressed={discountPct === pct}
+                            disabled={unitPrice <= 0}
+                            onClick={() => {
+                              setDiscountRaw(String(Math.round(unitPrice * pct) / 100));
+                              setCustomMessage(null);
+                            }}
+                          >
+                            {pct === 0 ? "Nenhum" : `${pct}%`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="lq-span-2">
+                      <span className="lq-field-label" id="lq-payment-label">
+                        Forma de pagamento
+                      </span>
+                      <div
+                        className="lq-chips lq-chips-lg"
+                        role="radiogroup"
+                        aria-labelledby="lq-payment-label"
                       >
                         {PAYMENT_METHODS.map((method) => (
-                          <option key={method} value={method}>
+                          <button
+                            type="button"
+                            role="radio"
+                            key={method}
+                            aria-checked={paymentMethod === method}
+                            onClick={() => {
+                              setPaymentMethod(method);
+                              setCustomMessage(null);
+                            }}
+                          >
                             {method}
-                          </option>
+                          </button>
                         ))}
-                      </select>
-                    </FormField>
+                      </div>
+                    </div>
                     <FormField label="Parcelas">
                       <select
                         value={installments}
@@ -889,113 +1069,142 @@ export function QuoteFormModal({
                       >
                         {[1, 2, 3, 4, 6, 10, 12, 18, 24].map((count) => (
                           <option key={count} value={count}>
-                            {count === 1 ? "À vista" : `${count}x`}
+                            {count === 1
+                              ? "À vista"
+                              : `${count}x de ${formatBRL(finalValue / count)}`}
                           </option>
                         ))}
                       </select>
                     </FormField>
-                    <FormField label="Válido até">
-                      <input
-                        type="date"
-                        value={validUntil}
-                        onChange={(event) => {
-                          setValidUntil(event.target.value);
-                          setCustomMessage(null);
-                        }}
-                        className={inputClass}
-                      />
-                    </FormField>
+                    <div>
+                      <FormField label="Válido até">
+                        <input
+                          type="date"
+                          value={validUntil}
+                          onChange={(event) => {
+                            setValidUntil(event.target.value);
+                            setCustomMessage(null);
+                          }}
+                          className={inputClass}
+                        />
+                      </FormField>
+                      <div className="lq-chips" role="group" aria-label="Validade rápida">
+                        {[7, 15, 30].map((days) => (
+                          <button
+                            type="button"
+                            key={days}
+                            aria-pressed={validDays === days}
+                            onClick={() => {
+                              setValidUntil(todayPlusDays(days));
+                              setCustomMessage(null);
+                            }}
+                          >
+                            {days} dias
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <p className="mt-4 text-sm text-white/60">
-                    Valor final: <strong className="text-white">{formatBRL(finalValue)}</strong>
-                  </p>
+                  <div className="lq-total" aria-live="polite">
+                    <dl>
+                      <dt>Valor do produto</dt>
+                      <dd>{formatBRL(unitPrice)}</dd>
+                      <dt>Desconto{discountPct > 0 ? ` (${discountPct}%)` : ""}</dt>
+                      <dd>{discount > 0 ? `− ${formatBRL(discount)}` : formatBRL(0)}</dd>
+                    </dl>
+                    <div className="lq-total-final">
+                      <span>
+                        Total · {paymentMethod}
+                        {installments > 1
+                          ? ` · ${installments}x de ${formatBRL(finalValue / installments)}`
+                          : " · à vista"}
+                      </span>
+                      <strong>{formatBRL(finalValue)}</strong>
+                    </div>
+                  </div>
+                  <details className="lq-extra lq-message">
+                    <summary>
+                      <MessageSquareText className="h-4 w-4 text-white/60" aria-hidden="true" />
+                      Mensagem pronta para envio
+                      <small>{customMessage !== null ? "editada" : "automática"}</small>
+                      <ChevronDown aria-hidden="true" />
+                    </summary>
+                    <div className="lq-extra-body">
+                      <div className="lq-extra-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMessage(true);
+                            setCustomMessage(customMessage ?? autoMessage);
+                          }}
+                        >
+                          <Pencil aria-hidden="true" />
+                          Editar mensagem
+                        </button>
+                        {customMessage !== null && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomMessage(null);
+                              setEditingMessage(false);
+                            }}
+                          >
+                            <RotateCcw aria-hidden="true" />
+                            Restaurar automática
+                          </button>
+                        )}
+                      </div>
+                      {editingMessage ? (
+                        <textarea
+                          aria-label="Mensagem pronta para envio"
+                          value={customMessage ?? autoMessage}
+                          onChange={(event) => setCustomMessage(event.target.value)}
+                          rows={10}
+                          className={inputClass}
+                        />
+                      ) : (
+                        <pre>{customMessage ?? autoMessage}</pre>
+                      )}
+                    </div>
+                  </details>
                 </section>
-                <details className="rounded-lg border border-white/10 px-3 py-2 text-sm">
-                  <summary className="cursor-pointer font-semibold text-white/70">
-                    Mensagem pronta para envio
-                  </summary>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingMessage(true);
-                        setCustomMessage(customMessage ?? autoMessage);
-                      }}
-                      className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs"
-                    >
-                      <Pencil className="h-3 w-3" />
-                      Editar mensagem
-                    </button>
-                    {customMessage !== null && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomMessage(null);
-                          setEditingMessage(false);
-                        }}
-                        className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        Restaurar automática
-                      </button>
-                    )}
-                  </div>
-                  {editingMessage ? (
-                    <textarea
-                      aria-label="Mensagem pronta para envio"
-                      value={customMessage ?? autoMessage}
-                      onChange={(event) => setCustomMessage(event.target.value)}
-                      rows={9}
-                      className={`${inputClass} mt-3 resize-y`}
-                    />
-                  ) : (
-                    <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-white/5 p-3 font-sans text-xs leading-relaxed">
-                      {customMessage ?? autoMessage}
-                    </pre>
-                  )}
-                </details>
-              </div>
-            )}
+              )}
+            </motion.div>
           </div>
 
-          <div className="relative flex shrink-0 items-center justify-between gap-3 px-6 pb-7 pt-3 sm:px-10 sm:pb-9">
-            <div className="min-w-[75px]">
-              {step > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setStep(step - 1)}
-                  className="rounded-full bg-[#242424] px-5 py-2 text-sm font-semibold hover:bg-white/20"
-                >
-                  Voltar
-                </button>
-              )}
-            </div>
-            <div
-              aria-label={`Etapa ${step} de 3`}
-              className="absolute left-1/2 flex -translate-x-1/2 gap-1"
-            >
-              {[1, 2, 3].map((item) => (
-                <span
-                  key={item}
-                  className={`h-1.5 w-7 rounded-full ${item === step ? "bg-white" : "bg-[#484848]"}`}
-                />
-              ))}
-            </div>
+          <div className="lq-form-foot">
+            {step > 1 ? (
+              <button type="button" onClick={() => goTo(step - 1)} className="lq-secondary">
+                Voltar
+              </button>
+            ) : null}
+            <p className="lq-foot-note">
+              {step === 1
+                ? clientValid
+                  ? `Cliente: ${fullName || selectedLead?.name || ""}`
+                  : "Preencha nome, sobrenome e telefone para continuar."
+                : product && (
+                    <>
+                      {product.name} · <b>{formatBRL(finalValue)}</b>
+                    </>
+                  )}
+            </p>
             {step < 3 ? (
               <button
                 type="button"
                 disabled={step === 1 ? !clientValid : !product}
-                onClick={() => setStep(step + 1)}
-                className="ml-auto rounded-full bg-white px-5 py-2 text-sm font-bold text-black hover:bg-white/85 disabled:opacity-40"
+                onClick={() => goTo(step + 1)}
+                className="lq-primary"
               >
                 Avançar
+                <ArrowRight aria-hidden="true" />
               </button>
             ) : (
               <button
                 type="button"
                 disabled={!clientValid || !product || finalValue <= 0 || !validUntil || submitting}
                 onClick={() => void submit()}
-                className="ml-auto flex items-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-bold text-black hover:bg-white/85 disabled:opacity-40"
+                className="lq-primary"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1048,7 +1257,7 @@ export function EditDefaultsDialog({
   }, [open, initialIncluded, initialGifts, initialCustomer]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>Editar textos padrão dos orçamentos</DialogTitle>
           <DialogDescription>
@@ -1062,7 +1271,7 @@ export function EditDefaultsDialog({
               value={included}
               onChange={(event) => setIncluded(event.target.value)}
               rows={4}
-              className="w-full rounded-md bg-input p-3"
+              className="w-full rounded-xl border bg-input p-3 text-sm"
             />
           </FormField>
           <FormField label="Brindes">
@@ -1070,7 +1279,7 @@ export function EditDefaultsDialog({
               value={gifts}
               onChange={(event) => setGifts(event.target.value)}
               rows={4}
-              className="w-full rounded-md bg-input p-3"
+              className="w-full rounded-xl border bg-input p-3 text-sm"
             />
           </FormField>
           <FormField label="Por conta do cliente">
@@ -1078,7 +1287,7 @@ export function EditDefaultsDialog({
               value={responsibility}
               onChange={(event) => setResponsibility(event.target.value)}
               rows={4}
-              className="w-full rounded-md bg-input p-3"
+              className="w-full rounded-xl border bg-input p-3 text-sm"
             />
           </FormField>
         </div>
@@ -1086,7 +1295,7 @@ export function EditDefaultsDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md bg-secondary px-4 py-2 text-sm"
+            className="rounded-full border px-5 py-2 text-sm font-semibold"
           >
             Cancelar
           </button>
@@ -1104,7 +1313,7 @@ export function EditDefaultsDialog({
                 setSaving(false);
               }
             }}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+            className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
             {saving ? "Salvando…" : "Salvar padrão"}
           </button>

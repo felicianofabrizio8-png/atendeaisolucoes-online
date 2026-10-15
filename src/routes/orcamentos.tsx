@@ -1,12 +1,32 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { FileText, Plus, Search, X } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
+import { ChevronDown, Plus, Search, SearchX, X } from "lucide-react";
 import { getLeads, subscribeRepo } from "@/data/leadRepo";
 import { matchesQuote, normalizeQuoteSearch } from "@/lib/quote-presentation";
 import { listQuotes, subscribeQuotes, type Quote } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { QuoteFormModal } from "@/components/orcamentos/QuoteFormModal";
 import { QuoteSuccessModal } from "@/components/orcamentos/QuoteSuccessModal";
+import {
+  FILTERS,
+  QuotesEmptyState,
+  QuotesOverview,
+  SORTS,
+  sortQuotes,
+  useQuoteStats,
+  type QuoteFilter,
+  type QuoteSort,
+} from "@/components/orcamentos/QuotesOverview";
+import { computeQuoteStatus } from "@/data/quotes";
+import "@/components/orcamentos/quotes.css";
 
 export const Route = createFileRoute("/orcamentos")({
   component: QuotesPage,
@@ -31,6 +51,14 @@ interface QuotesSearch {
   suggestionReason?: string;
   /** Tela da conversa para onde voltar após criar (padrão: Caixa de atendimento). */
   returnTo?: "atendimento";
+}
+
+function quoteCustomerName(quote: Quote, leads: ReturnType<typeof getLeads>): string | undefined {
+  const lead = leads.find((item) => item.id === quote.leadId);
+  const own = quote.customerDetails
+    ? `${quote.customerDetails.firstName} ${quote.customerDetails.lastName}`.trim()
+    : "";
+  return own || lead?.name;
 }
 
 function useQuotes() {
@@ -62,13 +90,29 @@ function QuotesPage() {
   const [query, setQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
-  const filteredQuotes = quotes.filter((q) =>
-    matchesQuote(
-      q,
-      leads.find((l) => l.id === q.leadId),
-      query,
+  const [filter, setFilter] = useState<QuoteFilter>("todos");
+  const [sort, setSort] = useState<QuoteSort>("recentes");
+  const reduceMotion = useReducedMotion();
+  const tabsId = useId();
+  // Recomputed when leads load, so names resolve for quotes without customer details.
+  const nameOf = useCallback((quote: Quote) => quoteCustomerName(quote, leads), [leads]);
+  const stats = useQuoteStats(quotes, nameOf);
+  const filteredQuotes = sortQuotes(
+    quotes.filter(
+      (q) =>
+        (filter === "todos" || computeQuoteStatus(q) === filter) &&
+        matchesQuote(
+          q,
+          leads.find((l) => l.id === q.leadId),
+          query,
+        ),
     ),
+    sort,
   );
+  const changeFilter = (next: QuoteFilter) => {
+    setFilter(next);
+    setVisibleCount(PAGE_SIZE);
+  };
   const visibleQuotes = filteredQuotes.slice(0, visibleCount);
   const suggestions = [
     ...new Map(
@@ -143,125 +187,204 @@ function QuotesPage() {
   ]);
 
   return (
-    <div className="min-w-0 flex-1 overflow-y-auto bg-background dark:bg-black text-foreground">
-      <div className="@container mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 xl:px-10 2xl:px-12">
-        <header className="mb-7 flex items-center justify-between gap-4 sm:mb-8">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">Orçamentos</h1>
-          <button
-            onClick={openCreate}
-            className="h-10 min-w-24 rounded-full border border-foreground/40 px-7 text-base font-semibold transition-colors hover:bg-foreground/10"
-          >
-            Criar
+    <div className="lume-quotes">
+      <div className="lq-shell">
+        <header className="lq-header">
+          <div>
+            <h1>Orçamentos</h1>
+            <p>Crie, envie e acompanhe suas propostas em um só lugar.</p>
+          </div>
+          <button type="button" onClick={openCreate} className="lq-primary">
+            <Plus aria-hidden="true" />
+            Criar orçamento
           </button>
         </header>
-        <div
-          className="relative mx-auto mb-9 w-full max-w-5xl"
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setShowSuggestions(false);
-          }}
-        >
-          <div className="flex h-12 items-center gap-3 rounded-full border border-border bg-secondary/20 px-4 focus-within:border-foreground/50">
-            <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <input
-              role="combobox"
-              aria-label="Pesquisar orçamentos"
-              aria-expanded={suggestionsOpen}
-              aria-controls="quote-suggestions"
-              aria-autocomplete="list"
-              aria-activedescendant={
-                suggestionsOpen && activeSuggestion >= 0
-                  ? `quote-suggestion-${activeSuggestion}`
-                  : undefined
-              }
-              value={query}
-              onFocus={() => setShowSuggestions(true)}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setVisibleCount(PAGE_SIZE);
-                setShowSuggestions(true);
-                setActiveSuggestion(-1);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setShowSuggestions(false);
-                if (suggestionsOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-                  e.preventDefault();
-                  setActiveSuggestion(
-                    (i) =>
-                      (i + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) %
-                      suggestions.length,
-                  );
-                }
-                if (suggestionsOpen && e.key === "Enter" && activeSuggestion >= 0) {
-                  e.preventDefault();
-                  chooseSuggestion(suggestions[activeSuggestion].name);
-                }
-              }}
-              placeholder="Pesquisar por nome, telefone ou produto"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-            {query && (
-              <button
-                aria-label="Limpar pesquisa"
-                onClick={() => chooseSuggestion("")}
-                className="rounded-full p-1 hover:bg-secondary"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          {suggestionsOpen && (
-            <ul
-              id="quote-suggestions"
-              role="listbox"
-              aria-label="Clientes encontrados"
-              className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-border bg-background p-2 shadow-xl"
-            >
-              {suggestions.map((lead, index) => (
-                <li
-                  key={normalizeQuoteSearch(lead.name)}
-                  role="option"
-                  aria-selected={index === activeSuggestion}
-                  id={`quote-suggestion-${index}`}
-                >
-                  <button
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => chooseSuggestion(lead.name)}
-                    className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-secondary ${index === activeSuggestion ? "bg-secondary" : ""}`}
-                  >
-                    <span className="truncate font-medium">{lead.name}</span>
-                    <span className="text-xs text-muted-foreground">{lead.phone}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
         {quotes.length === 0 ? (
-          <EmptyState onCreate={openCreate} />
+          <QuotesEmptyState onCreate={openCreate} />
         ) : (
           <>
-            {filteredQuotes.length === 0 && (
-              <p className="py-16 text-center text-sm text-muted-foreground" role="status">
-                Nenhum orçamento encontrado. Tente outro nome, telefone ou produto.
-              </p>
-            )}
-            <div className="grid grid-cols-1 gap-5 sm:gap-6 @min-[880px]:grid-cols-2 @min-[880px]:gap-x-8 @min-[880px]:gap-y-8 xl:@min-[880px]:gap-x-10 2xl:@min-[880px]:gap-x-12">
-              {visibleQuotes.map((q) => (
-                <QuoteCard
-                  key={q.id}
-                  quote={q}
-                  requestedAction={
-                    requestedAction?.id === q.id ? requestedAction.action : undefined
-                  }
-                  onActionHandled={() => setRequestedAction(null)}
-                />
-              ))}
+            <QuotesOverview
+              stats={stats}
+              filter={filter}
+              onFilter={changeFilter}
+              onAttention={() => {
+                changeFilter("todos");
+                setSort("validade");
+              }}
+            />
+            <div className="lq-toolbar">
+              <div
+                className="lq-search"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setShowSuggestions(false);
+                }}
+              >
+                <div className="lq-search-box">
+                  <Search aria-hidden="true" />
+                  <input
+                    role="combobox"
+                    aria-label="Pesquisar orçamentos"
+                    aria-expanded={suggestionsOpen}
+                    aria-controls="quote-suggestions"
+                    aria-autocomplete="list"
+                    aria-activedescendant={
+                      suggestionsOpen && activeSuggestion >= 0
+                        ? `quote-suggestion-${activeSuggestion}`
+                        : undefined
+                    }
+                    value={query}
+                    onFocus={() => setShowSuggestions(true)}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setVisibleCount(PAGE_SIZE);
+                      setShowSuggestions(true);
+                      setActiveSuggestion(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setShowSuggestions(false);
+                      if (suggestionsOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                        e.preventDefault();
+                        setActiveSuggestion(
+                          (i) =>
+                            (i + (e.key === "ArrowDown" ? 1 : -1) + suggestions.length) %
+                            suggestions.length,
+                        );
+                      }
+                      if (suggestionsOpen && e.key === "Enter" && activeSuggestion >= 0) {
+                        e.preventDefault();
+                        chooseSuggestion(suggestions[activeSuggestion].name);
+                      }
+                    }}
+                    placeholder="Pesquisar por nome, telefone ou produto"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      aria-label="Limpar pesquisa"
+                      onClick={() => chooseSuggestion("")}
+                      className="lq-icon"
+                    >
+                      <X />
+                    </button>
+                  )}
+                </div>
+                {suggestionsOpen && (
+                  <ul
+                    id="quote-suggestions"
+                    role="listbox"
+                    aria-label="Clientes encontrados"
+                    className="lq-suggestions"
+                  >
+                    {suggestions.map((lead, index) => (
+                      <li
+                        key={normalizeQuoteSearch(lead.name)}
+                        role="option"
+                        aria-selected={index === activeSuggestion}
+                        id={`quote-suggestion-${index}`}
+                      >
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => chooseSuggestion(lead.name)}
+                        >
+                          <span className="truncate font-medium">{lead.name}</span>
+                          <small>{lead.phone}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <label className="lq-sort">
+                <span className="sr-only">Ordenar orçamentos</span>
+                <select value={sort} onChange={(e) => setSort(e.target.value as QuoteSort)}>
+                  {SORTS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown aria-hidden="true" />
+              </label>
             </div>
-            {visibleCount < filteredQuotes.length && (
-              <div className="max-w-5xl mt-4 flex justify-center">
+            <LayoutGroup id={tabsId}>
+              <div className="lq-tabs" role="tablist" aria-label="Filtrar por status">
+                {FILTERS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === item.id}
+                    onClick={() => changeFilter(item.id)}
+                  >
+                    {filter === item.id && (
+                      <motion.span
+                        layoutId="lq-tab"
+                        className="lq-tab-indicator"
+                        transition={
+                          reduceMotion
+                            ? { duration: 0 }
+                            : { type: "spring", stiffness: 420, damping: 34 }
+                        }
+                      />
+                    )}
+                    {item.dot && <i data-dot style={{ "--dot": item.dot } as CSSProperties} />}
+                    <span>{item.label}</span>
+                    <span>{stats.counts[item.id]}</span>
+                  </button>
+                ))}
+              </div>
+            </LayoutGroup>
+            {filteredQuotes.length === 0 ? (
+              <div className="lq-no-results" role="status">
+                <SearchX aria-hidden="true" className="h-6 w-6" />
+                <b>Nenhum orçamento encontrado</b>
+                Tente outro nome, telefone ou produto, ou mude o filtro.
                 <button
+                  type="button"
+                  className="lq-secondary"
+                  onClick={() => {
+                    chooseSuggestion("");
+                    changeFilter("todos");
+                  }}
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            ) : (
+              <motion.div layout={!reduceMotion} className="lq-grid">
+                <AnimatePresence initial={false} mode="popLayout">
+                  {visibleQuotes.map((q, index) => (
+                    <motion.div
+                      key={q.id}
+                      layout={!reduceMotion}
+                      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reduceMotion ? undefined : { opacity: 0, y: 8 }}
+                      transition={{
+                        duration: 0.4,
+                        ease: [0.22, 1, 0.36, 1],
+                        delay: reduceMotion ? 0 : Math.min(index, 8) * 0.035,
+                      }}
+                    >
+                      <QuoteCard
+                        quote={q}
+                        requestedAction={
+                          requestedAction?.id === q.id ? requestedAction.action : undefined
+                        }
+                        onActionHandled={() => setRequestedAction(null)}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+            {visibleCount < filteredQuotes.length && (
+              <div className="lq-more">
+                <button
+                  type="button"
                   onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-secondary hover:bg-accent text-xs font-semibold"
+                  className="lq-secondary"
                 >
                   Carregar mais ({filteredQuotes.length - visibleCount})
                 </button>
@@ -312,27 +435,6 @@ function QuotesPage() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="max-w-md mx-auto text-center py-16">
-      <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
-        <FileText className="h-5 w-5 text-primary" />
-      </div>
-      <h2 className="text-base font-semibold">Nenhum orçamento ainda</h2>
-      <p className="text-sm text-muted-foreground mt-1">
-        Crie um orçamento em segundos: escolha o produto, ajuste desconto e parcelas, e envie a
-        mensagem pronta direto na conversa.
-      </p>
-      <button
-        onClick={onCreate}
-        className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90 text-xs font-semibold"
-      >
-        <Plus className="h-3.5 w-3.5" /> Criar primeiro orçamento
-      </button>
     </div>
   );
 }
