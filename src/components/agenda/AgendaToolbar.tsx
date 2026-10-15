@@ -1,6 +1,6 @@
 import { endOfWeek, format, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
 import {
   STATUS_KEYS,
   STATUS_LABEL,
@@ -8,6 +8,8 @@ import {
   TYPE_KEYS,
   TYPE_LABEL,
   VIEW_LABEL,
+  EMPTY_FILTERS,
+  type AgendaEventType,
   type AgendaFilters,
   type AgendaView,
 } from "./agenda-model";
@@ -34,20 +36,26 @@ export function AgendaToolbar({
   onNavigate,
   onToday,
   onFilters,
+  onCustomize,
+  customTypes = [],
 }: {
   view: AgendaView;
   focus: Date;
   filters: AgendaFilters;
   people: string[];
+  /** Tipos ativos da empresa; sem eles, os filtros mostram os tipos de sempre. */
+  customTypes?: AgendaEventType[];
   onView: (view: AgendaView) => void;
   onNavigate: (direction: 1 | -1) => void;
   onToday: () => void;
   onFilters: (filters: AgendaFilters) => void;
+  onCustomize: () => void;
 }) {
   const toggle = <T,>(list: T[], value: T) =>
     list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
   const active =
     filters.types.length +
+    filters.typeIds.length +
     filters.statuses.length +
     (filters.person ? 1 : 0) +
     (filters.search ? 1 : 0);
@@ -79,6 +87,15 @@ export function AgendaToolbar({
         <h2 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight first-letter:uppercase">
           {periodLabel(view, focus)}
         </h2>
+        <button
+          type="button"
+          className="ag-icon-btn"
+          aria-label="Personalizar agenda"
+          title="Personalizar"
+          onClick={onCustomize}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+        </button>
         <div className="ag-pills" role="tablist" aria-label="Visão da agenda">
           {VIEWS.map((item) => (
             <button
@@ -107,19 +124,35 @@ export function AgendaToolbar({
           />
         </label>
         <div className="flex flex-wrap gap-1.5" aria-label="Filtrar por tipo">
-          {TYPE_KEYS.map((type) => (
-            <button
-              key={type}
-              type="button"
-              className="ag-chip"
-              aria-pressed={filters.types.includes(type)}
-              style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${TYPE_HUE[type]})` }}
-              onClick={() => onFilters({ ...filters, types: toggle(filters.types, type) })}
-            >
-              <span className="ag-dot" />
-              {TYPE_LABEL[type].short}
-            </button>
-          ))}
+          {customTypes.length
+            ? customTypes.map((type) => (
+                <button
+                  key={type.id}
+                  type="button"
+                  className="ag-chip"
+                  aria-pressed={filters.typeIds.includes(type.id)}
+                  style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${type.hue})` }}
+                  onClick={() =>
+                    onFilters({ ...filters, typeIds: toggle(filters.typeIds, type.id) })
+                  }
+                >
+                  <span className="ag-dot" />
+                  {type.name}
+                </button>
+              ))
+            : TYPE_KEYS.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  className="ag-chip"
+                  aria-pressed={filters.types.includes(type)}
+                  style={{ ["--ag-type" as string]: `oklch(0.72 0.19 ${TYPE_HUE[type]})` }}
+                  onClick={() => onFilters({ ...filters, types: toggle(filters.types, type) })}
+                >
+                  <span className="ag-dot" />
+                  {TYPE_LABEL[type].short}
+                </button>
+              ))}
         </div>
         <select
           aria-label="Filtrar por status"
@@ -155,7 +188,7 @@ export function AgendaToolbar({
           <button
             type="button"
             className="ag-chip hover:text-[var(--ag-ink)]"
-            onClick={() => onFilters({ search: "", types: [], statuses: [], person: null })}
+            onClick={() => onFilters(EMPTY_FILTERS)}
           >
             <X className="h-3 w-3" />
             Limpar filtros ({active})

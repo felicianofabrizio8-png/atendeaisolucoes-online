@@ -16,14 +16,16 @@ const SNAP_MIN = 15;
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 function hueStyle(event: AgendaEvent): CSSProperties {
-  return { ["--ag-hue" as string]: String(TYPE_HUE[event.appointment_type] ?? 300) };
+  return {
+    ["--ag-hue" as string]: String(event.type_hue ?? TYPE_HUE[event.appointment_type] ?? 300),
+  };
 }
 
 function describe(event: AgendaEvent): string {
   return [
     format(new Date(event.scheduled_at), "HH:mm"),
     event.title,
-    TYPE_LABEL[event.appointment_type]?.label,
+    event.type_name ?? TYPE_LABEL[event.appointment_type]?.label,
     STATUS_LABEL[event.status],
     event.customer_name,
   ]
@@ -45,10 +47,13 @@ export function TimeGridView({
   onOpen,
   onCreateAt,
   onMove,
+  startHour = 7,
 }: ViewProps & {
   days: Date[];
   onCreateAt: (at: Date) => void;
   onMove: (event: AgendaEvent, at: Date) => void;
+  /** Hora em que a grade abre rolada (preferência de cada pessoa). */
+  startHour?: number;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -59,10 +64,10 @@ export function TimeGridView({
     const timer = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
-  // Abre na manhã (07h) em vez da madrugada.
+  // Abre no começo do expediente em vez da madrugada.
   useEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = HOUR_PX * 7 - 8;
-  }, []);
+    if (scroller.current) scroller.current.scrollTop = HOUR_PX * startHour - 8;
+  }, [startHour]);
 
   const timeAt = (day: Date, clientY: number, column: HTMLElement) => {
     const offset = clientY - column.getBoundingClientRect().top;

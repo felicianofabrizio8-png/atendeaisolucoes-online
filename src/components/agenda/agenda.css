@@ -497,3 +497,58 @@
   background: #15131c;
   color: #f3f0f8;
 }
+
+/* ---------- Formulário ---------- */
+.lume-agenda .ag-field {
+  display: block;
+  width: 100%;
+  height: 40px;
+  border-radius: 14px;
+  border: 1px solid var(--ag-edge);
+  background: rgb(255 255 255 / 0.03);
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--ag-ink);
+  outline: none;
+  color-scheme: dark;
+  transition: border-color 0.2s;
+}
+.lume-agenda textarea.ag-field {
+  height: auto;
+  resize: vertical;
+}
+.lume-agenda .ag-field:focus {
+  border-color: rgb(123 92 255 / 0.65);
+}
+.lume-agenda .ag-field:disabled {
+  opacity: 0.45;
+}
+.lume-agenda .ag-switch {
+  position: relative;
+  height: 20px;
+  width: 34px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  transition: background 0.2s;
+}
+.lume-agenda .ag-switch::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  height: 14px;
+  width: 14px;
+  border-radius: 999px;
+  background: #fff;
+  transition: transform 0.2s var(--ag-ease);
+}
+.lume-agenda .peer:checked + .ag-switch {
+  background: var(--ag-violet);
+}
+.lume-agenda .peer:checked + .ag-switch::after {
+  transform: translateX(14px);
+}
+.lume-agenda .peer:focus-visible + .ag-switch {
+  outline: 2px solid var(--ag-violet);
+  outline-offset: 2px;
+}

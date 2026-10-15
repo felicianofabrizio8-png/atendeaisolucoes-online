@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, endOfWeek, max, min, startOfWeek } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { AGENDA_SELECT, type AgendaEvent, type VisitStatus } from "./agenda-model";
+import {
+  AGENDA_SELECT,
+  AGENDA_SELECT_EXTENDED,
+  type AgendaEvent,
+  type VisitStatus,
+} from "./agenda-model";
+import { detectAgendaSchema } from "./agenda-schema";
 
 /**
  * Compromissos da empresa no intervalo visível, mais a semana atual e a próxima
@@ -16,6 +22,10 @@ export function useAgendaEvents(
   const [events, setEvents] = useState<AgendaEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [extended, setExtended] = useState(false);
+  useEffect(() => {
+    void detectAgendaSchema().then((schema) => setExtended(schema.extended));
+  }, []);
   const request = useRef(0);
 
   const window = useMemo(() => {
@@ -36,9 +46,10 @@ export function useAgendaEvents(
     }
     const id = ++request.current;
     setLoading(true);
+    const { extended } = await detectAgendaSchema();
     const { data, error: loadError } = await supabase
       .from("visits")
-      .select(AGENDA_SELECT)
+      .select(extended ? AGENDA_SELECT_EXTENDED : AGENDA_SELECT)
       .eq("company_id", companyId)
       .gte("scheduled_at", fromIso)
       .lte("scheduled_at", toIso)
@@ -49,7 +60,7 @@ export function useAgendaEvents(
       setError("Não foi possível carregar a agenda.");
     } else {
       setError(null);
-      setEvents((data ?? []) as AgendaEvent[]);
+      setEvents((data ?? []) as unknown as AgendaEvent[]);
     }
     setLoading(false);
   }, [companyId, fromIso, toIso]);
@@ -74,12 +85,18 @@ export function useAgendaEvents(
   }, [companyId, load]);
 
   const patch = useCallback(
-    async (id: string, changes: Partial<Pick<AgendaEvent, "status" | "scheduled_at">>) => {
+    async (
+      id: string,
+      changes: Partial<Pick<AgendaEvent, "status" | "scheduled_at" | "ends_at">>,
+    ) => {
       const previous = events;
       setEvents((list) =>
         list.map((event) => (event.id === id ? { ...event, ...changes } : event)),
       );
-      const { error: updateError } = await supabase.from("visits").update(changes).eq("id", id);
+      const { error: updateError } = await supabase
+        .from("visits")
+        .update(changes as never)
+        .eq("id", id);
       if (updateError) {
         setEvents(previous);
         toast.error("Não foi possível salvar a alteração.");
@@ -95,8 +112,20 @@ export function useAgendaEvents(
     [patch],
   );
   const reschedule = useCallback(
-    (id: string, at: Date) => patch(id, { scheduled_at: at.toISOString() }),
-    [patch],
+    (id: string, at: Date) => {
+      // Remarcar mantém a duração: o fim anda junto com o início.
+      const current = events.find((event) => event.id === id);
+      const changes: Partial<Pick<AgendaEvent, "scheduled_at" | "ends_at">> = {
+        scheduled_at: at.toISOString(),
+      };
+      if (current?.ends_at) {
+        const duration =
+          new Date(current.ends_at).getTime() - new Date(current.scheduled_at).getTime();
+        changes.ends_at = new Date(at.getTime() + duration).toISOString();
+      }
+      return patch(id, changes);
+    },
+    [events, patch],
   );
   const remove = useCallback(
     async (id: string) => {
@@ -113,5 +142,61 @@ export function useAgendaEvents(
     [events],
   );
 
-  return { events, loading, error, reload: load, setStatus, reschedule, remove };
+  /** Cópia do compromisso no mesmo horário do dia seguinte; devolve o id criado. */
+  const duplicate = useCallback(
+    async (event: AgendaEvent) => {
+      if (!companyId) return null;
+      const shift = (iso: string | null | undefined) =>
+        iso ? addDays(new Date(iso), 1).toISOString() : null;
+      const copy: Record<string, unknown> = {
+        company_id: companyId,
+        title: event.title,
+        address: event.address,
+        scheduled_at: shift(event.scheduled_at),
+        status: "agendada",
+        notes: event.notes,
+        customer_name: event.customer_name,
+        customer_phone: event.customer_phone,
+        product: event.product,
+        lead_id: event.lead_id,
+        quote_id: event.quote_id,
+        appointment_type: event.appointment_type,
+        city: event.city,
+        salesperson: event.salesperson,
+        technician: event.technician,
+      };
+      if (extended) {
+        Object.assign(copy, {
+          ends_at: shift(event.ends_at),
+          all_day: event.all_day ?? false,
+          event_type_id: event.event_type_id ?? null,
+          custom_fields: event.custom_fields ?? {},
+        });
+      }
+      const { data, error: insertError } = await supabase
+        .from("visits")
+        .insert(copy as never)
+        .select("id")
+        .single();
+      if (insertError || !data) {
+        toast.error("Não foi possível duplicar.");
+        return null;
+      }
+      void load();
+      return (data as { id: string }).id;
+    },
+    [companyId, extended, load],
+  );
+
+  return {
+    events,
+    loading,
+    error,
+    extended,
+    reload: load,
+    setStatus,
+    reschedule,
+    remove,
+    duplicate,
+  };
 }

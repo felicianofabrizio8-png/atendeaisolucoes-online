@@ -1,15 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { format, isAfter, isToday, isThisWeek, addMinutes } from "date-fns";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CalendarIcon,
   MapPin,
   Phone,
   User,
   Package,
   StickyNote,
-  Plus,
   Send,
   Trash2,
   Wrench,
@@ -23,7 +21,6 @@ import {
   Building2,
   UserCog,
   Clock,
-  Filter,
   Bell,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,7 +29,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
 import { getLeads, subscribeRepo } from "@/data/leadRepo";
 import { getConversations } from "@/data/leadRepo";
-import { listQuotes, subscribeQuotes } from "@/data/quotes";
 // whatsappProvider (Evolution) descontinuado — envio agora usa wa.me ou Cloud API oficial.
 import { cn } from "@/lib/utils";
 
@@ -61,6 +57,10 @@ import { AgendaHero } from "@/components/agenda/AgendaHero";
 import { AgendaToolbar } from "@/components/agenda/AgendaToolbar";
 import { MonthView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
 import { useAgendaEvents } from "@/components/agenda/useAgendaEvents";
+import { EventDrawer } from "@/components/agenda/EventDrawer";
+import { EventFormModal } from "@/components/agenda/EventFormModal";
+import { useEventTypes } from "@/components/agenda/useEventTypes";
+import { AgendaCustomize } from "@/components/agenda/AgendaCustomize";
 import {
   applyFilters,
   daysOf,
@@ -70,7 +70,10 @@ import {
   pulseOf,
   shiftFocus,
   viewRange,
+  DEFAULT_PREFERENCES,
+  type AgendaEvent,
   type AgendaFilters,
+  type AgendaPreferences,
   type AgendaView,
 } from "@/components/agenda/agenda-model";
 import "@/components/agenda/agenda.css";
@@ -181,7 +184,6 @@ const TYPE_META: Record<
   },
 };
 
-const TYPE_KEYS = Object.keys(TYPE_META) as AppointmentType[];
 
 function onlyDigits(s: string): string {
   return s.replace(/\D+/g, "");
@@ -201,24 +203,53 @@ function AgendaPage() {
   const [editing, setEditing] = useState<Visit | null>(null);
   const [createAt, setCreateAt] = useState<Date | null>(null);
   const [sendTarget, setSendTarget] = useState<Visit | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [customizing, setCustomizing] = useState(false);
+  const [preferences, setPreferences] = useState<AgendaPreferences>(() => {
+    try {
+      return { ...DEFAULT_PREFERENCES, ...JSON.parse(readPreference("prefs", "{}")) };
+    } catch {
+      return DEFAULT_PREFERENCES;
+    }
+  });
 
   const range = useMemo(() => viewRange(view, focus), [view, focus]);
-  const { events, loading, error, reload, setStatus, reschedule, remove } = useAgendaEvents(
-    companyId,
-    range,
+  const { events, loading, error, extended, reload, setStatus, reschedule, remove, duplicate } =
+    useAgendaEvents(companyId, range);
+  const selected = useMemo(
+    () => events.find((event) => event.id === selectedId) ?? null,
+    [events, selectedId],
+  );
+  const eventTypes = useEventTypes(companyId, extended);
+  const typeById = useMemo(
+    () => new Map(eventTypes.types.map((type) => [type.id, type])),
+    [eventTypes.types],
   );
   const pulse = useMemo(() => pulseOf(events), [events]);
   const people = useMemo(() => peopleOf(events), [events]);
   const inRange = useMemo(
     () =>
-      applyFilters(events, filters).filter((event) => {
-        const at = new Date(event.scheduled_at);
-        return at >= range.from && at <= range.to;
-      }),
-    [events, filters, range],
+      applyFilters(events, filters)
+        .filter((event) => {
+          const at = new Date(event.scheduled_at);
+          return at >= range.from && at <= range.to;
+        })
+        .map((event) => {
+          const type = event.event_type_id ? typeById.get(event.event_type_id) : undefined;
+          return type ? { ...event, type_hue: type.hue, type_name: type.name } : event;
+        }),
+    [events, filters, range, typeById],
   );
   const conflicts = useMemo(() => findConflicts(inRange), [inRange]);
-  const days = useMemo(() => daysOf(range.from, range.to), [range]);
+  const days = useMemo(() => {
+    const all = daysOf(range.from, range.to);
+    if (view !== "semana" || !preferences.hideWeekends) return all;
+    return all.filter((day) => day.getDay() !== 0 && day.getDay() !== 6);
+  }, [range, view, preferences.hideWeekends]);
+  function changePreferences(next: AgendaPreferences) {
+    setPreferences(next);
+    writePreference("prefs", JSON.stringify(next));
+  }
 
   function changeView(next: AgendaView) {
     setView(next);
@@ -244,7 +275,17 @@ function AgendaPage() {
   }
   async function handleDelete(event: Visit) {
     if (!confirm(`Excluir "${event.title}"?`)) return;
-    if (await remove(event.id)) toast.success("Compromisso excluído");
+    if (await remove(event.id)) {
+      setSelectedId((current) => (current === event.id ? null : current));
+      toast.success("Compromisso excluído");
+    }
+  }
+  async function handleDuplicate(event: AgendaEvent) {
+    const id = await duplicate(event);
+    if (!id) return;
+    toast.success("Cópia criada no dia seguinte", {
+      action: { label: "Abrir", onClick: () => setSelectedId(id) },
+    });
   }
 
   if (!companyId) {
@@ -270,6 +311,8 @@ function AgendaPage() {
             onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
             onToday={() => setFocus(new Date())}
             onFilters={setFilters}
+            onCustomize={() => setCustomizing(true)}
+            customTypes={eventTypes.types.filter((type) => type.active)}
           />
           {conflicts.size > 0 && (
             <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
@@ -295,7 +338,8 @@ function AgendaPage() {
               days={days}
               events={inRange}
               conflicts={conflicts}
-              onOpen={openEdit}
+              onOpen={(event) => setSelectedId(event.id)}
+              startHour={preferences.dayStartHour}
               onCreateAt={(at) => openCreate(at)}
               onMove={(event, at) => void move(event, at)}
             />
@@ -305,14 +349,14 @@ function AgendaPage() {
               focus={focus}
               events={inRange}
               conflicts={conflicts}
-              onOpen={openEdit}
+              onOpen={(event) => setSelectedId(event.id)}
               onOpenDay={(day) => {
                 setFocus(day);
                 changeView("dia");
               }}
             />
           ) : view === "linha" ? (
-            <TimelineView days={days} events={inRange} conflicts={conflicts} onOpen={openEdit} />
+            <TimelineView days={days} events={inRange} conflicts={conflicts} onOpen={(event) => setSelectedId(event.id)} />
           ) : (
             <ListView
               events={inRange}
@@ -326,14 +370,42 @@ function AgendaPage() {
         </section>
       </div>
 
+      <AgendaCustomize
+        open={customizing}
+        extended={extended}
+        types={eventTypes.types}
+        preferences={preferences}
+        onClose={() => setCustomizing(false)}
+        onPreferences={changePreferences}
+        onSave={eventTypes.save}
+        onToggle={(id, active) => void eventTypes.setActive(id, active)}
+        onRemove={(id) => void eventTypes.remove(id)}
+        onSeed={() => void eventTypes.seedStarters()}
+      />
+
+      <EventDrawer
+        event={selected}
+        type={(selected?.event_type_id && typeById.get(selected.event_type_id)) || null}
+        extended={extended}
+        onClose={() => setSelectedId(null)}
+        onStatus={(status) => selected && void setStatus(selected.id, status)}
+        onEdit={() => selected && openEdit(selected)}
+        onDuplicate={() => selected && void handleDuplicate(selected)}
+        onDelete={() => selected && void handleDelete(selected)}
+        onSendTechnician={() => selected && setSendTarget(selected)}
+      />
+
       {openForm && (
-        <VisitFormModal
-          companyId={companyId ?? null}
-          visit={editing}
+        <EventFormModal
+          companyId={companyId}
+          event={editing}
           initialAt={createAt}
+          types={eventTypes.types}
+          extended={extended}
           onClose={() => setOpenForm(false)}
-          onSaved={() => {
+          onSaved={(id) => {
             setOpenForm(false);
+            setSelectedId(id);
             void reload();
           }}
         />
@@ -571,325 +643,6 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
 // ---------- Formulário ----------
 function useLeads() {
   return useSyncExternalStore(subscribeRepo, getLeads, getLeads);
-}
-
-function useQuotesList() {
-  return useSyncExternalStore(subscribeQuotes, listQuotes, listQuotes);
-}
-
-function VisitFormModal({
-  companyId,
-  visit,
-  initialAt = null,
-  onClose,
-  onSaved,
-}: {
-  companyId: string | null;
-  visit: Visit | null;
-  /** Horário escolhido na grade ao criar. */
-  initialAt?: Date | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const leads = useLeads();
-  const quotes = useQuotesList();
-
-  const initialDate = visit
-    ? format(new Date(visit.scheduled_at), "yyyy-MM-dd")
-    : format(initialAt ?? new Date(), "yyyy-MM-dd");
-  const initialTime = visit
-    ? format(new Date(visit.scheduled_at), "HH:mm")
-    : initialAt
-      ? format(initialAt, "HH:mm")
-      : "09:00";
-
-  const [appointmentType, setAppointmentType] = useState<AppointmentType>(
-    visit?.appointment_type ?? "visita_tecnica",
-  );
-  const [title, setTitle] = useState(visit?.title ?? "Visita técnica");
-  const [date, setDate] = useState(initialDate);
-  const [time, setTime] = useState(initialTime);
-  const [leadId, setLeadId] = useState<string>(visit?.lead_id ?? "none");
-  const [customerName, setCustomerName] = useState(visit?.customer_name ?? "");
-  const [customerPhone, setCustomerPhone] = useState(visit?.customer_phone ?? "");
-  const [city, setCity] = useState(visit?.city ?? "");
-  const [address, setAddress] = useState(visit?.address ?? "");
-  const [product, setProduct] = useState(visit?.product ?? "");
-  const [quoteId, setQuoteId] = useState<string>(visit?.quote_id ?? "none");
-  const [salesperson, setSalesperson] = useState(visit?.salesperson ?? "");
-  const [technician, setTechnician] = useState(visit?.technician ?? "");
-  const [notes, setNotes] = useState(visit?.notes ?? "");
-  const [status, setStatus] = useState<VisitStatus>(visit?.status ?? "agendada");
-  const [saving, setSaving] = useState(false);
-
-  const meta = TYPE_META[appointmentType];
-  const isStore = appointmentType === "loja";
-
-  // Atualiza título sugerido quando troca o tipo (apenas na criação)
-  useEffect(() => {
-    if (!visit) setTitle(meta.label);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointmentType]);
-
-  // Quando escolhe lead, autopreenche nome/telefone
-  useEffect(() => {
-    if (leadId === "none") return;
-    const l = leads.find((x) => x.id === leadId);
-    if (l) {
-      if (!customerName) setCustomerName(l.name);
-      if (!customerPhone && l.phone) setCustomerPhone(l.phone);
-      if (!product && l.product) setProduct(l.product);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]);
-
-  const leadQuotes = useMemo(
-    () => (leadId !== "none" ? quotes.filter((q) => q.leadId === leadId) : []),
-    [quotes, leadId],
-  );
-
-  async function handleSave() {
-    if (!companyId) {
-      toast.error("Empresa não identificada");
-      return;
-    }
-    if (!title.trim()) return toast.error("Informe o título do compromisso");
-    if (!date || !time) return toast.error("Informe data e horário");
-    if (!customerName.trim()) return toast.error("Informe o nome do cliente");
-    if (meta.needsAddress && !address.trim()) {
-      return toast.error(`Informe o endereço para ${meta.label.toLowerCase()}`);
-    }
-
-    const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
-    const payload = {
-      company_id: companyId,
-      title: title.trim(),
-      appointment_type: appointmentType,
-      address: isStore ? null : address.trim() || null,
-      city: city.trim() || null,
-      scheduled_at: scheduledAt,
-      status,
-      notes: notes.trim() || null,
-      customer_name: customerName.trim() || null,
-      customer_phone: customerPhone.trim() || null,
-      product: product.trim() || null,
-      salesperson: salesperson.trim() || null,
-      technician: technician.trim() || null,
-      lead_id: leadId !== "none" ? leadId : null,
-      quote_id: quoteId !== "none" ? quoteId : null,
-    };
-
-
-    setSaving(true);
-    try {
-      if (visit) {
-        const { error } = await supabase.from("visits").update(payload).eq("id", visit.id);
-        if (error) throw error;
-        toast.success("Compromisso atualizado");
-      } else {
-        const { error } = await supabase.from("visits").insert(payload);
-        if (error) throw error;
-        toast.success("Compromisso agendado");
-      }
-      onSaved();
-    } catch (e) {
-      console.error(e);
-      toast.error("Erro ao salvar compromisso");
-
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{visit ? "Editar compromisso" : "Novo compromisso"}</DialogTitle>
-          <DialogDescription>
-            Cadastre os detalhes do compromisso. Você poderá enviar para o técnico ou cliente no WhatsApp.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4">
-          <div>
-            <Label>Tipo do compromisso *</Label>
-            <Select value={appointmentType} onValueChange={(v) => setAppointmentType(v as AppointmentType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TYPE_KEYS.map((k) => {
-                  const M = TYPE_META[k];
-                  const I = M.icon;
-                  return (
-                    <SelectItem key={k} value={k}>
-                      <span className="inline-flex items-center gap-2">
-                        <I className="h-3.5 w-3.5" />
-                        {M.label}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label>Título</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Dia</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div>
-              <Label>Horário</Label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <Label>Cliente (opcional - vincular a lead existente)</Label>
-            <Select value={leadId} onValueChange={setLeadId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Cliente avulso —</SelectItem>
-                {leads.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name} {l.phone ? `· ${l.phone}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Nome do cliente *</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-            </div>
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="55 11 99999-9999"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Cidade</Label>
-              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Ex.: Sorocaba" />
-            </div>
-            <div>
-              <Label>
-                Endereço {meta.needsAddress ? "*" : "(opcional)"}
-              </Label>
-              <Input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                disabled={isStore}
-                placeholder={isStore ? "Não necessário — atendimento na loja" : "Rua, número, bairro"}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Vendedor responsável</Label>
-              <Input
-                value={salesperson}
-                onChange={(e) => setSalesperson(e.target.value)}
-                placeholder="Nome do vendedor"
-              />
-            </div>
-            <div>
-              <Label>Técnico responsável</Label>
-              <Input
-                value={technician}
-                onChange={(e) => setTechnician(e.target.value)}
-                placeholder="Nome do técnico"
-                disabled={isStore}
-              />
-            </div>
-          </div>
-
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Produto / interesse</Label>
-              <Input
-                value={product}
-                onChange={(e) => setProduct(e.target.value)}
-                placeholder="Ex.: Piscina 6x3"
-              />
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as VisitStatus)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(STATUS_LABEL) as VisitStatus[]).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {STATUS_LABEL[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {leadQuotes.length > 0 && (
-            <div>
-              <Label>Orçamento relacionado (opcional)</Label>
-              <Select value={quoteId} onValueChange={setQuoteId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Nenhum —</SelectItem>
-                  {leadQuotes.map((q) => (
-                    <SelectItem key={q.id} value={q.id}>
-                      {q.productName} · R$ {q.finalValue.toFixed(2)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div>
-            <Label>Observações</Label>
-            <Textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Informações para o técnico, acesso ao local, etc."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            <CalendarIcon className="h-4 w-4" />
-            {saving ? "Salvando..." : visit ? "Salvar alterações" : "Agendar compromisso"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 // ---------- Envio ao técnico ----------

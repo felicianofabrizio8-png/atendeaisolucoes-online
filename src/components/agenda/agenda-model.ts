@@ -53,10 +53,144 @@ export interface AgendaEvent {
   technician: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // Campos da Agenda Lume (migração 20261015120000); ausentes antes de publicar.
+  created_by?: string | null;
+  updated_by?: string | null;
+  ends_at?: string | null;
+  all_day?: boolean;
+  event_type_id?: string | null;
+  recurrence_rule?: string | null;
+  custom_fields?: Record<string, unknown>;
+  source?: EventSource;
+  /** Calculado na tela: cor do tipo da empresa, quando o evento tem um. */
+  type_hue?: number;
+  type_name?: string;
 }
+
+export type EventSource = "tela" | "lume" | "atendimento" | "google" | "sistema";
+
+export const SOURCE_LABEL: Record<EventSource, string> = {
+  tela: "pela Agenda",
+  lume: "pela Lume",
+  atendimento: "pelo Atendimento",
+  google: "pelo Google Agenda",
+  sistema: "pelo sistema",
+};
 
 export const AGENDA_SELECT =
   "id,title,address,scheduled_at,status,notes,customer_name,customer_phone,product,lead_id,quote_id,appointment_type,city,salesperson,technician,created_at,updated_at";
+
+export const AGENDA_SELECT_EXTENDED = `${AGENDA_SELECT},created_by,updated_by,ends_at,all_day,event_type_id,recurrence_rule,custom_fields,source`;
+
+/** Tipo de evento criado pela empresa (genérico: serve para qualquer ramo). */
+export interface AgendaEventType {
+  id: string;
+  name: string;
+  hue: number;
+  icon: string;
+  kind: "compromisso" | "visita" | "reuniao" | "tarefa" | "lembrete" | "bloqueio";
+  default_duration_min: number;
+  requires_customer: boolean;
+  requires_address: boolean;
+  checklist_template: string[];
+  fields: Array<{ key: string; label: string; type: "text" | "number" | "date" | "boolean" }>;
+  legacy_type: AppointmentType | null;
+  position: number;
+  active: boolean;
+}
+
+export const KIND_LABEL: Record<AgendaEventType["kind"], string> = {
+  compromisso: "Compromisso",
+  visita: "Visita",
+  reuniao: "Reunião",
+  tarefa: "Tarefa",
+  lembrete: "Lembrete",
+  bloqueio: "Bloqueio (folga, feriado)",
+};
+
+/**
+ * Tipos sugeridos para uma empresa que ainda não criou os seus: genéricos de propósito.
+ * Os tipos legados continuam existindo; estes são só o ponto de partida.
+ */
+export const STARTER_TYPES: Array<
+  Pick<
+    AgendaEventType,
+    | "name"
+    | "hue"
+    | "icon"
+    | "kind"
+    | "default_duration_min"
+    | "requires_customer"
+    | "requires_address"
+  > & { checklist_template: string[]; legacy_type: AppointmentType | null }
+> = [
+  {
+    name: "Atendimento ao cliente",
+    hue: 300,
+    icon: "user",
+    kind: "compromisso",
+    default_duration_min: 60,
+    requires_customer: true,
+    requires_address: false,
+    checklist_template: [],
+    legacy_type: "retorno_comercial",
+  },
+  {
+    name: "Visita externa",
+    hue: 230,
+    icon: "map-pin",
+    kind: "visita",
+    default_duration_min: 90,
+    requires_customer: true,
+    requires_address: true,
+    checklist_template: ["Confirmar endereço", "Registrar chegada", "Relatório da visita"],
+    legacy_type: "visita_tecnica",
+  },
+  {
+    name: "Reunião",
+    hue: 275,
+    icon: "users",
+    kind: "reuniao",
+    default_duration_min: 45,
+    requires_customer: false,
+    requires_address: false,
+    checklist_template: ["Pauta enviada"],
+    legacy_type: null,
+  },
+  {
+    name: "Tarefa",
+    hue: 135,
+    icon: "check-square",
+    kind: "tarefa",
+    default_duration_min: 30,
+    requires_customer: false,
+    requires_address: false,
+    checklist_template: [],
+    legacy_type: null,
+  },
+  {
+    name: "Lembrete",
+    hue: 60,
+    icon: "bell",
+    kind: "lembrete",
+    default_duration_min: 15,
+    requires_customer: false,
+    requires_address: false,
+    checklist_template: [],
+    legacy_type: null,
+  },
+  {
+    name: "Folga / bloqueio",
+    hue: 0,
+    icon: "ban",
+    kind: "bloqueio",
+    default_duration_min: 480,
+    requires_customer: false,
+    requires_address: false,
+    checklist_template: [],
+    legacy_type: null,
+  },
+];
 
 export const STATUS_LABEL: Record<VisitStatus, string> = {
   agendada: "Agendado",
@@ -100,6 +234,14 @@ export const TYPE_HUE: Record<AppointmentType, number> = {
 
 export type AgendaView = "dia" | "semana" | "mes" | "linha" | "lista";
 
+/** Preferências de visão de cada pessoa (ficam no navegador). */
+export interface AgendaPreferences {
+  dayStartHour: number;
+  hideWeekends: boolean;
+}
+
+export const DEFAULT_PREFERENCES: AgendaPreferences = { dayStartHour: 7, hideWeekends: false };
+
 export const VIEW_LABEL: Record<AgendaView, string> = {
   dia: "Dia",
   semana: "Semana",
@@ -108,15 +250,23 @@ export const VIEW_LABEL: Record<AgendaView, string> = {
   lista: "Lista",
 };
 
-/** `visits` não guarda fim: a duração vem do tipo até existir duração própria. */
+/** Sem `ends_at` (eventos antigos), o compromisso dura uma hora. */
 export const DEFAULT_DURATION_MIN = 60;
 
 export function eventStart(event: Pick<AgendaEvent, "scheduled_at">): Date {
   return new Date(event.scheduled_at);
 }
 
-export function eventEnd(event: Pick<AgendaEvent, "scheduled_at">): Date {
+export function eventEnd(event: Pick<AgendaEvent, "scheduled_at" | "ends_at">): Date {
+  if (event.ends_at) {
+    const end = new Date(event.ends_at);
+    if (end > eventStart(event)) return end;
+  }
   return addMinutes(eventStart(event), DEFAULT_DURATION_MIN);
+}
+
+export function eventDurationMin(event: Pick<AgendaEvent, "scheduled_at" | "ends_at">): number {
+  return Math.max(15, differenceInMinutes(eventEnd(event), eventStart(event)));
 }
 
 const WEEK = { weekStartsOn: 1 as const };
@@ -183,7 +333,7 @@ export interface PlacedEvent<T> {
  * Posiciona os eventos de um dia na grade de horas. Eventos que se sobrepõem dividem
  * a largura, como numa agenda de papel; os demais ocupam a coluna inteira.
  */
-export function layoutDay<T extends Pick<AgendaEvent, "id" | "scheduled_at">>(
+export function layoutDay<T extends Pick<AgendaEvent, "id" | "scheduled_at" | "ends_at">>(
   events: readonly T[],
   day: Date,
 ): PlacedEvent<T>[] {
@@ -204,7 +354,7 @@ export function layoutDay<T extends Pick<AgendaEvent, "id" | "scheduled_at">>(
 
   for (const event of sorted) {
     const top = differenceInMinutes(eventStart(event), dayStart);
-    const height = Math.min(DEFAULT_DURATION_MIN, 24 * 60 - top);
+    const height = Math.min(eventDurationMin(event), 24 * 60 - top);
     const end = top + height;
     if (group.length && top >= groupEnd) closeGroup();
     let column = columnEnds.findIndex((columnEnd) => columnEnd <= top);
@@ -242,11 +392,19 @@ export function findConflicts<T extends AgendaEvent>(events: readonly T[]): Set<
 export interface AgendaFilters {
   search: string;
   types: AppointmentType[];
+  /** Tipos criados pela empresa. */
+  typeIds: string[];
   statuses: VisitStatus[];
   person: string | null;
 }
 
-export const EMPTY_FILTERS: AgendaFilters = { search: "", types: [], statuses: [], person: null };
+export const EMPTY_FILTERS: AgendaFilters = {
+  search: "",
+  types: [],
+  typeIds: [],
+  statuses: [],
+  person: null,
+};
 
 function normalize(text: string): string {
   return text
@@ -262,6 +420,8 @@ export function applyFilters<T extends AgendaEvent>(
   const query = normalize(filters.search.trim());
   return events.filter((event) => {
     if (filters.types.length && !filters.types.includes(event.appointment_type)) return false;
+    if (filters.typeIds.length && !filters.typeIds.includes(event.event_type_id ?? ""))
+      return false;
     if (filters.statuses.length && !filters.statuses.includes(event.status)) return false;
     if (
       filters.person &&
