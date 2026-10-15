@@ -56,19 +56,22 @@ describe("scene-composer — SVG válido em todas as cenas", () => {
     expect(() => new Resvg(svg, { background: "rgba(0,0,0,0)" })).not.toThrow();
   });
 
-  it("aspas duplas em font-family são escapadas (regressão do bug 'expected space not P')", () => {
-    const scene = SCENES.oferta; // fontFamily contém "Playfair Display"
+  it("nenhum atributo é fechado antes da hora (regressão do bug 'expected space not P')", () => {
+    const scene = SCENES.premium; // família com espaço: "Playfair Display"
     const svg = buildSceneOverlaySvg({
       width: WIDTH,
       height: HEIGHT,
       scene,
       layout: layoutFor(scene),
-      content: CONTENT,
-      logo: null,
+      content: { ...CONTENT, headline: 'Oferta "relâmpago" & <única>' },
+      logo: { dataUri: 'data:image/png;base64,AAAA" onload="x', layout: scene.defaultLayout.logo },
     });
-    // O caractere " literal NÃO deve aparecer dentro de font-family; ele
-    // precisa vir codificado como &quot;.
+    // Aspas vindas de dados nunca aparecem cruas dentro de um atributo.
     expect(svg).not.toMatch(/font-family="[^"]*"[A-Za-z]/);
-    expect(svg).toContain("&quot;Playfair Display&quot;");
+    expect(svg).toContain('font-family="Playfair Display"');
+    expect(svg).toContain("&quot;relâmpago&quot;");
+    expect(svg).toContain("&lt;única&gt;");
+    expect(svg).not.toContain('" onload="');
+    expect(() => new Resvg(svg, { background: "rgba(0,0,0,0)" })).not.toThrow();
   });
 });

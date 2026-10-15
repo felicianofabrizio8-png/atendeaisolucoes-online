@@ -7,6 +7,7 @@ import { LumePulse } from "../MarketingMotion";
 //  - "Restaurar original"       → volta ao snapshot da 1ª sugestão (client-side).
 //  - "Aprovar e gerar vídeo"    → persiste texto aprovado + enfileira render.
 
+import { OVERLAY_LIMITS } from "@/lib/marketing/manual-campaign";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,9 +34,10 @@ interface Props {
   onContentsUpdated?: (contents: MarketingContentRow[]) => void;
 }
 
-const HEADLINE_MAX = 80;
-const SUB_MAX = 120;
-const CTA_MAX = 60;
+// Limites do texto sobre o vídeo (iguais aos do banco).
+const HEADLINE_MAX = OVERLAY_LIMITS.headline;
+const SUB_MAX = OVERLAY_LIMITS.subheadline;
+const CTA_MAX = OVERLAY_LIMITS.cta;
 
 export function CampaignTextReview({
   campaignId,
@@ -139,7 +141,7 @@ export function CampaignTextReview({
               value={headline}
               maxLength={HEADLINE_MAX}
               onChange={(e) => setHeadline(e.target.value)}
-              placeholder="Ex.: Seu verão começa aqui"
+              placeholder="Ex.: Chegou a novidade"
             />
           </div>
           <div>
@@ -155,7 +157,7 @@ export function CampaignTextReview({
               maxLength={SUB_MAX}
               rows={2}
               onChange={(e) => setSubheadline(e.target.value)}
-              placeholder="Ex.: Piscinas com qualidade e instalação rápida"
+              placeholder="Ex.: Qualidade que faz diferença"
             />
           </div>
           <div>

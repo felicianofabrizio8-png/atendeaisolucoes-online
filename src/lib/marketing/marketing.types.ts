@@ -10,7 +10,7 @@ export type MarketingContentStatus =
   | "rejected"
   | "archived";
 export type MarketingContentChannel = "instagram" | "facebook" | "whatsapp";
-export type MarketingContentFormat = "story" | "feed" | "reel" | "whatsapp_cta";
+export type MarketingContentFormat = "story" | "feed" | "reel" | "whatsapp_cta" | "carousel";
 export type MarketingScheduleStatus =
   | "planned"
   | "queued"
@@ -103,6 +103,10 @@ export interface MarketingContentRow {
   overlay_original_subheadline?: string | null;
   overlay_original_cta?: string | null;
   overlay_approved_at?: string | null;
+  video_template?: string | null;
+  video_layout?: unknown;
+  /** Documento do Estúdio Criativo (ver studio/document.ts). */
+  design?: unknown;
 }
 
 export interface MarketingScheduleRow {

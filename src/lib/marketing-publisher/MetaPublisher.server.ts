@@ -6,6 +6,14 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isFailure, isSimulation } from "@/lib/outbound/MetaOutboundContract";
 import type { PublicationChannel, PublicationFormat } from "./types";
+import { publishFacebookCarousel, publishInstagramCarousel, type CarouselOutcome, type CarouselPending, type CarouselPost } from "./CarouselPublisher.server";
+import { CAROUSEL_PUBLISH_DISABLED_MESSAGE, isCarouselPublishEnabled } from "./carousel-flag";
+import { carouselContentProblem, carouselImagesProblem, type CarouselChannel } from "./carousel-readiness";
+import { REEL_NEEDS_VIDEO_MESSAGE, renderedVideoIdFor, requiresVideo } from "@/lib/marketing/publishable-media";
+
+type ReelVideo = { ok: true; media: ResolvedMedia } | { ok: false; code: string; message: string; retryable: boolean };
+
+type CarouselImages = { ok: true; urls: string[] } | { ok: false; code: string; message: string; retryable: boolean };
 
 const GRAPH = "https://graph.facebook.com/v25.0";
 
@@ -99,7 +107,22 @@ export class MetaPublisher {
         return this.fail("content_not_found", "Conteúdo não encontrado.", false);
       }
 
-      const media = await this.resolvePrimaryMedia(content, input.format);
+      // Carrossel: fluxo próprio (várias imagens), desligado por padrão.
+      if (input.format === "carousel") {
+        if (!isCarouselPublishEnabled(input.companyId)) return this.fail("carousel_publish_disabled", CAROUSEL_PUBLISH_DISABLED_MESSAGE, false);
+        return await this.publishCarousel(input, content, this.buildCaption(content));
+      }
+
+      // Reel só existe como vídeo: sem vídeo válido e acessível a publicação
+      // para aqui, nos dois canais — nunca é trocada por uma imagem.
+      let media: ResolvedMedia | null;
+      if (requiresVideo(input.format)) {
+        const reel = await this.resolveReelVideo(content);
+        if (!reel.ok) return this.fail(reel.code, reel.message, reel.retryable);
+        media = reel.media;
+      } else {
+        media = await this.resolvePrimaryMedia(content, input.format);
+      }
       const caption = this.buildCaption(content);
 
       if (input.channel === "instagram") {
@@ -801,6 +824,78 @@ export class MetaPublisher {
   // Loaders (service_role)
   // ==========================================================================
 
+  /**
+   * Links assinados das imagens do carrossel, NA ORDEM de `media_ids` (a ordem
+   * das páginas). Qualquer imagem ausente, inativa, de outra empresa ou que
+   * não seja imagem invalida o conjunto: carrossel não é publicado pela metade.
+   */
+  private async resolveCarouselImages(content: ContentPayload, channel: CarouselChannel): Promise<CarouselImages> {
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any; storage: { from: (b: string) => any } };
+    const missing: CarouselImages = { ok: false, code: "no_media", message: "O carrossel não tem todas as imagens disponíveis no acervo da empresa.", retryable: false };
+    // O documento do estúdio diz quantas páginas existem: imagens exportadas
+    // antes de uma edição não podem ser publicadas no lugar das atuais.
+    const d = await admin.from("marketing_contents").select("design").eq("id", content.contentId).eq("company_id", content.companyId).maybeSingle();
+    const contentProblem = carouselContentProblem({ media_ids: content.media_ids, design: d.data?.design ?? null }, channel);
+    if (contentProblem) return { ok: false, ...contentProblem, retryable: false };
+    const r = await admin
+      .from("marketing_media")
+      .select("id, storage_path, media_type, mime_type, width, height")
+      .in("id", content.media_ids)
+      .eq("company_id", content.companyId)
+      .eq("active", true)
+      .is("deleted_at", null);
+    type Row = { id: string; storage_path: string; media_type: string; mime_type: string | null; width: number | null; height: number | null };
+    const rows = (r.data ?? []) as Row[];
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const ordered: Row[] = [];
+    for (const id of content.media_ids) {
+      const row = byId.get(id);
+      // Guard multi-tenant: o arquivo precisa estar na pasta da empresa.
+      if (!row || row.media_type !== "image" || !row.storage_path.startsWith(`${content.companyId}/`)) return missing;
+      ordered.push(row);
+    }
+    const imagesProblem = carouselImagesProblem(ordered, channel);
+    if (imagesProblem) return { ok: false, ...imagesProblem, retryable: false };
+    const urls: string[] = [];
+    for (const [i, row] of ordered.entries()) {
+      const signed = await admin.storage.from("marketing-media").createSignedUrl(row.storage_path, 60 * 60);
+      const url = signed?.data?.signedUrl as string | undefined;
+      // A Meta baixa o arquivo do lado dela: link que não abre aqui não abre lá.
+      if (!url || !(await this.isUrlAccessible(url, "image/"))) {
+        return { ok: false, code: "carousel_image_unavailable", message: `A imagem da página ${i + 1} do carrossel não pôde ser acessada no armazenamento.`, retryable: true };
+      }
+      urls.push(url);
+    }
+    return { ok: true, urls };
+  }
+
+  private async publishCarousel(input: PublishInput, content: ContentPayload, caption: string): Promise<PublishOutcome> {
+    const images = await this.resolveCarouselImages(content, input.channel === "instagram" ? "instagram" : "facebook");
+    if (!images.ok) return this.fail(images.code, images.message, images.retryable);
+    const imageUrls = images.urls;
+    const shared = {
+      companyId: input.companyId,
+      graph: GRAPH,
+      imageUrls,
+      caption,
+      pending: ((input.pendingState as { carousel?: CarouselPending } | null | undefined)?.carousel ?? null) as CarouselPending | null,
+      onPending: input.onPendingUpdate ? (patch: CarouselPending) => input.onPendingUpdate!({ carousel: patch }) : undefined,
+      post: postGraph as unknown as CarouselPost,
+    };
+    let outcome: CarouselOutcome;
+    if (input.channel === "instagram") {
+      const ctx = await this.loadInstagramContext(input.companyId);
+      if (!ctx.ok) return this.fail(ctx.code, ctx.message, false);
+      outcome = await publishInstagramCarousel({ ...shared, accessToken: ctx.pageAccessToken, igUserId: ctx.igUserId });
+    } else {
+      const ctx = await this.loadFacebookContext(input.companyId);
+      if (!ctx.ok) return this.fail(ctx.code, ctx.message, false);
+      outcome = await publishFacebookCarousel({ ...shared, accessToken: ctx.pageAccessToken, pageId: ctx.pageId });
+    }
+    if (!outcome.success) return this.fail(outcome.errorCode, outcome.errorMessage, outcome.retryable);
+    return { success: true, simulated: outcome.simulated, platformPostId: outcome.platformPostId, platformResponse: outcome.platformResponse };
+  }
+
   private async loadContent(id: string, companyId: string): Promise<ContentPayload | null> {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
@@ -847,6 +942,52 @@ export class MetaPublisher {
   }
 
 
+  /**
+   * Vídeo de um Reel, restrito à empresa do conteúdo: o vídeo renderizado
+   * (`story_video_id`, ver `renderedVideoIdFor`) ou, sem ele, o primeiro vídeo
+   * ativo do acervo em `media_ids`. Diferente de Feed/Story, aqui NÃO há
+   * alternativa em imagem: vídeo ausente, inativo, de outra pasta ou
+   * inacessível encerra a publicação com o motivo.
+   */
+  private async resolveReelVideo(content: ContentPayload): Promise<ReelVideo> {
+    const admin = supabaseAdmin as unknown as { from: (t: string) => any; storage: { from: (b: string) => any } };
+    const inaccessible: ReelVideo = { ok: false, code: "reel_video_inaccessible", message: "O vídeo deste Reel não pôde ser acessado no armazenamento. Uma nova tentativa será feita.", retryable: true };
+
+    const renderedId = renderedVideoIdFor({ format: "reel", feed_video_id: content.feed_video_id, story_video_id: content.story_video_id });
+    if (renderedId) {
+      const v = await admin.from("video_library").select("id, company_id, file_path, is_active").eq("id", renderedId).eq("company_id", content.companyId).maybeSingle();
+      const row = v.data as { file_path: string; is_active: boolean } | null | undefined;
+      // Guard multi-tenant: o arquivo precisa estar na pasta da empresa.
+      if (!row || !row.is_active || typeof row.file_path !== "string" || !row.file_path.startsWith(`${content.companyId}/`)) {
+        return { ok: false, code: "reel_video_unavailable", message: "O vídeo deste Reel não está mais disponível na biblioteca. Gere o vídeo novamente antes de publicar.", retryable: false };
+      }
+      const signed = await admin.storage.from("video-library").createSignedUrl(row.file_path, 60 * 60);
+      const url = signed?.data?.signedUrl as string | undefined;
+      if (!url || !(await this.isUrlAccessible(url, "video/mp4"))) return inaccessible;
+      return { ok: true, media: { url, type: "video" } };
+    }
+
+    if (content.media_ids.length > 0) {
+      const r = await admin
+        .from("marketing_media")
+        .select("id, storage_path, media_type")
+        .in("id", content.media_ids)
+        .eq("company_id", content.companyId)
+        .eq("active", true)
+        .is("deleted_at", null);
+      const byId = new Map(((r.data ?? []) as Array<{ id: string; storage_path: string; media_type: string }>).map((m) => [m.id, m]));
+      for (const id of content.media_ids) {
+        const m = byId.get(id);
+        if (!m || m.media_type !== "video" || !m.storage_path.startsWith(`${content.companyId}/`)) continue;
+        const signed = await admin.storage.from("marketing-media").createSignedUrl(m.storage_path, 60 * 60);
+        const url = signed?.data?.signedUrl as string | undefined;
+        if (!url || !(await this.isUrlAccessible(url, "video/"))) return inaccessible;
+        return { ok: true, media: { url, type: "video" } };
+      }
+    }
+    return { ok: false, code: "reel_requires_video", message: REEL_NEEDS_VIDEO_MESSAGE, retryable: false };
+  }
+
   private async resolvePrimaryMedia(
     content: ContentPayload,
     format: PublicationFormat,
@@ -858,8 +999,7 @@ export class MetaPublisher {
 
     // 0) Preferir vídeo renderizado da campanha, se existir para o formato-alvo.
     //    Feed -> feed_video_id (1080x1350). Story/Reel -> story_video_id (1080x1920).
-    const targetVideoId =
-      format === "feed" ? content.feed_video_id : content.story_video_id;
+    const targetVideoId = renderedVideoIdFor({ format, feed_video_id: content.feed_video_id, story_video_id: content.story_video_id });
     if (targetVideoId) {
       const v = await admin
         .from("video_library")

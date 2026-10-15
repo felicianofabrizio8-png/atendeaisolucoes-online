@@ -91,8 +91,8 @@ export function VideoLibraryGrid({ refreshKey }: Props) {
       <div className="mkt-empty-state">
         <h3>O próximo play pode ser seu.</h3>
         <p>
-          Crie uma campanha em <strong>Criar com Lume</strong> e aprove o vídeo no editor. Seus
-          vídeos prontos ficam reunidos aqui.
+          Crie uma campanha em <strong>Criar &gt; Nova publicação</strong> e aprove o vídeo no
+          editor. Seus vídeos prontos ficam reunidos aqui.
         </p>
       </div>
     );

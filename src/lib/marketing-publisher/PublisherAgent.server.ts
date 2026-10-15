@@ -25,13 +25,16 @@ export class PublisherAgent {
   async stats(companyId: string): Promise<PublisherStats & { scheduled: number }> {
     const base = await this.repo.stats(companyId);
     // 'scheduled' = agendamentos planned pendentes que ainda não viraram publicação.
+    // Indicadores do painel ignoram conteúdos ocultados (hidden_from_publish).
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const q = await admin
       .from("marketing_schedule")
-      .select("id", { count: "exact", head: true })
+      .select("id, marketing_contents!inner(hidden_from_publish)", { count: "exact", head: true })
       .eq("company_id", companyId)
+      .eq("marketing_contents.hidden_from_publish", false)
       .eq("status", "planned");
+    if (q.error) throw new Error(q.error.message);
     return { ...base, scheduled: (q as { count?: number }).count ?? 0 };
   }
 }

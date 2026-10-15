@@ -7,8 +7,8 @@ import { MarketingDashboard } from "@/components/marketing/MarketingDashboard";
 const api = vi.hoisted(() => ({
   apiListMedia: vi.fn(),
   apiListPromotions: vi.fn(),
-  apiListContents: vi.fn(),
-  apiListSchedule: vi.fn(),
+  apiListPublishContents: vi.fn(),
+  apiListPublishSchedule: vi.fn(),
 }));
 vi.mock("@/data/marketingRepo", () => api);
 afterEach(cleanup);
@@ -21,8 +21,8 @@ beforeEach(() => {
   }));
   api.apiListMedia.mockResolvedValue([]);
   api.apiListPromotions.mockResolvedValue([]);
-  api.apiListContents.mockResolvedValue([]);
-  api.apiListSchedule.mockResolvedValue([]);
+  api.apiListPublishContents.mockResolvedValue([]);
+  api.apiListPublishSchedule.mockResolvedValue([]);
 });
 
 describe("Marketing overview", () => {
@@ -42,8 +42,8 @@ describe("Marketing overview", () => {
       status: id === "early" ? "pending" : "approved",
       format: "feed",
     }));
-    api.apiListContents.mockResolvedValue(rows);
-    api.apiListSchedule.mockResolvedValue([
+    api.apiListPublishContents.mockResolvedValue(rows);
+    api.apiListPublishSchedule.mockResolvedValue([
       {
         id: "1",
         content_id: "late",

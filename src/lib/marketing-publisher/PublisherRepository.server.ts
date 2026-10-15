@@ -317,10 +317,13 @@ export class PublisherRepository {
       ...existing,
       pending: { ...prevPending, ...patch, saved_at: new Date().toISOString() },
     };
-    await admin
+    const upd = await admin
       .from("marketing_publications")
       .update({ platform_response: merged })
       .eq("id", id);
+    // Quem chama decide o que fazer sem o andamento salvo (todos tratam a
+    // exceção); engolir o erro aqui esconderia o risco de repetir um envio.
+    if (cur?.error || upd?.error) throw new Error("pending_save_failed");
   }
 
   async findById(id: string): Promise<PublicationRow | null> {
@@ -372,8 +375,10 @@ export class PublisherRepository {
     const admin = supabaseAdmin as unknown as { from: (t: string) => any };
     const r = await admin
       .from("marketing_publications")
-      .select("status")
-      .eq("company_id", companyId);
+      .select("status, marketing_contents!inner(hidden_from_publish)")
+      .eq("company_id", companyId)
+      .eq("marketing_contents.hidden_from_publish", false);
+    if (r.error) throw new Error(r.error.message);
     const rows = (r.data ?? []) as { status: string }[];
     const acc: PublisherStats = {
       scheduled: 0,

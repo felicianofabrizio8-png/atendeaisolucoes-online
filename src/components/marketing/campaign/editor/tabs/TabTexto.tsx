@@ -2,15 +2,17 @@ import { LumePulse } from "../../../MarketingMotion";
 // Aba TEXTO — edição de título/sub/CTA + botões "Pedir outra ideia à Lume" e
 // "Restaurar texto original". Toda alteração atualiza o preview do editor.
 
+import { OVERLAY_LIMITS } from "@/lib/marketing/manual-campaign";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RotateCcw, Sparkles } from "lucide-react";
 
-const HEADLINE_MAX = 80;
-const SUB_MAX = 120;
-const CTA_MAX = 60;
+// Limites do texto sobre o vídeo (iguais aos do banco).
+const HEADLINE_MAX = OVERLAY_LIMITS.headline;
+const SUB_MAX = OVERLAY_LIMITS.subheadline;
+const CTA_MAX = OVERLAY_LIMITS.cta;
 
 interface Props {
   headline: string;
@@ -19,10 +21,13 @@ interface Props {
   onHeadline: (v: string) => void;
   onSubheadline: (v: string) => void;
   onCta: (v: string) => void;
-  onRegenerate: () => void;
-  onRestore: () => void;
-  regenerating: boolean;
+  /** Sem estes dois, o painel não oferece sugestão de IA nem restauração. */
+  onRegenerate?: () => void;
+  onRestore?: () => void;
+  regenerating?: boolean;
   disabled?: boolean;
+  /** Dicas do que escrever em cada campo (ex.: pelo papel da página). */
+  placeholders?: { headline?: string; subheadline?: string; cta?: string };
 }
 
 export function TabTexto({
@@ -36,6 +41,7 @@ export function TabTexto({
   onRestore,
   regenerating,
   disabled,
+  placeholders,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -52,7 +58,7 @@ export function TabTexto({
           maxLength={HEADLINE_MAX}
           onChange={(e) => onHeadline(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Seu verão começa aqui"
+          placeholder={placeholders?.headline ?? "Ex.: Chegou a novidade"}
         />
       </div>
       <div>
@@ -69,7 +75,7 @@ export function TabTexto({
           rows={2}
           onChange={(e) => onSubheadline(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Piscinas com qualidade e instalação rápida"
+          placeholder={placeholders?.subheadline ?? "Ex.: Qualidade que faz diferença"}
         />
       </div>
       <div>
@@ -85,9 +91,10 @@ export function TabTexto({
           maxLength={CTA_MAX}
           onChange={(e) => onCta(e.target.value)}
           disabled={disabled}
-          placeholder="Ex.: Fale conosco"
+          placeholder={placeholders?.cta ?? "Ex.: Fale conosco"}
         />
       </div>
+      {onRegenerate && onRestore && (
       <div className="flex flex-wrap gap-2 pt-2 border-t">
         <Button
           variant="outline"
@@ -107,6 +114,7 @@ export function TabTexto({
           Restaurar original
         </Button>
       </div>
+      )}
     </div>
   );
 }

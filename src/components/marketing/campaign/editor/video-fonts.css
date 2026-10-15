@@ -1,0 +1,19 @@
+/* Fontes da prévia do Vídeo IA — os MESMOS arquivos empacotados no worker
+   (worker/render-engine/assets/fonts). Cada face declara um único peso, igual
+   ao que o rasterizador do vídeo usa, para o navegador não sintetizar negrito. */
+@font-face { font-family: "Inter"; src: url("/fonts/video/Inter-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/fonts/video/Poppins-Medium.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Poppins"; src: url("/fonts/video/Poppins-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Archivo Black"; src: url("/fonts/video/ArchivoBlack-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Anton"; src: url("/fonts/video/Anton-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bebas Neue"; src: url("/fonts/video/BebasNeue-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Playfair Display"; src: url("/fonts/video/PlayfairDisplay-Bold.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "DM Serif Display"; src: url("/fonts/video/DMSerifDisplay-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Pacifico"; src: url("/fonts/video/Pacifico-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+
+.scene-overlay > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-synthesis: none;
+}

@@ -1,4 +1,3 @@
-import { LumePulse } from "./MarketingMotion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,36 +8,68 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   CheckCircle2,
   XCircle,
+  Loader2,
   Send,
   Calendar,
   AlertTriangle,
   RefreshCw,
   Film,
+  Images,
+  Copy,
   Play,
+  MoreHorizontal,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { lumeToast as toast } from "./MarketingFeedback";
 import { openSettings } from "@/lib/settings-dialog";
 import {
-  apiListContents,
-  apiListMedia,
+  apiListPublishContents,
   apiUpdateContent,
   apiSetContentStatus,
   apiScheduleContent,
   apiFacebookPublishReadiness,
-  urlForMarketingPath,
+  apiGetCampaignRenderStatus,
+  apiRetryCampaignRender,
+  campaignMediaDeps,
+  apiGetRenderedVideoUrl,
 } from "@/data/marketingRepo";
-import type { MarketingContentRow, MarketingMediaRow } from "@/lib/marketing/marketing.types";
+import type {
+  MarketingContentRow,
+} from "@/lib/marketing/marketing.types";
 import { validateScheduleForm } from "@/lib/marketing/schedule-form";
-import { CampaignVideoEditor } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import { RENDER_STALL_MESSAGE, isActiveMarketingRenderStatus, resolveMarketingRenderState, type MarketingRenderState } from "@/lib/marketing/render-status";
+import { CampaignVideoEditor, type CampaignEditorImage } from "@/components/marketing/campaign/editor/CampaignVideoEditor";
+import { StudioDialog, type StudioSession } from "@/components/marketing/studio/StudioDialog";
+import { documentFromContentRow, studioKindOf } from "@/lib/marketing/studio/content-mapping";
+import { campaignImageRefs, resolveCampaignMedia } from "@/lib/marketing/campaign-media";
+import { REEL_NEEDS_VIDEO_MESSAGE, REEL_SCRIPT_HINT, missingMediaMessage, publishableMediaSource, renderedVideoIdFor, videoRequirementStatus } from "@/lib/marketing/publishable-media";
+import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
+import { MediaThumb, type MediaPreview } from "./ui/MarketingUi";
+import { PublishNowDialog } from "./PublishNowDialog";
+import { formatChannelProblem, noPublishTargetHint, publishChannelsFor } from "@/lib/marketing-publisher/publish-compat";
 import {
   useCampaignRenderTracker,
   useTrackedCampaign,
 } from "@/lib/marketing/useCampaignRenderTracker";
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Rascunho",
+  pending: "Em revisão",
+  approved: "Aprovado",
+  rejected: "Rejeitado",
+};
+const FORMAT_LABEL: Record<string, string> = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "WhatsApp", carousel: "Carrossel" };
+const FILTER_LABEL: Record<string, string> = {
+  draft: "Rascunhos",
+  pending: "Em revisão",
+  approved: "Aprovados",
+  rejected: "Rejeitados",
+  all: "Todos",
+};
 
 function isVideoContent(row: MarketingContentRow): boolean {
   // Conteúdos de vídeo pertencem a uma campanha (feed/story/reel) — o formato
@@ -51,41 +82,50 @@ function hasRenderedVideo(row: MarketingContentRow): boolean {
 }
 
 function hasPendingRenderJob(row: MarketingContentRow): boolean {
-  return !hasRenderedVideo(row) && !!(row.feed_render_job_id || row.story_render_job_id);
+  return (
+    !hasRenderedVideo(row) &&
+    !!(row.feed_render_job_id || row.story_render_job_id)
+  );
 }
 
 interface Props {
   companyId: string;
+  /** Etapa fixada pelo hub de Publicar; esconde os filtros internos. */
+  forcedFilter?: "review" | "approved";
+  /** Avisado depois de cada recarga, para o hub atualizar os contadores. */
+  onChanged?: () => void;
 }
 
 type Filter = "all" | "draft" | "pending" | "approved" | "rejected";
-const contentStatusLabel: Record<string, string> = {
-  draft: "Rascunho",
-  pending: "Em revisão",
-  approved: "Aprovado",
-  rejected: "Rejeitado",
-  archived: "Arquivado",
-};
 
-export function MarketingApprovals({ companyId }: Props) {
+export function MarketingApprovals({ companyId, forcedFilter, onChanged }: Props) {
   const [rows, setRows] = useState<MarketingContentRow[]>([]);
+  const [renderStates, setRenderStates] = useState<Record<string, { feed: MarketingRenderState; story: MarketingRenderState }>>({});
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("draft");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [scheduleFor, setScheduleFor] = useState<string | null>(null);
   const [scheduleAt, setScheduleAt] = useState("");
-  const [scheduleChannel, setScheduleChannel] = useState<"instagram" | "facebook" | "whatsapp">(
+  const [scheduleChannel, setScheduleChannel] = useState<"instagram" | "facebook">(
     "instagram",
   );
   const [scheduleAtError, setScheduleAtError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // "Publicar agora": conteúdo aguardando a escolha do destino.
+  const [publishFor, setPublishFor] = useState<MarketingContentRow | null>(null);
 
   // ----- Editor Visual do Vídeo -----
   const [editorCampaignId, setEditorCampaignId] = useState<string | null>(null);
-  const [editorPreviewUrl, setEditorPreviewUrl] = useState<string | null>(null);
+  const [editorRow, setEditorRow] = useState<MarketingContentRow | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
-  const [mediaIndex, setMediaIndex] = useState<Record<string, MarketingMediaRow>>({});
-  const { trackCampaign, campaigns } = useCampaignRenderTracker();
+  const [editorImageSequence, setEditorImageSequence] = useState<CampaignEditorImage[]>([]);
+  // ----- Estúdio Criativo (carrossel e arte) -----
+  const [studioSession, setStudioSession] = useState<StudioSession | null>(null);
+  function openStudio(row: MarketingContentRow) {
+    const document = documentFromContentRow(row);
+    if (document && studioKindOf(row)) setStudioSession({ key: `${row.id}-${Date.now()}`, document, contentId: row.id, caption: row.body ?? "" });
+  }
+  const { trackCampaign, campaigns, refresh: refreshTracked } = useCampaignRenderTracker();
   // Guarda campanhas cujo render completou para auto-refresh.
   const seenDoneRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -102,40 +142,50 @@ export function MarketingApprovals({ companyId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaigns]);
 
-  async function ensureMediaIndex(): Promise<Record<string, MarketingMediaRow>> {
-    if (Object.keys(mediaIndex).length > 0) return mediaIndex;
-    try {
-      const list = await apiListMedia();
-      const idx: Record<string, MarketingMediaRow> = {};
-      for (const m of list) idx[m.id] = m;
-      setMediaIndex(idx);
-      return idx;
-    } catch {
-      return {};
-    }
+  // Imagens do editor: a mesma regra do render (sequência salva ou imagem
+  // principal, do acervo ou de produto), com link buscado na hora — sem
+  // depender de uma lista de mídias em cache — e erro explícito por imagem.
+  async function loadEditorImages(row: MarketingContentRow, fresh = false): Promise<CampaignEditorImage[]> {
+    const { refs } = campaignImageRefs(row);
+    const resolved = await resolveCampaignMedia(refs, campaignMediaDeps, { fresh });
+    return refs.map((ref) => ({
+      key: ref.key,
+      origin: ref.origin,
+      ...(ref.origin === "marketing" ? { mediaId: ref.mediaId } : { productId: ref.productId, imagePath: ref.imagePath }),
+      previewUrl: resolved[ref.key]?.previewUrl ?? null,
+      loadError: resolved[ref.key]?.error ?? null,
+      focalPoint: ref.focalPoint,
+    }));
   }
 
   async function openVideoEditor(row: MarketingContentRow) {
     if (!row.campaign_id) return;
     setEditorLoading(true);
     setEditorCampaignId(row.campaign_id);
-    setEditorPreviewUrl(null);
+    setEditorRow(row);
+    setEditorImageSequence([]);
     try {
-      const idx = await ensureMediaIndex();
-      const mediaId = row.primary_image_media_id ?? row.media_ids?.[0] ?? null;
-      const media = mediaId ? idx[mediaId] : null;
-      if (media?.storage_path) {
-        const url = await urlForMarketingPath(media.storage_path).catch(() => null);
-        setEditorPreviewUrl(url);
-      }
+      setEditorImageSequence(await loadEditorImages(row));
     } finally {
+      // `loadEditorImages` nunca fica pendente: cada imagem termina com link ou erro.
       setEditorLoading(false);
     }
   }
 
+  /** "Tentar novamente" do editor: novo link só para a imagem que falhou. */
+  async function retryEditorImage(key: string) {
+    if (!editorRow) return;
+    const fresh = (await loadEditorImages(editorRow, true)).find((item) => item.key === key);
+    if (!fresh) return;
+    setEditorImageSequence((cur) =>
+      cur.map((item) => (item.key === key ? { ...item, previewUrl: fresh.previewUrl, loadError: fresh.loadError } : item)),
+    );
+  }
+
   function closeVideoEditor() {
     setEditorCampaignId(null);
-    setEditorPreviewUrl(null);
+    setEditorRow(null);
+    setEditorImageSequence([]);
   }
 
   const editorContents = useMemo(
@@ -143,23 +193,23 @@ export function MarketingApprovals({ companyId }: Props) {
     [rows, editorCampaignId],
   );
   const editorFocalPoint = useMemo(() => {
+    const first = editorImageSequence[0]?.focalPoint;
+    if (first) return first;
     const feed = editorContents.find((r) => r.campaign_role === "feed") ?? editorContents[0];
-    const prompt =
-      feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null
-        ? (feed.ai_prompt as { focal_point?: { x: number; y: number; zoom?: number } | null })
-        : null;
-    const fp = prompt?.focal_point;
-    if (!fp) return null;
-    return { x: fp.x, y: fp.y, zoom: fp.zoom ?? 1 };
-  }, [editorContents]);
-  const [fbReadiness, setFbReadiness] = useState<null | {
-    ok: boolean;
-    code: string;
-    message: string;
-    hasPagesManagePosts: boolean;
-    integrationChannel: string | null;
-    pageId: string | null;
-  }>(null);
+    const prompt = feed && typeof feed.ai_prompt === "object" && feed.ai_prompt !== null ? feed.ai_prompt as { focal_point?: { x: number; y: number; zoom?: number } | null } : null;
+    return prompt?.focal_point ? { x: prompt.focal_point.x, y: prompt.focal_point.y, zoom: prompt.focal_point.zoom ?? 1 } : null;
+  }, [editorContents, editorImageSequence]);
+  const [fbReadiness, setFbReadiness] = useState<
+    | null
+    | {
+        ok: boolean;
+        code: string;
+        message: string;
+        hasPagesManagePosts: boolean;
+        integrationChannel: string | null;
+        pageId: string | null;
+      }
+  >(null);
   const [fbReadinessLoading, setFbReadinessLoading] = useState(false);
 
   async function refreshFbReadiness() {
@@ -180,10 +230,53 @@ export function MarketingApprovals({ companyId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
+  async function refreshRenderStates(nextRows: MarketingContentRow[]) {
+    const campaignIds = Array.from(new Set(nextRows.filter((row) => isVideoContent(row) && hasPendingRenderJob(row)).map((row) => row.campaign_id).filter((id): id is string => Boolean(id))));
+    const entries = await Promise.all(campaignIds.map(async (campaignId) => {
+      try {
+        const status = await apiGetCampaignRenderStatus(campaignId);
+        return [campaignId, {
+          feed: resolveMarketingRenderState({ role: status.feed, jobId: status.feed.job_id, videoId: status.feed.video_id }),
+          story: resolveMarketingRenderState({ role: status.story, jobId: status.story.job_id, videoId: status.story.video_id }),
+        }] as const;
+      } catch {
+        return null;
+      }
+    }));
+    const next: Record<string, { feed: MarketingRenderState; story: MarketingRenderState }> = {};
+    for (const entry of entries) {
+      if (entry) next[entry[0]] = entry[1];
+    }
+    setRenderStates(next);
+  }
+
+  // Renders iniciados em outra sessão não passam pelo tracker; sem isto o
+  // card ficaria em "Gerando vídeo…" até o usuário atualizar a tela.
+  const hasActiveRender = Object.values(renderStates).some(
+    (state) => isActiveMarketingRenderStatus(state.feed.status) || isActiveMarketingRenderStatus(state.story.status),
+  );
+  useEffect(() => {
+    if (!hasActiveRender) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void apiListPublishContents()
+        .then(async (nextRows) => {
+          setRows(nextRows);
+          await refreshRenderStates(nextRows);
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasActiveRender]);
+
   async function refresh() {
     setLoading(true);
     try {
-      setRows(await apiListContents());
+      const nextRows = await apiListPublishContents();
+      setRows(nextRows);
+      onChanged?.();
+      await refreshRenderStates(nextRows);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao carregar conteúdos.");
     } finally {
@@ -196,20 +289,20 @@ export function MarketingApprovals({ companyId }: Props) {
   }, [companyId]);
 
   const filtered = useMemo(
-    () => (filter === "all" ? rows : rows.filter((r) => r.status === filter)),
-    [rows, filter],
-  );
-
-  async function saveEdit(
-    row: MarketingContentRow,
-    patch: {
-      body: string;
-      title: string | null;
-      hashtags: string[];
-      cta_text: string | null;
-      cta_destination: string | null;
+    () => {
+      if (forcedFilter === "review") {
+        // Rascunhos e em revisão primeiro; rejeitados ficam no fim, para reenviar.
+        const order = { draft: 0, pending: 0, rejected: 1 } as Record<string, number>;
+        return rows.filter((r) => r.status in order).sort((a, b) => order[a.status] - order[b.status]);
+      }
+      if (forcedFilter === "approved") return rows.filter((r) => r.status === "approved");
+      return filter === "all" ? rows : rows.filter((r) => r.status === filter);
     },
-  ) {
+    [rows, filter, forcedFilter],
+  );
+  const previews = useContentPreviews(companyId, filtered);
+
+  async function saveEdit(row: MarketingContentRow, patch: { body: string; title: string | null; hashtags: string[]; cta_text: string | null; cta_destination: string | null }) {
     setBusy(true);
     try {
       await apiUpdateContent({ id: row.id, ...patch });
@@ -223,20 +316,50 @@ export function MarketingApprovals({ companyId }: Props) {
     }
   }
 
-  async function setStatus(
-    row: MarketingContentRow,
-    status: "approved" | "rejected" | "pending",
-    reason?: string,
-  ) {
+  async function setStatus(row: MarketingContentRow, status: "approved" | "rejected" | "pending", reason?: string) {
     setBusy(true);
     try {
       await apiSetContentStatus({ id: row.id, status, rejection_reason: reason ?? null });
-      toast.success(
-        `Conteúdo marcado como ${contentStatusLabel[status].toLocaleLowerCase("pt-BR")}.`,
-      );
+      toast.success(`Conteúdo marcado como ${status}.`);
       await refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao alterar status.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function publishNow(row: MarketingContentRow) {
+    if (row.status !== "approved") {
+      toast.error("Aprove o conteúdo antes de publicar.");
+      return;
+    }
+    if (publishChannelsFor(row.format).length === 0) {
+      toast.error(formatChannelProblem(row.format, "instagram") ?? "Este conteúdo não pode ser publicado.");
+      return;
+    }
+    if (videoRequirementStatus(row) === "missing") {
+      toast.error(REEL_NEEDS_VIDEO_MESSAGE);
+      return;
+    }
+    // O destino (Instagram, Facebook ou os dois) é escolhido no diálogo.
+    setPublishFor(row);
+  }
+
+  async function retryRender(row: MarketingContentRow) {
+    if (!row.campaign_id) return;
+    setBusy(true);
+    try {
+      await apiRetryCampaignRender({
+        campaign_id: row.campaign_id,
+        role: row.campaign_role === "story" ? "story" : "feed",
+      });
+      trackCampaign(row.campaign_id);
+      await refreshTracked(row.campaign_id);
+      toast.info("Renderização reenfileirada.");
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível tentar novamente.");
     } finally {
       setBusy(false);
     }
@@ -247,10 +370,19 @@ export function MarketingApprovals({ companyId }: Props) {
       toast.error("Apenas conteúdos aprovados podem ser agendados.");
       return;
     }
+    const targets = publishChannelsFor(row.format);
+    if (targets.length === 0) {
+      toast.error(formatChannelProblem(row.format, "instagram") ?? "Este conteúdo não pode ser agendado.");
+      return;
+    }
+    if (videoRequirementStatus(row) === "missing") {
+      toast.error(REEL_NEEDS_VIDEO_MESSAGE);
+      return;
+    }
     // Sempre resetar estado ao abrir para evitar `busy` preso de operação anterior.
     setBusy(false);
     setScheduleFor(row.id);
-    setScheduleChannel(row.channel);
+    setScheduleChannel(row.channel === "facebook" && targets.includes("facebook") ? "facebook" : targets[0]);
     setScheduleAt("");
     setScheduleAtError(null);
   }
@@ -264,20 +396,15 @@ export function MarketingApprovals({ companyId }: Props) {
 
   async function schedule() {
     const target = scheduleFor ? rows.find((r) => r.id === scheduleFor) : null;
-    const marketingCount = Array.isArray(target?.media_ids) ? target!.media_ids.length : 0;
-    const promptObj =
-      target && target.ai_prompt && typeof target.ai_prompt === "object"
-        ? (target.ai_prompt as { product_media_refs?: unknown })
-        : null;
-    const productRefsCount = Array.isArray(promptObj?.product_media_refs)
-      ? (promptObj!.product_media_refs as unknown[]).length
-      : 0;
-    const mediaCount = marketingCount + productRefsCount;
+    // Mesma regra do servidor e do publicador: o vídeo renderizado da campanha
+    // conta como mídia (antes só contavam media_ids e fotos de produto).
+    const mediaCount = target && publishableMediaSource(target) ? 1 : 0;
     const result = validateScheduleForm({
       scheduleFor,
       scheduleAt,
       channel: scheduleChannel,
       mediaCount,
+      missingMediaMessage: target ? missingMediaMessage(target, "Instagram") : undefined,
     });
 
     if (!result.ok) {
@@ -332,79 +459,63 @@ export function MarketingApprovals({ companyId }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="mkt-filter-bar flex items-center gap-2">
-        {(["all", "pending", "draft", "approved", "rejected"] as Filter[]).map((f) => (
+      <div className={forcedFilter ? "hidden" : "flex flex-wrap items-center gap-2"}>
+        {!forcedFilter && (["draft", "pending", "approved", "rejected", "all"] as Filter[]).map((f) => (
           <button
             key={f}
-            aria-pressed={filter === f}
             onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-md text-xs font-medium border ${
               filter === f ? "bg-primary text-primary-foreground border-primary" : "bg-background"
             }`}
           >
-            {
-              {
-                all: "Todos",
-                draft: "Rascunhos",
-                pending: "Em revisão",
-                approved: "Aprovados",
-                rejected: "Rejeitados",
-              }[f]
-            }
-            <span className="mkt-filter-count">
-              {loading
-                ? "—"
-                : f === "all"
-                  ? rows.length
-                  : rows.filter((row) => row.status === f).length}
-            </span>
+            {FILTER_LABEL[f]}
           </button>
         ))}
-        <Button variant="ghost" size="sm" onClick={() => void refresh()} className="ml-auto">
-          Recarregar
-        </Button>
+        {!forcedFilter && (
+          <Button variant="ghost" size="sm" onClick={() => void refresh()} className="ml-auto">
+            Recarregar
+          </Button>
+        )}
       </div>
 
       {fbReadiness && !fbReadiness.ok ? (
-        <div
-          role="alert"
-          className="mkt-notice mkt-tone-warn rounded-lg border p-3 text-sm flex items-start gap-3"
-        >
-          <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
-          <div className="flex-1 space-y-1">
-            <div className="font-semibold">Publicação no Facebook bloqueada</div>
-            <div className="text-xs leading-relaxed">{fbReadiness.message}</div>
+        <details role="alert" className="group rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm text-amber-900 dark:text-amber-100">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+            <span className="min-w-0 flex-1 truncate font-medium">Facebook não está pronto para publicar</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 rounded-full px-3 text-xs"
+              onClick={(e) => {
+                e.preventDefault();
+                openSettings("conexoes");
+              }}
+            >
+              <RefreshCw className="h-3 w-3 mr-1" /> Reconectar
+            </Button>
+          </summary>
+          <div className="space-y-1 px-3 pb-3 text-xs">
+            <div className="leading-relaxed">{fbReadiness.message}</div>
             <div className="text-[11px] text-muted-foreground">
               Código: <code>{fbReadiness.code}</code>
-              {fbReadiness.integrationChannel
-                ? ` · integração: ${fbReadiness.integrationChannel}`
-                : ""}
+              {fbReadiness.integrationChannel ? ` · integração: ${fbReadiness.integrationChannel}` : ""}
               {fbReadiness.pageId ? ` · page_id: ${fbReadiness.pageId}` : ""}
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              openSettings("conexoes");
-            }}
-          >
-            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reconectar Meta
-          </Button>
-        </div>
+        </details>
       ) : null}
 
       {loading ? (
         <div className="text-sm text-muted-foreground flex items-center gap-2">
-          <LumePulse className="h-4 w-4 animate-spin" /> Carregando…
+          <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="mkt-empty-state">
-          <h3>Um olhar antes de ir ao mundo.</h3>
-          <p>Nenhum conteúdo para este filtro. Suas criações aparecerão aqui para revisão.</p>
+        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {forcedFilter === "review" ? "Nada para revisar. Crie uma publicação para começar." : forcedFilter === "approved" ? "Nenhuma publicação aprovada aguardando agendamento." : "Nenhum conteúdo para este filtro."}
         </div>
       ) : (
-        <div className="mkt-review-grid">
+        <div className="space-y-3">
           {filtered.map((c) => (
             <ContentCard
               key={c.id}
@@ -420,93 +531,117 @@ export function MarketingApprovals({ companyId }: Props) {
               }}
               onMarkPending={() => void setStatus(c, "pending")}
               onSchedule={() => openSchedule(c)}
+              onPublishNow={() => publishNow(c)}
+              preview={previews[c.id] ?? null}
+              renderState={c.campaign_id ? renderStates[c.campaign_id]?.[c.campaign_role === "story" ? "story" : "feed"] ?? null : null}
+              onRetryRender={() => void retryRender(c)}
               onOpenVideoEditor={() => void openVideoEditor(c)}
+              onOpenStudio={studioKindOf(c) ? () => openStudio(c) : undefined}
               onViewVideo={async () => {
-                const idx = await ensureMediaIndex();
-                const vid = c.feed_video_id || c.story_video_id;
-                const media = vid ? idx[vid] : null;
-                if (!media?.storage_path) {
+                // O vídeo renderizado fica em `video_library` (bucket video-library),
+                // não no acervo de mídias: o link vem do servidor, restrito à empresa.
+                const vid = renderedVideoIdFor(c) ?? c.story_video_id ?? c.feed_video_id ?? null;
+                if (!vid) {
                   toast.error("Vídeo ainda não disponível.");
                   return;
                 }
-                const url = await urlForMarketingPath(media.storage_path).catch(() => null);
-                if (url) window.open(url, "_blank", "noopener");
-                else toast.error("Não foi possível abrir o vídeo.");
+                try {
+                  const { url } = await apiGetRenderedVideoUrl(vid);
+                  window.open(url, "_blank", "noopener");
+                } catch (e) {
+                  const code = e instanceof Error ? e.message : "";
+                  toast.error(
+                    code === "video_not_found" || code === "video_inactive"
+                      ? "Este vídeo não está mais disponível na biblioteca."
+                      : "Não foi possível abrir o vídeo.",
+                  );
+                }
               }}
-              tracked={c.campaign_id ? (campaigns[c.campaign_id] ?? null) : null}
+              tracked={c.campaign_id ? campaigns[c.campaign_id] ?? null : null}
               busy={busy}
             />
           ))}
         </div>
       )}
 
-      <Dialog
-        open={!!scheduleFor}
-        onOpenChange={(open) => {
-          if (!open && !busy) closeSchedule();
-        }}
-      >
-        <DialogContent className="mkt-dialog w-full max-w-md p-6 space-y-3">
-          <DialogHeader>
-            <DialogTitle>Seu próximo encontro com o público.</DialogTitle>
-            <DialogDescription>
-              Agendar conteúdo: escolha o canal, a data e o horário.
-            </DialogDescription>
-          </DialogHeader>
-          <div>
-            <Label htmlFor="lume-schedule-channel">Canal</Label>
-            <select
-              className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-              id="lume-schedule-channel"
-              value={scheduleChannel}
-              onChange={(e) => setScheduleChannel(e.target.value as typeof scheduleChannel)}
-            >
-              <option value="instagram">Instagram</option>
-              <option value="facebook">Facebook</option>
-              <option value="whatsapp">WhatsApp</option>
-            </select>
+      {scheduleFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-card border p-4 space-y-3">
+            <div className="font-semibold">Agendar conteúdo</div>
+            <div>
+              <Label>Canal</Label>
+              <select
+                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
+                value={scheduleChannel}
+                onChange={(e) => setScheduleChannel(e.target.value as typeof scheduleChannel)}
+              >
+                {publishChannelsFor(rows.find((r) => r.id === scheduleFor)?.format).map((channel) => (
+                  <option key={channel} value={channel}>
+                    {channel === "instagram" ? "Instagram" : "Facebook"}
+                  </option>
+                ))}
+
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="schedule-at-input">Data e hora</Label>
+              <Input
+                id="schedule-at-input"
+                type="datetime-local"
+                value={scheduleAt}
+                aria-invalid={scheduleAtError ? true : undefined}
+                aria-describedby={scheduleAtError ? "schedule-at-error" : undefined}
+                className={
+                  scheduleAtError
+                    ? "border-destructive focus-visible:ring-destructive"
+                    : undefined
+                }
+                onChange={(e) => {
+                  setScheduleAt(e.target.value);
+                  if (scheduleAtError) setScheduleAtError(null);
+                }}
+              />
+              {scheduleAtError && (
+                <p id="schedule-at-error" className="mt-1 text-xs text-destructive">
+                  {scheduleAtError}
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Depois de agendado, o conteúdo entra na fila de publicação automática quando o canal estiver conectado.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void schedule()}
+                disabled={busy}
+                aria-disabled={busy}
+                className={busy ? "cursor-not-allowed opacity-70" : undefined}
+              >
+                {busy && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                {busy ? "Agendando…" : "Agendar"}
+              </Button>
+            </div>
           </div>
-          <div>
-            <Label htmlFor="schedule-at-input">Data e hora</Label>
-            <Input
-              id="schedule-at-input"
-              type="datetime-local"
-              value={scheduleAt}
-              aria-invalid={scheduleAtError ? true : undefined}
-              aria-describedby={scheduleAtError ? "schedule-at-error" : undefined}
-              className={
-                scheduleAtError ? "border-destructive focus-visible:ring-destructive" : undefined
-              }
-              onChange={(e) => {
-                setScheduleAt(e.target.value);
-                if (scheduleAtError) setScheduleAtError(null);
-              }}
-            />
-            {scheduleAtError && (
-              <p id="schedule-at-error" className="mt-1 text-xs text-destructive">
-                {scheduleAtError}
-              </p>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Salve a data e o canal. Depois, acompanhe o conteúdo no calendário e em Publicações.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={closeSchedule} disabled={busy}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={() => void schedule()}
-              disabled={busy}
-              aria-disabled={busy}
-              className={busy ? "cursor-not-allowed opacity-70" : undefined}
-            >
-              {busy && <LumePulse className="h-4 w-4 animate-spin mr-1" />}
-              {busy ? "Agendando…" : "Agendar"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
+
+      {publishFor && (
+        <PublishNowDialog
+          key={publishFor.id}
+          row={publishFor}
+          facebookBlockedReason={fbReadiness && !fbReadiness.ok ? fbReadiness.message : null}
+          onClose={() => setPublishFor(null)}
+          onDone={() => {
+            toast.success("Publicação enfileirada. Aguardando confirmação do canal.");
+            void refresh();
+          }}
+        />
+      )}
+
+      <StudioDialog companyId={companyId} session={studioSession} onClose={() => setStudioSession(null)} onSaved={() => void refresh()} />
 
       <Dialog
         open={!!editorCampaignId}
@@ -514,20 +649,30 @@ export function MarketingApprovals({ companyId }: Props) {
           if (!o) closeVideoEditor();
         }}
       >
-        <DialogContent className="mkt-dialog max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto p-4">
-          <DialogHeader>
-            <DialogTitle>Estúdio de vídeo com Lume</DialogTitle>
+        <DialogContent className="mkt-dialog w-[98vw] max-w-[1600px] h-[95dvh] max-h-[95dvh] overflow-hidden flex flex-col gap-0 p-2 [&_[data-studio-header]]:pr-10">
+          {/* O estúdio já tem cabeçalho próprio; o título fica só para leitores de tela. */}
+          <DialogHeader className="sr-only">
+            <DialogTitle>Editor Visual do Vídeo IA</DialogTitle>
           </DialogHeader>
           {editorLoading ? (
             <div className="p-8 text-sm text-muted-foreground flex items-center gap-2">
-              <LumePulse className="h-4 w-4 animate-spin" /> Carregando editor…
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando editor…
             </div>
           ) : editorCampaignId && editorContents.length > 0 ? (
             <CampaignVideoEditor
               campaignId={editorCampaignId}
               contents={editorContents}
-              previewImageUrl={editorPreviewUrl}
+              previewImageUrl={editorImageSequence[0]?.previewUrl ?? null}
               focalPoint={editorFocalPoint}
+              companyId={companyId}
+              onCreateCarousel={(document) => {
+                // O vídeo fica como está; o carrossel é um conteúdo novo.
+                closeVideoEditor();
+                setStudioSession({ key: `from-video-${Date.now()}`, document });
+              }}
+              imageSequence={editorImageSequence}
+              onImageSequenceChange={setEditorImageSequence}
+              onRetryImage={retryEditorImage}
               onContentsUpdated={(fresh) => {
                 setRows((cur) => {
                   const map = new Map(fresh.map((r) => [r.id, r]));
@@ -541,7 +686,9 @@ export function MarketingApprovals({ companyId }: Props) {
               }}
             />
           ) : (
-            <div className="p-6 text-sm text-muted-foreground">Campanha não encontrada.</div>
+            <div className="p-6 text-sm text-muted-foreground">
+              Campanha não encontrada.
+            </div>
           )}
         </DialogContent>
       </Dialog>
@@ -549,39 +696,62 @@ export function MarketingApprovals({ companyId }: Props) {
   );
 }
 
+function CopyTextButton({ text, label }: { text: string; label: string }) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="rounded-full"
+      onClick={() => {
+        void navigator.clipboard
+          ?.writeText(text)
+          .then(() => toast.success("Texto copiado."))
+          .catch(() => toast.error("Não foi possível copiar o texto."));
+      }}
+    >
+      <Copy className="h-4 w-4 mr-1" /> {label}
+    </Button>
+  );
+}
+
 function ContentCard({
   row,
   editing,
   onEdit,
+  onOpenStudio,
   onCancelEdit,
   onSave,
   onApprove,
   onReject,
   onMarkPending,
   onSchedule,
+  onPublishNow,
   onOpenVideoEditor,
   onViewVideo,
   tracked,
+  renderState,
+  onRetryRender,
+  preview,
   busy,
 }: {
   row: MarketingContentRow;
   editing: boolean;
   onEdit: () => void;
   onCancelEdit: () => void;
-  onSave: (p: {
-    body: string;
-    title: string | null;
-    hashtags: string[];
-    cta_text: string | null;
-    cta_destination: string | null;
-  }) => void;
+  onSave: (p: { body: string; title: string | null; hashtags: string[]; cta_text: string | null; cta_destination: string | null }) => void;
   onApprove: () => void;
   onReject: () => void;
   onMarkPending: () => void;
   onSchedule: () => void;
+  onPublishNow: () => void;
   onOpenVideoEditor: () => void;
+  /** Conteúdo criado no Estúdio Criativo: reabre o carrossel ou a arte. */
+  onOpenStudio?: () => void;
   onViewVideo: () => void;
   tracked: import("@/lib/marketing/useCampaignRenderTracker").TrackedCampaign | null;
+  renderState: MarketingRenderState | null;
+  onRetryRender: () => void;
+  preview: MediaPreview | null;
   busy: boolean;
 }) {
   const [title, setTitle] = useState(row.title ?? "");
@@ -600,32 +770,30 @@ function ContentCard({
 
   const isVideo = isVideoContent(row);
   const videoReady = hasRenderedVideo(row);
-  // Considera "renderizando" também o estado global do tracker (recém-aprovado).
-  const trackerRendering =
-    !!tracked &&
-    !tracked.done &&
-    (tracked.feed.status !== "idle" || tracked.story.status !== "idle");
-  const isRendering = isVideo && !videoReady && (hasPendingRenderJob(row) || trackerRendering);
-  const trackerProgress = tracked
-    ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0)
-    : null;
+  // Reel gerado como texto (sem campanha): é o roteiro, ainda sem vídeo.
+  // Com campanha, o fluxo de vídeo existente ("Editar vídeo") já cuida dele.
+  const reelScript = !isVideo && videoRequirementStatus(row) === "missing";
+  // Job ativo mas parado (fila sem worker / worker que caiu) não é "gerando":
+  // vira aviso com nova tentativa e libera a edição do vídeo.
+  const renderStalled = isVideo && !videoReady && !!renderState?.stall;
+  const isRendering = isVideo && !videoReady && !!renderState && isActiveMarketingRenderStatus(renderState.status) && !renderStalled;
+  const renderFailed = isVideo && !videoReady && !!renderState && ["failed", "cancelled", "missing"].includes(renderState.status);
+  const renderCompletedWithoutVideo = isVideo && !videoReady && renderState?.status === "completed";
+  const trackerProgress = renderState?.progress ?? (tracked ? Math.max(tracked.feed.progress ?? 0, tracked.story.progress ?? 0) : null);
 
   return (
-    <div
-      data-lume-light
-      className="mkt-review-card rounded-lg border bg-card p-3 space-y-2"
-      data-status={row.status}
-    >
-      <div className="mkt-review-meta flex items-center gap-2 text-xs">
-        <span className="mkt-badge mkt-tone-neutral">{row.format}</span>
-        <span className="mkt-badge mkt-tone-quiet">{row.channel}</span>
-        <span className={`mkt-badge ${statusColor[row.status] ?? "mkt-tone-neutral"}`}>
-          {contentStatusLabel[row.status] ?? row.status}
+    <div data-testid="content-card" className="grid min-w-0 grid-cols-[96px_minmax(0,1fr)] gap-3 rounded-2xl border bg-card p-3 sm:grid-cols-[150px_minmax(0,1fr)]">
+      <MediaThumb preview={preview} alt="" className={`w-full self-start ${row.format === "story" ? "aspect-[3/4]" : "aspect-[4/5]"}`} />
+      <div className="min-w-0 space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="rounded-full bg-muted px-2 py-0.5 font-semibold">
+          {FORMAT_LABEL[row.format] ?? row.format}
+          {isVideo ? " · vídeo" : ""}
+          {reelScript ? " · roteiro (sem vídeo)" : ""}
         </span>
-        {isVideo && <span className="mkt-badge mkt-tone-neutral">vídeo</span>}
-        {row.ai_model && (
-          <span className="text-[10px] text-muted-foreground ml-auto">{row.ai_model}</span>
-        )}
+        <span className={`rounded-full px-2 py-0.5 font-semibold ${statusColor[row.status] ?? ""}`}>
+          {STATUS_LABEL[row.status] ?? row.status}
+        </span>
       </div>
 
       {editing ? (
@@ -672,104 +840,107 @@ function ContentCard({
         </div>
       ) : (
         <>
-          {row.title && <div className="mkt-review-title font-medium text-sm">{row.title}</div>}
-          {isVideo && (row.overlay_headline || row.overlay_subheadline) ? (
-            <div className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Texto no vídeo:</span>{" "}
-              {row.overlay_headline}
-              {row.overlay_subheadline ? ` — ${row.overlay_subheadline}` : ""}
-              {row.overlay_cta ? ` · ${row.overlay_cta}` : ""}
-            </div>
-          ) : null}
-          <div className="mkt-review-body text-sm whitespace-pre-wrap">{row.body}</div>
-          {row.hashtags?.length ? (
-            <div className="text-xs text-muted-foreground">
-              {row.hashtags.map((h) => `#${h.replace(/^#+/, "")}`).join(" ")}
-            </div>
-          ) : null}
-          {row.cta_text && (
-            <div className="text-xs">
-              <strong>Chamada:</strong> {row.cta_text}
-              {row.cta_destination ? ` → ${row.cta_destination}` : ""}
-            </div>
-          )}
+          {row.title && <div className="truncate text-sm font-semibold">{row.title}</div>}
+          <p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">{row.body}</p>
 
           {isVideo && isRendering && (
             <div className="rounded-md border border-dashed bg-muted/40 p-2 text-xs flex items-center gap-2">
-              <LumePulse className="h-3.5 w-3.5 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
               <span className="flex-1">
-                Gerando vídeo…
-                {typeof trackerProgress === "number" && trackerProgress > 0
-                  ? ` ${Math.round(trackerProgress)}%`
-                  : ""}
+                {renderState?.status === "queued" ? "Na fila para gerar vídeo…" : "Gerando vídeo…"}
+                {typeof trackerProgress === "number" && trackerProgress > 0 ? ` ${Math.round(trackerProgress)}%` : ""}
               </span>
             </div>
           )}
 
-          <div className="mkt-review-actions flex flex-wrap gap-2 justify-end">
-            {/* Ações específicas de vídeo */}
-            {isVideo ? (
-              <>
-                {videoReady && (
-                  <Button size="sm" variant="outline" onClick={onViewVideo}>
-                    <Play className="h-4 w-4 mr-1" /> Visualizar vídeo
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant={videoReady ? "ghost" : "default"}
-                  onClick={onOpenVideoEditor}
-                  disabled={isRendering}
-                  title={
-                    isRendering
-                      ? "Aguarde a renderização terminar"
-                      : "Abrir Estúdio de vídeo com Lume"
-                  }
-                >
-                  <Film className="h-4 w-4 mr-1" />
-                  {videoReady ? "Editar novamente" : "Editar vídeo"}
-                </Button>
-                {/* Aprovar só faz sentido depois do vídeo renderizado */}
-                {videoReady && row.status !== "approved" && (
-                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
-                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Button size="sm" variant="ghost" onClick={onEdit}>
-                  Editar
-                </Button>
-                {row.status !== "approved" && (
-                  <Button size="sm" variant="outline" onClick={onApprove} disabled={busy}>
-                    <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
-                  </Button>
-                )}
-              </>
-            )}
+          {renderStalled && renderState?.stall && (
+            <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span className="flex-1">{RENDER_STALL_MESSAGE[renderState.stall]}</span>
+              <Button size="sm" variant="outline" onClick={onRetryRender} disabled={busy}>Tentar novamente</Button>
+            </div>
+          )}
 
-            {row.status !== "rejected" && (
-              <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
-                <XCircle className="h-4 w-4 mr-1" /> Rejeitar
+          {renderFailed && (
+            <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0" />
+              <span className="flex-1">
+                {renderState?.status === "failed" ? `Render falhou${renderState.errorCode ? `: ${renderState.errorCode}` : "."}` : renderState?.status === "cancelled" ? "Render cancelado." : "Job de render não encontrado."}
+              </span>
+              <Button size="sm" variant="outline" onClick={onRetryRender} disabled={busy}>Tentar novamente</Button>
+            </div>
+          )}
+
+          {renderCompletedWithoutVideo && (
+            <div role="status" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span>Render concluído, mas o vídeo não foi vinculado a este conteúdo.</span>
+            </div>
+          )}
+
+          {row.status === "approved" && publishChannelsFor(row.format).length === 0 && (
+            <p className="text-xs text-muted-foreground" data-testid="no-publish-target">
+              {noPublishTargetHint(row.format)}
+            </p>
+          )}
+
+          {reelScript && (
+            <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="reel-script-hint">
+              {REEL_SCRIPT_HINT}
+            </p>
+          )}
+
+          <div className="flex items-center justify-end gap-2" data-testid="card-actions">
+            {isVideo && !videoReady ? (
+              <Button size="sm" className="rounded-full" onClick={onOpenVideoEditor} disabled={isRendering} title={isRendering ? "Aguarde a renderização terminar" : undefined}>
+                <Film className="h-4 w-4 mr-1" /> Editar vídeo
+              </Button>
+            ) : row.status === "approved" && publishChannelsFor(row.format).length === 0 ? (
+              // Sem destino de publicação automática (ex.: mensagem de WhatsApp).
+              <CopyTextButton text={row.body ?? ""} label="Copiar texto" />
+            ) : row.status === "approved" && reelScript ? (
+              // Roteiro de Reel: sem vídeo não há o que publicar nem agendar.
+              <CopyTextButton text={row.body ?? ""} label="Copiar roteiro" />
+            ) : row.status === "approved" ? (
+              <>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={onPublishNow} disabled={busy}>
+                  <Send className="h-4 w-4 mr-1" /> Publicar agora
+                </Button>
+                <Button size="sm" className="rounded-full" onClick={onSchedule} disabled={busy}>
+                  <Calendar className="h-4 w-4 mr-1" /> Agendar
+                </Button>
+              </>
+            ) : row.status === "rejected" ? (
+              <Button size="sm" className="rounded-full" onClick={onMarkPending} disabled={busy}>
+                <Send className="h-4 w-4 mr-1" /> Enviar para revisão
+              </Button>
+            ) : (
+              <Button size="sm" className="rounded-full" onClick={onApprove} disabled={busy}>
+                <CheckCircle2 className="h-4 w-4 mr-1" /> Aprovar
               </Button>
             )}
-            {row.status === "draft" && (
-              <Button size="sm" variant="outline" onClick={onMarkPending} disabled={busy}>
-                <Send className="h-4 w-4 mr-1" /> Enviar p/ revisão
-              </Button>
-            )}
-            {row.status === "approved" && (
-              <Button size="sm" onClick={onSchedule} disabled={busy}>
-                <Calendar className="h-4 w-4 mr-1" /> Agendar
-              </Button>
-            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full" aria-label="Mais ações">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {isVideo && videoReady && <DropdownMenuItem onSelect={onViewVideo}><Play className="h-4 w-4 mr-2" /> Ver vídeo</DropdownMenuItem>}
+                {isVideo && videoReady && <DropdownMenuItem onSelect={onOpenVideoEditor} disabled={isRendering}><Film className="h-4 w-4 mr-2" /> Editar vídeo de novo</DropdownMenuItem>}
+                {onOpenStudio && <DropdownMenuItem onSelect={onOpenStudio}><Images className="h-4 w-4 mr-2" /> Editar no estúdio</DropdownMenuItem>}
+                {!isVideo && <DropdownMenuItem onSelect={onEdit}>{onOpenStudio ? "Editar legenda" : "Editar texto"}</DropdownMenuItem>}
+                {row.status === "draft" && <DropdownMenuItem onSelect={onMarkPending} disabled={busy}><Send className="h-4 w-4 mr-2" /> Enviar para revisão</DropdownMenuItem>}
+                {row.status !== "rejected" && <DropdownMenuItem onSelect={onReject} disabled={busy} className="text-destructive"><XCircle className="h-4 w-4 mr-2" /> Rejeitar</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {row.rejection_reason && (
             <div className="text-xs text-destructive">Motivo: {row.rejection_reason}</div>
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

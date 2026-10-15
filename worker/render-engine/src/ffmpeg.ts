@@ -1,3 +1,4 @@
+import { DEFAULT_TRANSITION, TEXT_ANIMATION, isTransitionId, type TransitionId } from "./scenes.js";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -10,6 +11,10 @@ export interface FocalPoint {
   x: number; // 0..1
   y: number; // 0..1
   zoom: number; // 1..3
+  /** "contain" = imagem inteira na área do modelo; ausente = "cover" (histórico). */
+  fit?: "contain" | "cover";
+  /** Preenchimento do que a imagem não cobre. */
+  fill?: "blur" | "color";
 }
 
 export type WatermarkPosition =
@@ -48,6 +53,13 @@ export interface WatermarkInput {
   outroCardPath?: string | null;
   /** Duração da tela final (segundos). Ignorado se `outroCardPath` null. */
   outroDurationSeconds?: number;
+  /**
+   * Entrada animada dos textos: PNG full-frame RGBA só com os textos (o
+   * `bottomPanelPath` fica com formas e logo). Ausente = sem animação, e o
+   * comando do FFmpeg é exatamente o de sempre.
+   */
+  textLayerPath?: string | null;
+  textAnimation?: "fade" | "rise" | null;
 }
 
 
@@ -162,6 +174,7 @@ function extractBrandPaths(wm: WatermarkInput): string[] {
   if (wm.logoFilePath) out.push(wm.logoFilePath);
   if (wm.bottomPanelPath) out.push(wm.bottomPanelPath);
   if (wm.outroCardPath) out.push(wm.outroCardPath);
+  if (wm.textLayerPath) out.push(wm.textLayerPath);
   return out;
 }
 
@@ -237,10 +250,17 @@ export function buildBrandOverlayChain(params: {
   const { x: logoX, y: logoY } = posMap[wm.position];
 
   const inputArgs: string[] = [];
-  const layerIndex = { logo: -1, panel: -1, outro: -1 };
+  const layerIndex = { logo: -1, panel: -1, text: -1, outro: -1 };
   let cursor = firstBrandInputIdx;
   if (wm.logoFilePath) { inputArgs.push("-i", wm.logoFilePath); layerIndex.logo = cursor++; }
   if (wm.bottomPanelPath) { inputArgs.push("-i", wm.bottomPanelPath); layerIndex.panel = cursor++; }
+  const animateText = !!wm.textLayerPath && (wm.textAnimation === "fade" || wm.textAnimation === "rise") && durationSeconds > 0;
+  if (animateText) {
+    // Só o trecho da entrada vira vídeo (30 fps); depois o overlay repete o
+    // último quadro, já opaco — sem manter um fluxo RGBA pelo vídeo inteiro.
+    inputArgs.push("-loop", "1", "-framerate", "30", "-t", (TEXT_ANIMATION.seconds + 0.4).toFixed(3), "-i", wm.textLayerPath!);
+    layerIndex.text = cursor++;
+  }
   if (wm.outroCardPath) { inputArgs.push("-i", wm.outroCardPath); layerIndex.outro = cursor++; }
 
   const outroDur = wm.outroCardPath
@@ -257,7 +277,9 @@ export function buildBrandOverlayChain(params: {
   if (baseInputLabel) {
     prevLabel = baseInputLabel;
   } else {
-    parts.push(`[0:v]${baseVf}[vbase]`);
+    // A imagem única entra a 2 fps (economia de memória). Para a entrada dos
+    // textos ser fluida, a base sobe para 30 fps — só quando há animação.
+    parts.push(`[0:v]${baseVf}${animateText ? ",fps=30" : ""}[vbase]`);
     prevLabel = "vbase";
   }
   let step = 0;
@@ -277,6 +299,15 @@ export function buildBrandOverlayChain(params: {
     parts.push(`[${layerIndex.panel}:v]format=rgba[panel]`);
     const n = nextLbl();
     parts.push(`[${prevLabel}][panel]overlay=0:0:format=auto${enableMain}[${n}]`);
+    prevLabel = n;
+  }
+  if (layerIndex.text >= 0) {
+    // Mesma curva (linear) de `textAnimationAt`, usada pela prévia.
+    const d = TEXT_ANIMATION.seconds.toFixed(3);
+    parts.push(`[${layerIndex.text}:v]format=rgba,fade=t=in:st=0:d=${d}:alpha=1[txt]`);
+    const y = wm.textAnimation === "rise" ? `'if(lt(t\\,${d})\\,H*${TEXT_ANIMATION.rise}*(1-t/${d})\\,0)'` : "0";
+    const n = nextLbl();
+    parts.push(`[${prevLabel}][txt]overlay=x=0:y=${y}:format=auto${enableMain}[${n}]`);
     prevLabel = n;
   }
   if (layerIndex.outro >= 0) {
@@ -318,9 +349,24 @@ export interface SlideshowInput {
   timeoutMs: number;
   /** Fase 5.A — quando ausente, renderiza sem watermark. */
   watermark?: WatermarkInput | null;
+  /** Transição escolhida no editor. Valor fora da lista → "fade". */
+  transition?: string | null;
+  /**
+   * Duração de cada cena (s), na ordem das imagens. Ausente ou com tamanho
+   * diferente = `durationSeconds` dividido igualmente (comportamento original).
+   */
+  sceneDurations?: number[] | null;
   /** Observabilidade — não altera parâmetros do FFmpeg. */
   jobId?: string;
   debugLogDir?: string;
+}
+
+/**
+ * Nome do filtro `xfade` para a transição pedida. Só valores do registro de
+ * cenas entram no filter graph — nada vindo do payload é concatenado cru.
+ */
+export function resolveXfadeTransition(value: unknown): TransitionId {
+  return isTransitionId(value) ? value : DEFAULT_TRANSITION;
 }
 
 export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<void> {
@@ -359,7 +405,18 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   }
 
   const perSlot = durationSeconds / n;
-  const xfadeDuration = Math.min(0.6, perSlot / 3); // ~0.5s ou menos
+  // Tempos por cena definidos no editor (validados: n valores positivos).
+  const custom =
+    Array.isArray(input.sceneDurations) &&
+    input.sceneDurations.length === n &&
+    input.sceneDurations.every((d) => Number.isFinite(d) && d > 0)
+      ? input.sceneDurations
+      : null;
+  const slot = (i: number) => (custom ? custom[i] : perSlot);
+  /** Instante em que a cena `i` começa. */
+  const startOf = (i: number) => (custom ? custom.slice(0, i).reduce((a, b) => a + b, 0) : perSlot * i);
+  const xfadeDuration = custom ? Math.min(0.6, Math.min(...custom) / 3) : Math.min(0.6, perSlot / 3); // ~0.5s ou menos
+  const transition = resolveXfadeTransition(input.transition);
 
   // Cada input roda com -loop 1 -t perSlot (para não terminar antes da hora).
   // Otimização de memória (hotfix SIGKILL): input framerate=2 reduz frames
@@ -367,7 +424,7 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   // fps=30 antes do xfade para preservar o output final a 30fps.
   const args: string[] = ["-y"];
   for (let i = 0; i < n; i++) {
-    args.push("-loop", "1", "-t", perSlot.toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
+    args.push("-loop", "1", "-t", slot(i).toFixed(3), "-framerate", "2", "-i", imageFilePaths[i]);
   }
   args.push("-ss", String(audioStartSecond), "-t", String(durationSeconds), "-i", audioFilePath);
 
@@ -399,10 +456,10 @@ export async function renderSlideshowWithAudio(input: SlideshowInput): Promise<v
   const finalXfadeLabel = brandChain ? "vxfaded" : "vout";
   let lastLabel = "v0";
   for (let i = 1; i < n; i++) {
-    const offset = perSlot * i - xfadeDuration;
+    const offset = startOf(i) - xfadeDuration;
     const nextLabel = i === n - 1 ? finalXfadeLabel : `vx${i}`;
     filterParts.push(
-      `[${lastLabel}][v${i}]xfade=transition=fade:duration=${xfadeDuration.toFixed(3)}:` +
+      `[${lastLabel}][v${i}]xfade=transition=${transition}:duration=${xfadeDuration.toFixed(3)}:` +
         `offset=${offset.toFixed(3)}[${nextLabel}]`,
     );
     lastLabel = nextLabel;

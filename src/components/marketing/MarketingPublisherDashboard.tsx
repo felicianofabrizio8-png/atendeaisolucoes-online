@@ -10,6 +10,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Loader2,
   RefreshCw,
   RotateCcw,
   ExternalLink,
@@ -27,11 +28,14 @@ import {
   selectOperational,
   selectHistory,
   type HistoryFilters,
+  selectStalled,
 } from "@/lib/marketing-publisher/publication-filters";
 import type { PublicationRow, PublisherStats } from "@/lib/marketing-publisher/types";
 
 interface Props {
   companyId: string;
+  /** "published" mostra só o histórico de publicadas; o padrão é o acompanhamento. */
+  view?: "problems" | "published";
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -52,7 +56,41 @@ const STATUS_CLASS: Record<string, string> = {
 
 const AUTO_REFRESH_MS = 15_000;
 
-export function MarketingPublisherDashboard({ companyId }: Props) {
+export function MarketingPublisherDashboard(props: Props) {
+  if (props.view === "published") return <PublishedList />;
+  return <PublisherTracking {...props} />;
+}
+
+/** Histórico de publicações concluídas. */
+function PublishedList() {
+  const [rows, setRows] = useState<PublicationRow[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    void listMarketingPublications({ data: { scope: "history", limit: 100 } })
+      .then((r) => { if (active) setRows(r.publications as PublicationRow[]); })
+      .catch(() => { if (active) setRows([]); });
+    return () => { active = false; };
+  }, []);
+  if (rows === null) {
+    return (
+      <div className="text-sm text-muted-foreground flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" /> Carregando…
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhuma publicação concluída ainda.</div>;
+  }
+  return (
+    <div className="rounded-2xl border bg-card px-4 divide-y">
+      {rows.map((p) => (
+        <PublicationItem key={p.id} p={p} />
+      ))}
+    </div>
+  );
+}
+
+function PublisherTracking({ companyId }: Props) {
   void companyId;
   const [stats, setStats] = useState<(PublisherStats & { scheduled: number }) | null>(null);
   const [pubs, setPubs] = useState<PublicationRow[]>([]);
@@ -89,6 +127,7 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
   }, [refresh]);
 
   const operational = useMemo(() => selectOperational(pubs), [pubs]);
+  const stalled = useMemo(() => selectStalled(pubs), [pubs]);
 
   async function onRetry(id: string) {
     setRetrying(id);
@@ -123,6 +162,20 @@ export function MarketingPublisherDashboard({ companyId }: Props) {
           </Button>
         </div>
       </div>
+
+      {stalled.length > 0 && (
+        <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <div className="font-medium">
+              {stalled.length === 1 ? "1 publicação está" : `${stalled.length} publicações estão`} na fila há mais de 10 minutos.
+            </div>
+            <div className="text-xs text-muted-foreground">
+              A publicação automática pode estar parada. Nada foi perdido: os itens continuam na fila. Avise o suporte se isso persistir.
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <StatCard label="Agendados" value={stats?.scheduled ?? null} />
@@ -194,23 +247,24 @@ function PublicationItem({
           <span className="text-[10px] uppercase text-muted-foreground">
             {p.channel} · {p.format}
           </span>
-          {p.retry_count > 0 && (
-            <span className="text-[10px] text-muted-foreground">tentativas: {p.retry_count}</span>
-          )}
         </div>
-        {p.platform_post_id && (
-          <div className="text-xs mt-1 flex items-center gap-1 text-muted-foreground">
-            <ExternalLink className="h-3 w-3" />
-            id: {p.platform_post_id}
-          </div>
-        )}
         {p.error_message && (
           <div className="text-xs mt-1 text-destructive flex items-start gap-1">
             <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
             <span className="break-words">
-              {p.error_code ? `[${p.error_code}] ` : ""}
-              {p.error_message}
+                            {p.error_message}
             </span>
+          </div>
+        )}
+        {(p.error_code || p.retry_count > 0 || p.platform_post_id) && (
+          <div className="text-[10px] text-muted-foreground mt-1 break-words" data-testid="publication-details">
+            {[
+              p.retry_count > 0 ? `tentativas: ${p.retry_count}` : null,
+              p.error_code ? `código: ${p.error_code}` : null,
+              p.platform_post_id ? `id do post: ${p.platform_post_id}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
         )}
         <div className="text-[10px] text-muted-foreground mt-1">

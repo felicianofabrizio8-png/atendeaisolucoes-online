@@ -2,25 +2,34 @@
 // - Chama server functions para toda mutação.
 // - Uploads passam pelo bucket privado `marketing-media` com prefixo por empresa.
 
+import { getStudioContent, listStudioSources, proposeStudioCarousel, saveStudioContent } from "@/lib/marketing/studio/studio.functions";
+import type { StudioDocument } from "@/lib/marketing/studio/document";
 import { supabase } from "@/integrations/supabase/client";
-import { getSignedMediaUrl } from "@/lib/storage";
+import { getSignedImageUrl, getSignedMediaUrl } from "@/lib/storage";
+import type { MediaResolverDeps } from "@/lib/marketing/campaign-media";
+import { getVideoSignedUrl } from "@/lib/render-engine/render-job.functions";
 import {
   registerMarketingMedia,
   listMarketingMedia,
+  getMarketingMediaPaths,
   updateMarketingMedia,
   softDeleteMarketingMedia,
   upsertMarketingPromotion,
   listMarketingPromotions,
   deleteMarketingPromotion,
   listMarketingContents,
+  listMarketingPublishContents,
+  previewMarketingCleanup,
+  archiveMarketingCleanup,
   updateMarketingContent,
   setMarketingContentStatus,
   scheduleMarketingContent,
   listMarketingSchedule,
+  listMarketingPublishSchedule,
   cancelMarketingSchedule,
   getFacebookPublishReadiness,
 } from "@/lib/marketing/marketing.functions";
-import { generateMarketingContent } from "@/lib/marketing/marketing-ai.functions";
+import { generateMarketingContent, generateSimpleMarketingPost } from "@/lib/marketing/marketing-ai.functions";
 import {
   generateMarketingCampaign,
   generateManualCampaign,
@@ -73,13 +82,25 @@ export async function uploadMarketingFile(
   return path;
 }
 
-export async function urlForMarketingPath(path: string): Promise<string | null> {
-  return getSignedMediaUrl(BUCKET, path);
+export async function urlForMarketingPath(path: string, options: { fresh?: boolean } = {}): Promise<string | null> {
+  return getSignedMediaUrl(BUCKET, path, options);
 }
 
+/** Link temporário do vídeo renderizado (video_library), validado no servidor por empresa. */
+export async function apiGetRenderedVideoUrl(videoId: string): Promise<{ url: string; expires_in: number }> {
+  return getVideoSignedUrl({ data: { id: videoId } });
+}
+
+/** Dependências reais do resolvedor de imagens de campanha (ver campaign-media.ts). */
+export const campaignMediaDeps: MediaResolverDeps = {
+  mediaPaths: async (ids) => (await getMarketingMediaPaths({ data: { ids } })).paths,
+  signMarketing: (storagePath, fresh) => urlForMarketingPath(storagePath, { fresh }),
+  signProduct: async (imagePath, fresh) => (await getSignedImageUrl(imagePath, { fresh })) || null,
+};
+
 // ------- Media -------
-export async function apiListMedia(): Promise<MarketingMediaRow[]> {
-  const res = await listMarketingMedia();
+export async function apiListMedia(query: { limit?: number; offset?: number } = {}): Promise<MarketingMediaRow[]> {
+  const res = await listMarketingMedia({ data: query });
   return (res.media ?? []) as unknown as MarketingMediaRow[];
 }
 export async function apiRegisterMedia(args: {
@@ -142,6 +163,20 @@ export async function apiListContents(): Promise<MarketingContentRow[]> {
   const res = await listMarketingContents();
   return (res.contents ?? []) as unknown as MarketingContentRow[];
 }
+export async function apiListPublishContents(): Promise<MarketingContentRow[]> {
+  const res = await listMarketingPublishContents();
+  return (res.contents ?? []) as unknown as MarketingContentRow[];
+}
+
+export type MarketingCleanupStatus = "draft" | "pending" | "approved" | "rejected" | "archived";
+
+export async function apiPreviewMarketingCleanup(input: { statuses: MarketingCleanupStatus[]; before: string }) {
+  return previewMarketingCleanup({ data: input });
+}
+
+export async function apiArchiveMarketingCleanup(input: { statuses: MarketingCleanupStatus[]; before: string; ids: string[] }) {
+  return archiveMarketingCleanup({ data: input });
+}
 export async function apiUpdateContent(input: {
   id: string;
   title?: string | null;
@@ -174,15 +209,33 @@ export async function apiGenerateContent(input: {
   return (res.contents ?? []) as unknown as MarketingContentRow[];
 }
 
+export async function apiGenerateSimpleMarketingPost(input: {
+  media_mode: "photo" | "uploaded_video";
+  media_ids: [string];
+  campaign_formats?: "feed" | "story" | "feed_story";
+  promotion_id?: string | null;
+  tone?: "amigável" | "profissional" | "descontraído" | "urgente";
+  audience?: string | null;
+  extra_instructions?: string | null;
+}): Promise<{ contents: MarketingContentRow[] }> {
+  const res = await generateSimpleMarketingPost({ data: input });
+  return { contents: (res.contents ?? []) as unknown as MarketingContentRow[] };
+}
 // ------- Schedule -------
 export async function apiListSchedule(): Promise<MarketingScheduleRow[]> {
   const res = await listMarketingSchedule();
   return (res.schedule ?? []) as unknown as MarketingScheduleRow[];
 }
+export async function apiListPublishSchedule(): Promise<MarketingScheduleRow[]> {
+  const res = await listMarketingPublishSchedule();
+  return (res.schedule ?? []) as unknown as MarketingScheduleRow[];
+}
 export async function apiScheduleContent(input: {
   content_id: string;
   channel: "instagram" | "facebook" | "whatsapp";
-  scheduled_at: string;
+  /** Horário escolhido ao agendar. Em `publish_now` o servidor define o horário. */
+  scheduled_at?: string;
+  publish_now?: boolean;
   notes?: string | null;
 }) {
   return scheduleMarketingContent({ data: input });
@@ -205,6 +258,10 @@ export interface FocalPointInput {
   x: number;
   y: number;
   zoom: number;
+  /** "contain" = imagem inteira na área do modelo; ausente = "cover" (formato antigo). */
+  fit?: "contain" | "cover";
+  /** Preenchimento do que a imagem não cobre. */
+  fill?: "blur" | "color";
 }
 
 /** Item da lista de imagens da campanha (fase C.2). */
@@ -279,6 +336,39 @@ export async function apiApproveCampaignAndRender(input: {
   cta?: string | null;
   layout?: Record<string, unknown> | null;
   template?: string | null;
+  images?: CampaignImageInput[];
+  duration_seconds?: number;
 }) {
   return approveCampaignAndRender({ data: input });
+}
+
+// ------- Estúdio Criativo (carrossel e arte) -------
+export async function apiSaveStudioContent(input: {
+  id?: string;
+  title?: string | null;
+  caption?: string;
+  document: StudioDocument;
+  exported_media_ids?: string[];
+}): Promise<MarketingContentRow> {
+  const res = await saveStudioContent({ data: input });
+  return res.content as unknown as MarketingContentRow;
+}
+
+export async function apiListStudioSources(): Promise<{ products: Array<{ id: string; name: string }>; promotions: Array<{ id: string; title: string }> }> {
+  return listStudioSources();
+}
+
+/** Proposta montada só com dados do cadastro (sem IA, sem gravar nada). */
+export async function apiProposeStudioCarousel(input: {
+  product_id?: string | null;
+  promotion_id?: string | null;
+  recipe?: string;
+  format?: "portrait" | "square";
+}): Promise<{ document: unknown; used: { has_price: boolean; has_discount: boolean; images: number } }> {
+  return proposeStudioCarousel({ data: input });
+}
+
+export async function apiGetStudioContent(id: string): Promise<MarketingContentRow> {
+  const res = await getStudioContent({ data: { id } });
+  return res.content as unknown as MarketingContentRow;
 }

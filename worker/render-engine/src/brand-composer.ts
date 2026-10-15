@@ -24,7 +24,8 @@ import { Resvg } from "@resvg/resvg-js";
 import { log } from "./logger.js";
 import { guardOverlayContent, countWords, OVERLAY_LIMITS } from "./overlay-guard.js";
 import type { VideoBrandDto } from "./api-client.js";
-import { getSceneById, type VideoLayout } from "./scenes.js";
+import { FONTS, getSceneById } from "./scenes.js";
+import type { ImageAreas, ImageFill } from "./image-fit.js";
 import { buildSceneOverlaySvg, buildSceneOverlaySvgWithMeta } from "./scene-composer.js";
 import { applyThemeToScene, sanitizeThemeSnapshot } from "./theme.js";
 
@@ -33,10 +34,8 @@ const __dirname = path.dirname(__filename);
 // dist/brand-composer.js → dist/../assets/fonts
 const FONTS_DIR = path.resolve(__dirname, "..", "assets", "fonts");
 
-const FONT_FILES = {
-  interRegular: "Inter-Regular.ttf",
-  playfairBold: "PlayfairDisplay-Bold.ttf",
-} as const;
+// Todas as fontes do registro de cenas — a mesma lista que a prévia carrega.
+const FONT_FILES = Array.from(new Set(Object.values(FONTS).map((f) => f.file)));
 
 let fontFilesCache: string[] | null = null;
 
@@ -47,7 +46,7 @@ let fontFilesCache: string[] | null = null;
  */
 async function loadFontFiles(): Promise<string[]> {
   if (fontFilesCache) return fontFilesCache;
-  const paths = Object.values(FONT_FILES).map((f) => path.join(FONTS_DIR, f));
+  const paths = FONT_FILES.map((f) => path.join(FONTS_DIR, f));
   // Valida existência — falha cedo com mensagem clara se o COPY do Dockerfile falhar.
   await Promise.all(paths.map((p) => access(p)));
   fontFilesCache = paths;
@@ -61,6 +60,12 @@ export interface BrandLayerPaths {
   outroCardPath: string | null;
   /** Duração da tela final (segundos). */
   outroDurationSeconds: number;
+  /**
+   * Entrada animada dos textos: PNG só com os textos (o `bottomPanelPath`
+   * fica então só com formas e logo). Null = sem animação.
+   */
+  textLayerPath: string | null;
+  textAnimation: "fade" | "rise" | null;
   /**
    * Fase M4-render — quando true, o overlay `bottomPanelPath` já contém a
    * logo (renderizada dentro da cena, respeitando `overlayLayout.logo`).
@@ -76,6 +81,13 @@ export interface BrandLayerPaths {
   sceneLogoConfirmed: boolean;
   /** Motivo sanitizado quando a logo não foi confirmada na cena. */
   sceneLogoReason: string | null;
+  /** O usuário desligou a logo neste vídeo: não aplicar nem a marca d'água. */
+  sceneLogoHidden: boolean;
+  /**
+   * Enquadramento da foto pedido pelo modelo (área livre, preenchimento).
+   * Null quando o vídeo não usa cena (painel legado).
+   */
+  sceneImage: { areas: ImageAreas; fillColor: string; defaultFill: ImageFill } | null;
 }
 
 export interface ComposeBrandLayersInput {
@@ -87,6 +99,28 @@ export interface ComposeBrandLayersInput {
   height: number;
   workDir: string;
   jobId?: string;
+}
+
+/**
+ * Tela final: o que o snapshot permite, ajustado pelas escolhas do editor
+ * (layout) — ligada/desligada, duração, e a logo oculta "neste vídeo", que
+ * vale para o vídeo inteiro, inclusive o encerramento.
+ */
+export function resolveOutroOptions(videoBrand: {
+  outro?: { enabled?: boolean; durationSeconds?: number } | null;
+  content?: unknown;
+}): { enabled: boolean; seconds: number; showLogo: boolean } {
+  const layout =
+    ((videoBrand.content as { overlayLayout?: unknown } | null | undefined)?.overlayLayout as
+      | { outro?: { enabled?: unknown; seconds?: unknown } | null; logo?: { visible?: unknown } | null }
+      | null
+      | undefined) ?? null;
+  const chosen = Number(layout?.outro?.seconds);
+  return {
+    enabled: !!videoBrand.outro?.enabled && layout?.outro?.enabled !== false,
+    seconds: clamp(Number.isFinite(chosen) && chosen > 0 ? chosen : Number(videoBrand.outro?.durationSeconds ?? 2), 1, 4),
+    showLogo: layout?.logo?.visible !== false,
+  };
 }
 
 /**
@@ -128,8 +162,10 @@ export async function composeBrandLayers(
   });
 
   const hasBottomPanel = !!(content.headline || content.supportingText || content.ctaText);
-  const outroEnabled = !!videoBrand.outro?.enabled;
-  const outroDurationSeconds = clamp(Number(videoBrand.outro?.durationSeconds ?? 2), 1, 4);
+  const outroOptions = resolveOutroOptions(videoBrand);
+  const outroEnabled = outroOptions.enabled;
+  const outroDurationSeconds = outroOptions.seconds;
+  const logoHiddenByUser = !outroOptions.showLogo;
 
   let fontFiles: string[] = [];
   try {
@@ -147,6 +183,10 @@ export async function composeBrandLayers(
   let sceneAppliesLogo = false;
   let sceneLogoConfirmed = false;
   let sceneLogoReason: string | null = "scene_not_used";
+  let sceneLogoHidden = false;
+  let textLayerPath: string | null = null;
+  let textAnimation: "fade" | "rise" | null = null;
+  let sceneImage: BrandLayerPaths["sceneImage"] = null;
   if (hasBottomPanel) {
     // Fase M4-render — se o snapshot traz template + overlayLayout do editor,
     // renderiza a CENA completa (full-frame RGBA). Caso contrário, cai no
@@ -212,7 +252,7 @@ export async function composeBrandLayers(
           width,
           height,
           scene,
-          layout: overlayLayout as unknown as VideoLayout,
+          layout: overlayLayout,
           content: {
             headline: content.headline,
             supportingText: content.supportingText,
@@ -220,6 +260,25 @@ export async function composeBrandLayers(
           },
           logo: sceneLogo,
         });
+        const animation = built.layout.animation === "fade" || built.layout.animation === "rise" ? built.layout.animation : null;
+        if (animation && built.blockBox) {
+          // Duas camadas: formas + logo (fixas) e os textos (que entram animados).
+          try {
+            const basePath = await rasterizeSvg({ svg: built.baseSvg, width, height, fontFiles, outPath: path.join(workDir, "brand-scene-base.png") });
+            const textPath = await rasterizeSvg({ svg: built.textSvg, width, height, fontFiles, outPath: path.join(workDir, "brand-scene-text.png") });
+            if (basePath && textPath) {
+              bottomPanelPath = basePath;
+              textLayerPath = textPath;
+              textAnimation = animation;
+            }
+          } catch (err) {
+            // A animação é um extra: se falhar, o vídeo sai com o texto fixo.
+            log.warn("brand_composer_text_animation_skipped", { job_id: jobId, message: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
+            textLayerPath = null;
+            textAnimation = null;
+          }
+        }
+        if (!textLayerPath) {
         bottomPanelPath = await rasterizeSvg({
           svg: built.svg,
           width,
@@ -227,6 +286,9 @@ export async function composeBrandLayers(
           fontFiles,
           outPath: path.join(workDir, "brand-scene-overlay.png"),
         });
+        }
+        sceneImage = { areas: built.imageAreas, fillColor: scene.palette.background, defaultFill: scene.image.fill };
+        sceneLogoHidden = built.logoSkipReason === "hidden_by_user";
         // Intenção declarada (havia logo disponível para a cena).
         sceneAppliesLogo = !!sceneLogo;
         // Confirmação real: logo emitida no SVG + overlay rasterizado.
@@ -257,7 +319,7 @@ export async function composeBrandLayers(
         try {
           const built = buildSceneOverlaySvg({
             width, height, scene,
-            layout: overlayLayout as unknown as VideoLayout,
+            layout: overlayLayout,
             content: {
               headline: content.headline,
               supportingText: content.supportingText,
@@ -323,7 +385,8 @@ export async function composeBrandLayers(
   if (outroEnabled) {
     try {
       let logoDataUri: string | null = null;
-      if (logoLocalPath && logoMimeType) {
+      // "Ocultar a logo neste vídeo" vale para o vídeo inteiro, inclusive aqui.
+      if (logoLocalPath && logoMimeType && !logoHiddenByUser) {
         try {
           const buf = await readFile(logoLocalPath);
           logoDataUri = `data:${logoMimeType};base64,${buf.toString("base64")}`;
@@ -364,9 +427,13 @@ export async function composeBrandLayers(
     bottomPanelPath,
     outroCardPath,
     outroDurationSeconds,
+    textLayerPath,
+    textAnimation,
     sceneAppliesLogo,
     sceneLogoConfirmed,
     sceneLogoReason,
+    sceneLogoHidden,
+    sceneImage,
   };
 }
 

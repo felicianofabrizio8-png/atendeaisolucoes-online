@@ -11,10 +11,10 @@
 // ============================================================================
 
 /** Assinatura única do binário. Alterar a cada deploy relevante. */
-export const BUILD_SIGNATURE = "render-manual-themes-build-005";
+export const BUILD_SIGNATURE = "render-pro-templates-build-007";
 
 /** Data do build (ISO curta), apenas informativa. */
-export const BUILD_DATE = "2026-07-30";
+export const BUILD_DATE = "2026-10-09";
 
 /** Versão do motor de cenas usado pelo scene-composer. */
-export const SCENE_COMPOSER_VERSION = "scene-v1";
+export const SCENE_COMPOSER_VERSION = "scene-v3";

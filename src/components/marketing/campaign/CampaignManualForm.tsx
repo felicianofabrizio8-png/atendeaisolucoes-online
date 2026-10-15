@@ -5,6 +5,7 @@ import { LumePulse } from "../MarketingMotion";
 // `apiGenerateManualCampaign`, que cria as linhas feed/story e devolve o
 // controle para o MESMO editor de aprovação usado no modo IA.
 
+import { OVERLAY_LIMITS, buildManualOverlay } from "@/lib/marketing/manual-campaign";
 import { useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +87,14 @@ export function CampaignManualForm({
     onSubmit({ fields, formats, theme, template: preset.template });
   }
 
+  const overlayPreview = buildManualOverlay({
+    title: v.title,
+    subtitle: v.subtitle,
+    promo_text: v.promo_text,
+    price: v.price,
+    cta_text: v.cta_text,
+  });
+
   return (
     <div className="mkt-manual-form rounded-lg border bg-card p-4 space-y-4">
       <header className="mkt-form-head" data-hue="violet">
@@ -106,11 +115,18 @@ export function CampaignManualForm({
             value={v.title}
             onChange={set("title")}
             maxLength={80}
-            placeholder="Ex.: Piscina 3x2 com instalação"
+            placeholder="Ex.: Produto com entrega rápida"
           />
-          <p className="mkt-hint">
-            Frase principal do vídeo. <span>{v.title.length}/80</span>
-          </p>
+          {overlayPreview.overlay_headline !== v.title.trim() && v.title.trim().length > 0 ? (
+            <p className="mkt-hint" data-testid="overlay-headline-hint">
+              No vídeo cabem até {OVERLAY_LIMITS.headline} caracteres. Vai aparecer:{" "}
+              <strong>{overlayPreview.overlay_headline}</strong>. O título completo vai na legenda.
+            </p>
+          ) : (
+            <p className="mkt-hint">
+              Frase principal do vídeo. <span>{v.title.length}/80</span>
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor={fieldId + "-subtitle"}>Subtítulo</Label>
@@ -171,7 +187,7 @@ export function CampaignManualForm({
             id={fieldId + "-hashtags"}
             value={v.hashtags}
             onChange={set("hashtags")}
-            placeholder="#piscina #verao"
+            placeholder="#novidade #oferta"
           />
         </div>
         <details className="mkt-extra-fields md:col-span-2">

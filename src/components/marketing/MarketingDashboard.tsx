@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  AlertCircle,
   ArrowRight,
   ArrowUpRight,
   CalendarDays,
@@ -20,8 +21,8 @@ import { LumeNumber } from "./MarketingMotion";
 import {
   apiListMedia,
   apiListPromotions,
-  apiListContents,
-  apiListSchedule,
+  apiListPublishContents,
+  apiListPublishSchedule,
 } from "@/data/marketingRepo";
 import type { MarketingContentRow, MarketingScheduleRow } from "@/lib/marketing/marketing.types";
 import type { MarketingSection } from "./MarketingWorkspace";
@@ -32,6 +33,7 @@ interface Overview {
   drafts: number;
   approved: number;
   planned: number;
+  failed: number;
   upcoming: MarketingScheduleRow[];
   contents: MarketingContentRow[];
   /** Active schedule entries per day, today first, for the next seven days. */
@@ -53,7 +55,13 @@ function nextSevenDays(schedule: MarketingScheduleRow[]) {
   });
 }
 const channelLabel = { instagram: "Instagram", facebook: "Facebook", whatsapp: "WhatsApp" };
-const formatLabel = { feed: "Feed", story: "Story", reel: "Reel", whatsapp_cta: "Mensagem" };
+const formatLabel = {
+  feed: "Feed",
+  story: "Story",
+  reel: "Reel",
+  whatsapp_cta: "Mensagem",
+  carousel: "Carrossel",
+};
 
 export function MarketingDashboard({
   companyId,
@@ -69,7 +77,12 @@ export function MarketingDashboard({
     let cancelled = false;
     setData(null);
     setError(false);
-    void Promise.all([apiListMedia(), apiListPromotions(), apiListContents(), apiListSchedule()])
+    void Promise.all([
+      apiListMedia(),
+      apiListPromotions(),
+      apiListPublishContents(),
+      apiListPublishSchedule(),
+    ])
       .then(([media, promotions, contents, schedule]) => {
         if (cancelled) return;
         setData({
@@ -78,6 +91,7 @@ export function MarketingDashboard({
           drafts: contents.filter((c) => c.status === "draft" || c.status === "pending").length,
           approved: contents.filter((c) => c.status === "approved").length,
           planned: schedule.filter((s) => s.status === "planned").length,
+          failed: schedule.filter((s) => s.status === "failed").length,
           upcoming: schedule
             .filter((s) => s.status === "planned" || s.status === "queued")
             .filter((s) => new Date(s.scheduled_at).getTime() >= Date.now())
@@ -211,6 +225,24 @@ export function MarketingDashboard({
           </button>
         </div>
       </div>
+      {!error && data && data.failed > 0 && (
+        <div className="mkt-error mkt-error-action" role="alert">
+          <AlertCircle size={16} aria-hidden />
+          <span>
+            {data.failed === 1
+              ? "1 publicação não saiu."
+              : `${data.failed} publicações não saíram.`}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mkt-secondary"
+            onClick={() => onNavigate("problems")}
+          >
+            Resolver
+          </Button>
+        </div>
+      )}
       {error && (
         <p className="mkt-error" role="alert">
           Não foi possível carregar os indicadores. Nenhum valor foi estimado.
@@ -323,13 +355,6 @@ export function MarketingDashboard({
                 icon: Megaphone,
                 hue: "orchid",
               },
-              {
-                id: "knowledge",
-                title: "Sua marca",
-                text: "Voz, diferenciais e informações",
-                icon: Library,
-                hue: "lilac",
-              },
             ].map(({ id, title, text, icon: Icon, hue }) => (
               <button
                 key={id}
@@ -346,8 +371,16 @@ export function MarketingDashboard({
                 <span>{text}</span>
               </button>
             ))}
+            <a href="/ia" data-hue="lilac" data-lume-light className="mkt-resource">
+              <span className="mkt-icon-chip" aria-hidden>
+                <Library size={17} />
+              </span>
+              <ArrowUpRight aria-hidden size={15} className="mkt-resource-arrow" />
+              <strong>Sua marca</strong>
+              <span>Base de conhecimento nas configurações da IA</span>
+            </a>
           </div>
-          <button className="mkt-video-link" onClick={() => onNavigate("videos")}>
+          <button className="mkt-video-link" onClick={() => onNavigate("generated")}>
             <Video size={16} /> Procurando um vídeo já gerado?{" "}
             <span>
               Ver vídeos <ArrowRight size={14} />

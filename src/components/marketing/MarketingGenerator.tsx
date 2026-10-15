@@ -6,10 +6,12 @@
 
 import { MarketingCampaignGenerator } from "./campaign/MarketingCampaignGenerator";
 import type { MarketingContentRow } from "@/lib/marketing/marketing.types";
+import type { MediaSelection } from "@/lib/marketing/media-selection";
 
 interface Props {
   companyId: string;
   onGenerated?: (contents: MarketingContentRow[]) => void;
+  initialSelection?: MediaSelection[];
 }
 
 export function MarketingGenerator(props: Props) {

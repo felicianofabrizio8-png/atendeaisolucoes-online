@@ -61,6 +61,36 @@ export function LogoSlot({ logoUrl, layout, onUpload }: Props) {
     );
   }
 
+  const placeholderStyle: CSSProperties = {
+    width: `${sizePct}cqi`,
+    aspectRatio: "3 / 1",
+    background: "rgba(255,255,255,0.85)",
+    color: "#111",
+    border: "1.5px dashed rgba(0,0,0,0.35)",
+    borderRadius: "6px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.4em",
+    fontSize: "2.4cqi",
+    fontWeight: 600,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+  };
+
+  // Sem ação de upload (ex.: miniaturas de template, que já são botões):
+  // marcador apenas visual, para não aninhar botão dentro de botão.
+  if (!onUpload) {
+    return (
+      <div style={wrapperStyle} aria-hidden="true">
+        <div style={placeholderStyle}>
+          <ImagePlus size={12} />
+          Logo
+        </div>
+      </div>
+    );
+  }
+
   // Placeholder — clicável para upload local (session-only).
   return (
     <div style={wrapperStyle}>

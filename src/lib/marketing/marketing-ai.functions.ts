@@ -59,7 +59,21 @@ const InputSchema = z.object({
     .enum(["feed", "story", "feed_story"])
     .optional()
     .default("feed_story"),
+  media_mode: z.enum(["photo", "uploaded_video", "generated_video"]).optional().default("generated_video"),
+  materialize_auxiliary_formats: z.boolean().optional().default(true),
 });
+
+export const SimpleMarketingPostInputSchema = z.object({
+  media_mode: z.enum(["photo", "uploaded_video"]),
+  media_ids: z.array(z.string().uuid()).length(1),
+  campaign_formats: z.enum(["feed", "story", "feed_story"]).default("feed_story"),
+  promotion_id: z.string().uuid().optional().nullable(),
+  tone: z.enum(["amigável", "profissional", "descontraído", "urgente"]).optional().default("amigável"),
+  audience: z.string().trim().max(300).optional().nullable(),
+  extra_instructions: z.string().trim().max(1000).optional().nullable(),
+});
+export type SimpleMarketingPostInput = z.infer<typeof SimpleMarketingPostInputSchema>;
+
 
 async function validateProductMediaRefs(
   sb: SB,
@@ -122,17 +136,17 @@ async function validateProductMediaRefs(
 // Catálogo de ângulos estratégicos disponíveis (usado para diversidade).
 const STRATEGIC_ANGLES = [
   "pronta entrega",
-  "instalação rápida",
-  "valorização do imóvel",
-  "lazer em família",
-  "férias",
-  "segurança das crianças",
-  "economia comparada ao clube",
+  "agilidade no atendimento",
+  "custo-benefício",
+  "praticidade no dia a dia",
+  "ocasiões especiais",
+  "segurança e confiança",
+  "economia frente às alternativas",
   "parcelamento",
   "garantia",
-  "qualidade da fábrica",
+  "qualidade e procedência",
   "atendimento consultivo",
-  "transformação do quintal",
+  "resultado antes e depois",
   "qualidade de vida",
   "investimento",
 ] as const;
@@ -596,7 +610,7 @@ Categoria: ${product.category ?? "-"}`
 A promoção está vinculada ao produto "${product.name}". Toda a campanha (Story, Feed, Reel, WhatsApp) DEVE permanecer focada exclusivamente nesse produto. É PROIBIDO citar, comparar ou sugerir outros modelos, tamanhos, linhas ou produtos da empresa, salvo se estiver explicitamente pedido nas instruções extras.`
       : "";
 
-    const sys = `Você é um DIRETOR DE CRIAÇÃO sênior de uma agência de publicidade brasileira especializada em marketing para PISCINAS, atuando para a empresa "${brand.companyName}". Você não é um redator de legendas: você é o cérebro estratégico e criativo por trás de cada campanha. Antes de escrever qualquer palavra, você dirige a campanha.
+    const sys = `Você é um DIRETOR DE CRIAÇÃO sênior de uma agência de publicidade brasileira, atuando para a empresa "${brand.companyName}". Você não é um redator de legendas: você é o cérebro estratégico e criativo por trás de cada campanha. Antes de escrever qualquer palavra, você dirige a campanha.
 
 ${knowledgeBlock}
 
@@ -605,9 +619,9 @@ ${brandPromptBlock}
 # ETAPA 1 — DIREÇÃO ESTRATÉGICA (obrigatória, precede qualquer texto)
 Como Diretor de Criação, decida DELIBERADAMENTE para esta campanha:
 1. **ÂNGULO principal de venda** (obrigatório escolher UM do catálogo abaixo, respeitando a diversidade histórica);
-2. **EMOÇÃO** que deseja despertar (ex.: aconchego familiar, orgulho, alívio financeiro, alegria das crianças, sensação de conquista, tranquilidade, pertencimento);
+2. **EMOÇÃO** que deseja despertar (ex.: confiança, orgulho, alívio financeiro, satisfação, sensação de conquista, tranquilidade, pertencimento);
 3. **DIFERENCIAL** da empresa que sustenta o ângulo (extraído da Base de Conhecimento — não invente);
-4. **OBJEÇÃO principal a quebrar** (ex.: "é caro", "vai dar trabalho", "não vou usar tanto", "medo de manutenção", "prazo longo");
+4. **OBJEÇÃO principal a quebrar** (ex.: "é caro", "vai dar trabalho", "não sei se preciso agora", "medo de se arrepender", "prazo longo");
 5. **CTA de maior conversão** para a intenção definida (não confunda CTA de marca com CTA de venda);
 6. **INTENÇÃO** (marca, orcamento, relacionamento ou venda).
 
@@ -644,7 +658,7 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 - Se a base estiver vazia, gere conteúdo neutro sem inventar atributos.
 
 # LINGUAGEM PROIBIDA (frases genéricas — NÃO use nem variações próximas)
-"Transforme seu quintal em um oásis", "Você merece", "Seu sonho começa agora", "Não perca essa oportunidade", "Oportunidade imperdível", "Última chance", "Aproveite já", "Corra que é por tempo limitado", "O melhor da região", "Qualidade incomparável".
+"Transforme seu espaço em um oásis", "Você merece", "Seu sonho começa agora", "Não perca essa oportunidade", "Oportunidade imperdível", "Última chance", "Aproveite já", "Corra que é por tempo limitado", "O melhor da região", "Qualidade incomparável".
 
 # ESTILO POR FORMATO
 - FEED: consultor experiente. Priorize benefícios reais, diferenciais verdadeiros, atendimento consultivo, linguagem humana. Emojis com parcimônia. Até 3 CTAs. Quebre a objeção definida.
@@ -653,7 +667,7 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
   · \`format\`: "${reelFormat}";
   · \`total_duration_seconds\`: duração total entre 15 e 60s;
   · \`hook_summary\`: descrição do gancho dos 3 primeiros segundos;
-  · \`music_suggestion\`: estilo musical/ritmo sugerido (ex.: "lo-fi acústico, BPM 90, sensação de aconchego familiar") — nunca cite marcas ou faixas com direitos;
+  · \`music_suggestion\`: estilo musical/ritmo sugerido (ex.: "lo-fi acústico, BPM 90, sensação acolhedora") — nunca cite marcas ou faixas com direitos;
   · \`scenes\`: sequência de 3 a 8 cenas numeradas, cada uma com \`duration_seconds\`, \`media_reference\` (referência textual à mídia real usada — vídeo ou foto do bloco de mídias; se não houver mídia, escreva "sem mídia"), \`framing\` (ex.: close, plano médio, plano geral, contra-plongée, drone), \`camera_movement\` (ex.: dolly-in lento, pan lateral, zoom-in suave, static, tilt-up), \`cut_style\` (ex.: corte seco, match-cut, cross-dissolve, whip-pan), \`on_screen_text\` (texto curto que aparece sobreposto, ou "" se não houver), \`voiceover\` (narração daquela cena, ou "" se não houver), \`silence\` (true se a cena for de silêncio proposital, sem narração e sem música dominante);
   · \`final_cta_overlay\`: texto de CTA visual da cena final.
   Coloque também em \`reel.body\` uma versão em texto legível do mesmo roteiro (cena por cena, para o humano aprovar). E use \`reel.title\` como título curto do vídeo.
@@ -662,9 +676,9 @@ Descontos, parcelamentos, brindes, garantia, pronta entrega, instalação, estoq
 # TEXTO VISUAL DA CAMPANHA (image_texts) — obrigatório
 Além dos 4 formatos, você produz UM ÚNICO bloco \`image_texts\` que será usado como texto sobreposto na imagem/vídeo. É o MESMO overlay para Feed e Story — não crie versões diferentes.
 Regras rigorosas (leitura em <1s no celular):
-- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Seu verão começa", "Mais lazer", "Piscina dos sonhos", "Conforto para família", "Qualidade Solário".
+- \`headline\`: entre 2 e 5 palavras, no máximo 28 caracteres, uma ideia só, alto impacto, jamais frase incompleta ou terminando em conectivo. Exemplos válidos: "Chegou a novidade", "Mais praticidade", "Uma escolha inteligente", "Feito para você", "Qualidade que permanece".
 - \`subheadline\`: opcional, no máximo 45 caracteres, entre 3 e 8 palavras, UMA frase curta, complementa o headline SEM repetir literalmente. Deixe vazio se não conseguir cumprir.
-- \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça os modelos", "Fale conosco".
+- \`cta\`: opcional, no máximo 4 palavras. Exemplos: "Peça orçamento", "Conheça as opções", "Fale conosco".
 NÃO use nenhuma das frases proibidas. NÃO repita os textos visuais recentes abaixo. Não é uma legenda — é o texto grande da peça visual.
 
 ## Textos visuais recentes desta empresa
@@ -957,6 +971,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       // Persistência da escolha do usuário — fonte de verdade para aprovação,
       // render e publicação (lida por `resolveCampaignFormats`).
       formats: data.campaign_formats,
+      media_mode: data.media_mode,
       product_media_refs: productMediaDetails.map((p) => ({
         product_id: p.product_id,
         image_path: p.image_path,
@@ -1073,7 +1088,7 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
       if (f === "feed" || f === "story") {
         return enabledRoles.includes(f as CampaignRole);
       }
-      return true;
+      return data.materialize_auxiliary_formats;
     });
 
     const { data: inserted, error } = await supabase
@@ -1113,4 +1128,22 @@ Gere agora o bundle. Lembre-se: planeje internamente antes; NÃO invente dados f
     }
 
     return { contents: inserted ?? [] };
+  });
+
+export const generateSimpleMarketingPost = createServerFn({ method: "POST" })
+  .middleware([requireTeamPermission("campaigns.manage")])
+  .inputValidator((i: unknown) => SimpleMarketingPostInputSchema.parse(i))
+  .handler(async ({ data, context }) => {
+    const { companyId, supabase } = await loadCompany(context);
+    const media = await validateMedia(supabase, companyId, data.media_ids);
+    const expectedType = data.media_mode === "photo" ? "image" : "video";
+    if (media.length !== 1 || media[0]?.media_type !== expectedType) {
+      throw new Error("Mídia incompatível com o modo " + data.media_mode + ". Selecione " + (expectedType === "image" ? "uma imagem" : "um vídeo") + ".");
+    }
+    return generateMarketingContent({
+      data: {
+        ...data,
+        materialize_auxiliary_formats: false,
+      },
+    });
   });

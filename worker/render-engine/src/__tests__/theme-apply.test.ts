@@ -13,9 +13,9 @@ const THEME = {
   ctaTextColor: "#FFFFFF",
 };
 
-describe("worker theme application (build-005)", () => {
+describe("worker theme application", () => {
   it("assinatura de build atualizada", () => {
-    expect(BUILD_SIGNATURE).toBe("render-manual-themes-build-005");
+    expect(BUILD_SIGNATURE).toBe("render-pro-templates-build-007");
   });
 
   it("aplica cores do tema em todas as cenas sem quebrar o contrato", () => {

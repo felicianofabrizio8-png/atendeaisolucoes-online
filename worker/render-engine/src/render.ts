@@ -1,3 +1,6 @@
+import { needsPreparedFrame, normalizeFraming } from "./image-fit.js";
+import { prepareImageFrame } from "./image-prepare.js";
+import type { BrandLayerPaths } from "./brand-composer.js";
 import { mkdtemp, mkdir, rm, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +31,7 @@ try {
 import { log } from "./logger.js";
 import { renderSlideshowWithAudio, renderStaticImageVideo, type FocalPoint, type WatermarkInput, type WatermarkPosition } from "./ffmpeg.js";
 import { composeBrandLayers } from "./brand-composer.js";
+import { sceneDurations } from "./scenes.js";
 
 import { analyzeVolume, ffprobe, ffprobeInput } from "./ffprobe.js";
 import { validateRenderedMedia } from "./media-validation.js";
@@ -94,6 +98,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
 
     const imageDownloads: string[] = [];
     const focalPoints: Array<FocalPoint | null> = [];
+    let sceneImage: BrandLayerPaths["sceneImage"] = null;
 
     if (sequence) {
       const ordered = [...sequence].sort((a, b) => a.position - b.position);
@@ -255,9 +260,12 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       let bottomPanelPath: string | null = null;
       let outroCardPath: string | null = null;
       let outroDurationSeconds = 0;
+      let textLayerPath: string | null = null;
+      let textAnimation: "fade" | "rise" | null = null;
       let sceneAppliesLogo = false;
       let sceneLogoConfirmed = false;
       let sceneLogoReason: string | null = "composer_not_run";
+      let sceneLogoHidden = false;
       const gateApproved = !!(brand && hasContent);
       const gateReason = !brand
         ? "no_brand_snapshot"
@@ -308,9 +316,13 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           bottomPanelPath = layers.bottomPanelPath;
           outroCardPath = layers.outroCardPath;
           outroDurationSeconds = layers.outroDurationSeconds;
+          textLayerPath = layers.textLayerPath;
+          textAnimation = layers.textAnimation;
           sceneAppliesLogo = layers.sceneAppliesLogo;
           sceneLogoConfirmed = layers.sceneLogoConfirmed;
           sceneLogoReason = layers.sceneLogoReason;
+          sceneLogoHidden = layers.sceneLogoHidden;
+          sceneImage = layers.sceneImage;
           const layersCount =
             (bottomPanelPath ? 1 : 0) + (outroCardPath ? 1 : 0);
           log.info("brand_layers_count", {
@@ -318,6 +330,7 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
             layers_count: layersCount,
             has_bottom_panel: !!bottomPanelPath,
             has_outro_card: !!outroCardPath,
+            text_animation: textAnimation,
             outro_duration_seconds: outroDurationSeconds,
             scene_applies_logo: sceneAppliesLogo,
             scene_logo_confirmed: sceneLogoConfirmed,
@@ -347,7 +360,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       // vídeos com branding habilitado e sem nenhuma marca.
       const watermarkFallbackApplied =
         !!logoLocal && sceneAppliesLogo && !sceneLogoConfirmed;
-      const effectiveLogoForWatermark = sceneLogoConfirmed ? null : logoLocal;
+      // Logo desligada pelo usuário neste vídeo: nem na cena, nem como marca d'água.
+      const effectiveLogoForWatermark = sceneLogoConfirmed || sceneLogoHidden ? null : logoLocal;
 
       log.info("brand_watermark_decision", {
         ...baseCtx, stage,
@@ -372,6 +386,8 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
           bottomPanelPath,
           outroCardPath,
           outroDurationSeconds,
+          textLayerPath,
+          textAnimation,
         };
       }
     }
@@ -449,8 +465,35 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
       throw new Error(rangeCheck.code ?? "audio_range_out_of_bounds");
     }
 
+    // Enquadramento "conter" (produto inteiro) ou janela do modelo: monta o
+    // quadro de cada imagem antes do render. O caso histórico (cobrir o quadro
+    // todo) segue intocado pelo filtro de sempre.
+    {
+      const frame = { width: job.width, height: job.height };
+      const full = { x: 0, y: 0, width: job.width, height: job.height };
+      const areas = sceneImage?.areas ?? { contain: full, cover: full };
+      for (let i = 0; i < imageDownloads.length; i++) {
+        const framing = normalizeFraming(focalPoints[i], { fit: "cover", fill: sceneImage?.defaultFill ?? "blur" });
+        if (!needsPreparedFrame(framing, areas, frame)) continue;
+        const prepared = path.join(workDir, `prepared-${i}.png`);
+        await prepareImageFrame({
+          inputPath: imageDownloads[i],
+          outputPath: prepared,
+          width: job.width,
+          height: job.height,
+          areas,
+          framing,
+          fillColor: sceneImage?.fillColor ?? "#000000",
+        });
+        imageDownloads[i] = prepared;
+        focalPoints[i] = null;
+        log.info("image_frame_prepared", { ...baseCtx, stage, index: i, fit: framing.fit, fill: framing.fill, zoom: framing.zoom });
+      }
+    }
+
     log.info("ffmpeg_pre_memory", { ...baseCtx, stage, ...memorySnapshot() });
 
+    const editorSceneSeconds = (brand?.content as { overlayLayout?: { sceneSeconds?: unknown } | null } | undefined)?.overlayLayout?.sceneSeconds;
     if (useSlideshow) {
       await renderSlideshowWithAudio({
         imageFilePaths: imageDownloads,
@@ -463,6 +506,14 @@ export async function processClaim(cfg: WorkerConfig, claim: ClaimedJob): Promis
         outputFilePath: outputLocal,
         timeoutMs: cfg.ffmpegTimeoutMs,
         watermark,
+        transition:
+          (brand?.content as { overlayLayout?: { transition?: unknown } | null } | undefined)
+            ?.overlayLayout?.transition as string | undefined,
+        // Tempos por cena do editor (a mesma conta que a prévia usa). Sem
+        // eles o FFmpeg recebe exatamente os argumentos de sempre.
+        sceneDurations: Array.isArray(editorSceneSeconds)
+          ? sceneDurations(durationSeconds, imageDownloads.length, editorSceneSeconds)
+          : null,
         jobId: job.id,
         debugLogDir: workDir,
       });

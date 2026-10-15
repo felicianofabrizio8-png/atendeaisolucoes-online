@@ -71,7 +71,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
   {
     id: "piscinas",
-    label: "Piscinas",
+    label: "Azul água",
     description: "Tons de água, leve e arejado.",
     template: "clean",
     colors: { primary: "#0369A1", accent: "#38BDF8", foreground: "#FFFFFF" },

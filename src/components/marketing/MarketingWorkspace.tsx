@@ -1,239 +1,210 @@
-import { lazy, Suspense, useRef, useState, useId } from "react";
-import {
-  CalendarDays,
-  CheckCheck,
-  Images,
-  LayoutDashboard,
-  Library,
-  Megaphone,
-  Music2,
-  Send,
-  Sparkles,
-  Video,
-} from "lucide-react";
+import { useId, useRef, useState } from "react";
+import { CalendarCheck, Home, Images, Sparkles } from "lucide-react";
+import { LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { MarketingDashboard } from "./MarketingDashboard";
-import { MarketingChapter } from "./MarketingChapter";
-
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
-import { LumePulse, PillIndicator, lumeEase, useMarketingAmbient } from "./MarketingMotion";
+import { MarketingLibraryHub, type LibraryKind } from "./MarketingLibraryHub";
+import { MarketingPromotions } from "./MarketingPromotions";
+import { MarketingGenerator } from "./MarketingGenerator";
+import { MarketingPublishHub, type PublishView } from "./MarketingPublishHub";
+import { StudioLauncher } from "./studio/StudioLauncher";
+import { Chip, ChipRow } from "./ui/MarketingUi";
+import { PillIndicator, lumeEase, useMarketingAmbient } from "./MarketingMotion";
+import {
+  DEFAULT_MARKETING_GROUP,
+  GENERATED_DESTINATION,
+  MARKETING_NAV,
+  type MarketingGroupId,
+} from "@/lib/marketing/marketing-nav";
+import type { MediaSelection } from "@/lib/marketing/media-selection";
 import "./marketing.css";
 
-// O editor de vídeo e as bibliotecas só entram quando a seção é aberta.
-const MarketingGenerator = lazy(() =>
-  import("./MarketingGenerator").then((m) => ({ default: m.MarketingGenerator })),
-);
-const MarketingApprovals = lazy(() =>
-  import("./MarketingApprovals").then((m) => ({ default: m.MarketingApprovals })),
-);
-const MarketingSchedule = lazy(() =>
-  import("./MarketingSchedule").then((m) => ({ default: m.MarketingSchedule })),
-);
-const MarketingPublisherDashboard = lazy(() =>
-  import("./MarketingPublisherDashboard").then((m) => ({ default: m.MarketingPublisherDashboard })),
-);
-const MarketingLibrary = lazy(() =>
-  import("./MarketingLibrary").then((m) => ({ default: m.MarketingLibrary })),
-);
-const AudioLibrary = lazy(() =>
-  import("./AudioLibrary").then((m) => ({ default: m.AudioLibrary })),
-);
-const MarketingKnowledgeBase = lazy(() =>
-  import("./MarketingKnowledgeBase").then((m) => ({ default: m.MarketingKnowledgeBase })),
-);
-const MarketingPromotions = lazy(() =>
-  import("./MarketingPromotions").then((m) => ({ default: m.MarketingPromotions })),
-);
-const VideoLibraryGrid = lazy(() =>
-  import("./video-render/VideoLibraryGrid").then((m) => ({ default: m.VideoLibraryGrid })),
-);
-
+/** Destinos que o Início oferece; cada um abre uma área e a tela certa dentro dela. */
 export type MarketingSection =
   | "dashboard"
   | "generator"
+  | "studio"
+  | "promotions"
   | "approvals"
+  | "approved"
   | "schedule"
   | "publisher"
+  | "problems"
   | "library"
+  | "videos"
   | "audio"
-  | "knowledge"
-  | "promotions"
-  | "videos";
+  | "generated";
 
-const sections = [
-  {
-    id: "dashboard",
-    label: "Visão geral",
-    icon: LayoutDashboard,
-    description: "Sua criação e sua agenda, no mesmo lugar.",
-  },
-  {
-    id: "generator",
-    label: "Criar com Lume",
-    icon: Sparkles,
-    description:
-      "Escolha suas imagens, defina a mensagem e crie uma campanha com Lume ou manualmente.",
-  },
-  {
-    id: "approvals",
-    label: "Revisar conteúdos",
-    icon: CheckCheck,
-    description: "Revise textos e criativos. Depois de aprovar, escolha quando e onde publicar.",
-  },
-  {
-    id: "schedule",
-    label: "Calendário",
-    icon: CalendarDays,
-    description: "Veja o que está programado e organize a presença da sua marca.",
-  },
-  {
-    id: "publisher",
-    label: "Publicações",
-    icon: Send,
-    description: "Acompanhe a fila, confira o histórico e resolva falhas de publicação.",
-  },
-  {
-    id: "library",
-    label: "Fotos e vídeos",
-    icon: Images,
-    description: "Envie arquivos e encontre as imagens dos seus produtos para usar nas campanhas.",
-  },
-  {
-    id: "videos",
-    label: "Vídeos prontos",
-    icon: Video,
-    description: "Encontre os vídeos gerados e acompanhe suas renderizações.",
-  },
-  {
-    id: "audio",
-    label: "Áudios",
-    icon: Music2,
-    description: "Organize as trilhas que dão ritmo às suas campanhas.",
-  },
-  {
-    id: "promotions",
-    label: "Promoções",
-    icon: Megaphone,
-    description: "Mantenha ofertas, valores e condições comerciais prontos para a criação.",
-  },
-  {
-    id: "knowledge",
-    label: "Sua marca",
-    icon: Library,
-    description:
-      "Base de conhecimento: ensine à Lume seu tom de voz, diferenciais e informações comerciais.",
-  },
-] as const;
+type CreateScreen = "generator" | "studio" | "promotions";
+
+const ICONS: Record<MarketingGroupId, typeof Home> = {
+  inicio: Home,
+  criar: Sparkles,
+  acervo: Images,
+  publicar: CalendarCheck,
+};
+
+const PUBLISH_TARGET: Partial<Record<MarketingSection, PublishView>> = {
+  approvals: "review",
+  approved: "approved",
+  schedule: "scheduled",
+  publisher: "published",
+  problems: "problems",
+};
+const LIBRARY_TARGET: Partial<Record<MarketingSection, LibraryKind>> = {
+  library: "photos",
+  videos: "videos",
+  audio: "audio",
+  generated: "generated",
+};
 
 export function MarketingWorkspace({ companyId }: { companyId: string }) {
-  const [tab, setTab] = useState<MarketingSection>("dashboard");
+  const [group, setGroup] = useState<MarketingGroupId>(DEFAULT_MARKETING_GROUP);
+  const [createScreen, setCreateScreen] = useState<CreateScreen>("generator");
+  const [publishView, setPublishView] = useState<PublishView>("review");
+  const [libraryKind, setLibraryKind] = useState<LibraryKind>("photos");
+  // Mídia escolhida no Acervo para começar uma publicação; `nonce` reinicia o fluxo.
+  const [seed, setSeed] = useState<{ selection: MediaSelection[]; nonce: number }>({
+    selection: [],
+    nonce: 0,
+  });
   const workspace = useRef<HTMLDivElement>(null);
-  function navigate(section: MarketingSection) {
-    setTab(section);
-    requestAnimationFrame(() => {
-      workspace.current
-        ?.querySelector<HTMLButtonElement>(`[role="tab"][data-state="active"]`)
-        ?.focus({ preventScroll: true });
-    });
-  }
   useMarketingAmbient(workspace);
   const reduced = useReducedMotion();
   const motionId = useId();
-  const active = sections.find((s) => s.id === tab)!;
+
+  function openCreate(selection: MediaSelection[] = []) {
+    setSeed((cur) => ({ selection, nonce: cur.nonce + 1 }));
+    setCreateScreen("generator");
+    setGroup("criar");
+  }
+  function navigate(section: MarketingSection) {
+    const publish = PUBLISH_TARGET[section];
+    const library = LIBRARY_TARGET[section];
+    if (publish) {
+      setPublishView(publish);
+      setGroup("publicar");
+    } else if (library) {
+      setLibraryKind(library);
+      setGroup("acervo");
+    } else if (section === "generator") {
+      openCreate();
+    } else if (section === "studio" || section === "promotions") {
+      setCreateScreen(section);
+      setGroup("criar");
+    } else {
+      setGroup("inicio");
+    }
+  }
+
   return (
-    <div className="lume-marketing" data-section={tab} ref={workspace}>
+    <div className="lume-marketing" data-section={group} ref={workspace}>
       <header className="mkt-page-header">
         <div>
           <h1>Marketing IA</h1>
-          <p>Crie, revise e publique campanhas com a Lume.</p>
+          <p>Crie conteúdos, organize seu acervo e publique no Instagram, Facebook e WhatsApp.</p>
         </div>
         <div className="mkt-header-actions">
-          <Button variant="outline" className="mkt-secondary" onClick={() => navigate("knowledge")}>
-            Sua marca
-          </Button>
-          <Button className="mkt-primary" onClick={() => navigate("generator")}>
+          <Button className="mkt-primary" onClick={() => openCreate()}>
             <Sparkles /> Criar conteúdo
           </Button>
         </div>
       </header>
       <LayoutGroup id={motionId}>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as MarketingSection)}>
+        <Tabs value={group} onValueChange={(value) => setGroup(value as MarketingGroupId)}>
           <div className="mkt-navigation">
-            <TabsList className="mkt-pill mkt-main-nav" aria-label="Fluxo de marketing">
-              {sections.slice(0, 5).map(({ id, label, icon: Icon }) => (
-                <TabsTrigger key={id} value={id}>
-                  {tab === id && <PillIndicator layoutId="mkt-main-nav" />}
-                  <Icon aria-hidden />
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
             <TabsList
-              className="mkt-pill mkt-pill-quiet mkt-resource-nav"
-              aria-label="Recursos de marketing"
+              className="mkt-pill mkt-main-nav marketing-nav"
+              aria-label="Áreas do marketing"
             >
-              {sections.slice(5).map(({ id, label }) => (
-                <TabsTrigger key={id} value={id}>
-                  {tab === id && <PillIndicator layoutId="mkt-resource-nav" />}
-                  {label}
-                </TabsTrigger>
-              ))}
+              {MARKETING_NAV.map((item) => {
+                const Icon = ICONS[item.id];
+                return (
+                  <TabsTrigger key={item.id} value={item.id}>
+                    {group === item.id && <PillIndicator layoutId="mkt-main-nav" />}
+                    <Icon aria-hidden />
+                    {item.label}
+                  </TabsTrigger>
+                );
+              })}
             </TabsList>
           </div>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={tab}
-              className="lume-stage"
-              initial={{ opacity: 0, y: reduced ? 0 : 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: reduced ? 0 : -6 }}
-              transition={{
-                duration: reduced ? 0 : 0.55,
-                ease: lumeEase,
-                opacity: { duration: reduced ? 0 : 0.22 },
-              }}
-            >
-              {tab !== "dashboard" && (
-                <MarketingChapter
-                  section={tab}
-                  description={active.description}
-                  onBack={() => navigate("dashboard")}
-                />
-              )}
-              <TabsContent
-                forceMount
-                value={tab}
-                className={`mkt-tab-panel ${tab === "dashboard" ? "" : "mkt-tool-panel"}`}
-              >
-                <Suspense
-                  fallback={
-                    <div className="mkt-loading" role="status">
-                      <LumePulse /> Abrindo {active.label.toLocaleLowerCase("pt-BR")}…
-                    </div>
-                  }
+          <motion.div
+            key={group}
+            className="lume-stage"
+            initial={{ opacity: 0, y: reduced ? 0 : 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: reduced ? 0 : 0.55,
+              ease: lumeEase,
+              opacity: { duration: reduced ? 0 : 0.22 },
+            }}
+          >
+            <TabsContent value="inicio" className="mkt-tab-panel">
+              <MarketingDashboard companyId={companyId} onNavigate={navigate} />
+            </TabsContent>
+
+            <TabsContent value="criar" className="mkt-tab-panel mkt-tool-panel">
+              <ChipRow label="Criar" className="mkt-chip-row">
+                <Chip
+                  className="mkt-chip"
+                  active={createScreen === "generator"}
+                  onClick={() => setCreateScreen("generator")}
                 >
-                  {tab === "dashboard" && (
-                    <MarketingDashboard companyId={companyId} onNavigate={navigate} />
-                  )}
-                  {tab === "generator" && (
-                    <MarketingGenerator
-                      companyId={companyId}
-                      onGenerated={() => navigate("approvals")}
-                    />
-                  )}
-                  {tab === "approvals" && <MarketingApprovals companyId={companyId} />}
-                  {tab === "schedule" && <MarketingSchedule companyId={companyId} />}
-                  {tab === "publisher" && <MarketingPublisherDashboard companyId={companyId} />}
-                  {tab === "library" && <MarketingLibrary companyId={companyId} />}
-                  {tab === "videos" && <VideoLibraryGrid companyId={companyId} />}
-                  {tab === "audio" && <AudioLibrary companyId={companyId} />}
-                  {tab === "promotions" && <MarketingPromotions companyId={companyId} />}
-                  {tab === "knowledge" && <MarketingKnowledgeBase companyId={companyId} />}
-                </Suspense>
-              </TabsContent>
-            </motion.div>
-          </AnimatePresence>
+                  Nova publicação
+                </Chip>
+                <Chip
+                  className="mkt-chip"
+                  active={createScreen === "studio"}
+                  onClick={() => setCreateScreen("studio")}
+                >
+                  Estúdio criativo
+                </Chip>
+                <Chip
+                  className="mkt-chip"
+                  active={createScreen === "promotions"}
+                  onClick={() => setCreateScreen("promotions")}
+                >
+                  Promoções
+                </Chip>
+              </ChipRow>
+              {createScreen === "generator" ? (
+                <MarketingGenerator
+                  key={seed.nonce}
+                  companyId={companyId}
+                  initialSelection={seed.selection}
+                  onGenerated={() => {
+                    // A próxima criação começa do zero, sem a mídia da anterior.
+                    setSeed((cur) => ({ selection: [], nonce: cur.nonce + 1 }));
+                    setGroup(GENERATED_DESTINATION.group);
+                    setPublishView("review");
+                  }}
+                />
+              ) : createScreen === "studio" ? (
+                <StudioLauncher companyId={companyId} />
+              ) : (
+                <MarketingPromotions companyId={companyId} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="acervo" className="mkt-tab-panel mkt-tool-panel">
+              <MarketingLibraryHub
+                companyId={companyId}
+                kind={libraryKind}
+                onKindChange={setLibraryKind}
+                onUseMedia={(selection) => openCreate([selection])}
+              />
+            </TabsContent>
+
+            <TabsContent value="publicar" className="mkt-tab-panel mkt-tool-panel">
+              <MarketingPublishHub
+                companyId={companyId}
+                view={publishView}
+                onViewChange={setPublishView}
+              />
+            </TabsContent>
+          </motion.div>
         </Tabs>
       </LayoutGroup>
     </div>

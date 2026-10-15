@@ -4,23 +4,44 @@ import { MarketingArtwork } from "./MarketingArtwork";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { lumeToast as toast } from "./MarketingFeedback";
-import { apiListSchedule, apiListContents, apiCancelSchedule } from "@/data/marketingRepo";
+import {
+  apiListPublishSchedule,
+  apiListPublishContents,
+  apiCancelSchedule,
+} from "@/data/marketingRepo";
 import type { MarketingScheduleRow, MarketingContentRow } from "@/lib/marketing/marketing.types";
+
+import { useContentPreviews } from "@/lib/marketing/useContentPreviews";
+import { MediaThumb } from "./ui/MarketingUi";
 
 interface Props {
   companyId: string;
+  /** Só o que ainda vai sair (agendada, na fila ou publicando). */
+  upcomingOnly?: boolean;
 }
 
-const scheduleStatusLabel: Record<MarketingScheduleRow["status"], string> = {
-  planned: "Planejado",
+const SCHEDULE_STATUS: Record<string, string> = {
+  planned: "Agendada",
   queued: "Na fila",
   publishing: "Publicando",
-  published: "Publicado",
-  failed: "Falha no envio",
-  cancelled: "Cancelado",
+  published: "Publicada",
+  failed: "Com problema",
+  cancelled: "Cancelada",
+};
+const FORMAT_LABEL: Record<string, string> = {
+  feed: "Feed",
+  story: "Story",
+  reel: "Reel",
+  whatsapp_cta: "WhatsApp",
+  carousel: "Carrossel",
+};
+const CHANNEL_LABEL: Record<string, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  whatsapp: "WhatsApp",
 };
 
-export function MarketingSchedule({ companyId }: Props) {
+export function MarketingSchedule({ companyId, upcomingOnly = false }: Props) {
   const [schedule, setSchedule] = useState<MarketingScheduleRow[]>([]);
   const [contents, setContents] = useState<Record<string, MarketingContentRow>>({});
   const [loading, setLoading] = useState(true);
@@ -28,7 +49,10 @@ export function MarketingSchedule({ companyId }: Props) {
   async function refresh() {
     setLoading(true);
     try {
-      const [sched, conts] = await Promise.all([apiListSchedule(), apiListContents()]);
+      const [sched, conts] = await Promise.all([
+        apiListPublishSchedule(),
+        apiListPublishContents(),
+      ]);
       setSchedule(sched);
       setContents(Object.fromEntries(conts.map((c) => [c.id, c])));
     } catch (e) {
@@ -45,6 +69,13 @@ export function MarketingSchedule({ companyId }: Props) {
   const grouped = useMemo(() => {
     const map = new Map<string, MarketingScheduleRow[]>();
     for (const s of schedule) {
+      if (
+        upcomingOnly &&
+        s.status !== "planned" &&
+        s.status !== "queued" &&
+        s.status !== "publishing"
+      )
+        continue;
       const date = new Date(s.scheduled_at);
       const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
       const arr = map.get(day) ?? [];
@@ -52,7 +83,13 @@ export function MarketingSchedule({ companyId }: Props) {
       map.set(day, arr);
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [schedule]);
+  }, [schedule, upcomingOnly]);
+
+  const scheduledContents = useMemo(
+    () => schedule.map((s) => contents[s.content_id]).filter((c): c is MarketingContentRow => !!c),
+    [schedule, contents],
+  );
+  const previews = useContentPreviews(companyId, scheduledContents);
 
   async function cancel(id: string) {
     if (!confirm("Cancelar este agendamento?")) return;
@@ -79,8 +116,8 @@ export function MarketingSchedule({ companyId }: Props) {
         <MarketingArtwork kind="ring" />
         <h3>Sua próxima história tem lugar aqui.</h3>
         <p>
-          Aprove um conteúdo e escolha uma data em <strong>Revisar conteúdos</strong>. Seus próximos
-          envios aparecerão nesta agenda.
+          Aprove uma publicação em <strong>Para revisar</strong> e agende em{" "}
+          <strong>Aprovadas</strong>. Seus próximos envios aparecerão nesta agenda.
         </p>
       </div>
     );
@@ -89,7 +126,7 @@ export function MarketingSchedule({ companyId }: Props) {
   return (
     <div className="space-y-4">
       <div className="mkt-tool-toolbar text-xs text-muted-foreground">
-        Acompanhe datas e canais. Consulte a fila e o resultado dos envios em Publicações.
+        Publicações agendadas saem sozinhas no horário, pelo canal conectado.
       </div>
       {grouped.map(([day, items]) => (
         <div key={day} className="mkt-schedule-day rounded-lg border bg-card overflow-hidden">
@@ -108,19 +145,29 @@ export function MarketingSchedule({ companyId }: Props) {
             {items.map((s) => {
               const c = contents[s.content_id];
               return (
-                <div key={s.id} className="p-3 flex items-start gap-3">
-                  <div className="text-xs text-muted-foreground w-14 shrink-0">
-                    {new Date(s.scheduled_at).toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
+                <div key={s.id} className="p-3 flex items-center gap-3" data-testid="schedule-item">
+                  <MediaThumb
+                    preview={c ? previews[c.id] : null}
+                    className="h-14 w-14 shrink-0 rounded-lg"
+                  />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs flex items-center gap-2">
-                      <span className="mkt-badge mkt-tone-neutral">{c?.format ?? "?"}</span>
-                      <span className="mkt-badge mkt-tone-quiet">{s.channel}</span>
+                    <div className="text-xs flex flex-wrap items-center gap-2">
+                      <span className="mkt-badge mkt-tone-neutral">
+                        {new Date(s.scheduled_at).toLocaleTimeString("pt-BR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
                       <span className="mkt-badge mkt-tone-quiet">
-                        {scheduleStatusLabel[s.status]}
+                        {FORMAT_LABEL[c?.format ?? ""] ?? c?.format ?? ""}
+                      </span>
+                      <span className="mkt-badge mkt-tone-quiet">
+                        {CHANNEL_LABEL[s.channel] ?? s.channel}
+                      </span>
+                      <span
+                        className={`mkt-badge ${s.status === "failed" ? "mkt-tone-danger" : "mkt-tone-quiet"}`}
+                      >
+                        {SCHEDULE_STATUS[s.status] ?? s.status}
                       </span>
                     </div>
                     <div className="text-sm mt-1 line-clamp-2">

@@ -10,6 +10,8 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "selfcheck": "npm run build && node dist/selfcheck.js",
+    "sheet": "tsx scripts/contact-sheet.ts",
     "test": "vitest run"
   },
   "dependencies": {

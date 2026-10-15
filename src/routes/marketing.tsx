@@ -14,5 +14,9 @@ function MarketingPage() {
       </div>
     );
   }
-  return <MarketingWorkspace companyId={companyId} />;
+  return (
+    <div translate="no" className="notranslate">
+      <MarketingWorkspace companyId={companyId} />
+    </div>
+  );
 }

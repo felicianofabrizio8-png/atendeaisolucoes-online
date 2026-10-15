@@ -19,6 +19,8 @@ interface CachedUrl {
 }
 
 const cache = new Map<string, CachedUrl>();
+const pendingImageUrls = new Map<string, Promise<string>>();
+const pendingGenericUrls = new Map<string, Promise<string | null>>();
 
 /**
  * Extrai o path dentro do bucket a partir de um valor armazenado no banco.
@@ -51,33 +53,43 @@ export function extractStoragePath(stored: string): string | null {
  * Aceita path puro ou URL legada. Em caso de erro, devolve o valor original
  * para não quebrar a UI.
  */
-export async function getSignedImageUrl(stored: string): Promise<string> {
+export async function getSignedImageUrl(stored: string, options: { fresh?: boolean } = {}): Promise<string> {
   if (!stored) return stored;
   const path = extractStoragePath(stored);
   if (!path) return stored;
 
   const now = Date.now();
-  const hit = cache.get(path);
-  if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
+  // `fresh` (tentar novamente): ignora o link em cache e um pedido anterior que
+  // possa ter ficado pendurado — senão a nova tentativa esperaria por ele.
+  if (!options.fresh) {
+    const hit = cache.get(path);
+    if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
 
-  try {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
-    if (error || !data?.signedUrl) {
-      // Fallback: tenta URL pública (funciona enquanto o bucket estiver público)
-      const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
-      return pub.data.publicUrl;
-    }
-    cache.set(path, {
-      url: data.signedUrl,
-      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
-    });
-    return data.signedUrl;
-  } catch (e) {
-    console.error("[getSignedImageUrl] falhou, devolvendo valor original", e);
-    return stored;
+    const pending = pendingImageUrls.get(path);
+    if (pending) return pending;
   }
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+      if (error || !data?.signedUrl) {
+        const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
+        return pub.data.publicUrl;
+      }
+      cache.set(path, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000 });
+      return data.signedUrl;
+    } catch (e) {
+      console.error("[getSignedImageUrl] falhou, devolvendo valor original", e);
+      return stored;
+    }
+  })();
+  pendingImageUrls.set(path, request);
+  // Só limpa a própria entrada: uma nova tentativa pode já ter registrado outra.
+  void request.finally(() => {
+    if (pendingImageUrls.get(path) === request) pendingImageUrls.delete(path);
+  });
+  return request;
 }
 
 // Thumbnails leves via Supabase Storage Image Transform (resize/quality no edge).
@@ -163,27 +175,38 @@ const genericMediaCache = new Map<string, CachedUrl>();
 export async function getSignedMediaUrl(
   bucket: string,
   path: string,
+  options: { fresh?: boolean } = {},
 ): Promise<string | null> {
   if (!path || !bucket) return null;
   const clean = path.replace(/^\/+/, "");
   const key = `${bucket}::${clean}`;
   const now = Date.now();
-  const hit = genericMediaCache.get(key);
-  if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
-  try {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(clean, SIGNED_URL_TTL_SECONDS);
-    if (error || !data?.signedUrl) return null;
-    genericMediaCache.set(key, {
-      url: data.signedUrl,
-      expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
-    });
-    return data.signedUrl;
-  } catch (e) {
-    console.error("[getSignedMediaUrl] falhou", e);
-    return null;
+  // `fresh` (tentar novamente): não reaproveita cache nem um pedido pendurado.
+  if (!options.fresh) {
+    const hit = genericMediaCache.get(key);
+    if (hit && hit.expiresAt - SIGNED_URL_REFRESH_BEFORE_MS > now) return hit.url;
+    const pending = pendingGenericUrls.get(key);
+    if (pending) return pending;
   }
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(clean, SIGNED_URL_TTL_SECONDS);
+      if (error || !data?.signedUrl) return null;
+      genericMediaCache.set(key, { url: data.signedUrl, expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000 });
+      return data.signedUrl;
+    } catch (e) {
+      console.error("[getSignedMediaUrl] falhou", e);
+      return null;
+    }
+  })();
+  pendingGenericUrls.set(key, request);
+  // Só limpa a própria entrada: uma nova tentativa pode já ter registrado outra.
+  void request.finally(() => {
+    if (pendingGenericUrls.get(key) === request) pendingGenericUrls.delete(key);
+  });
+  return request;
 }
 
 /**

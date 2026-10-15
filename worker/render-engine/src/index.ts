@@ -1,6 +1,7 @@
 import { loadConfig } from "./config.js";
 import { log, setLogLevel } from "./logger.js";
-import { claimJob, RenderApiError } from "./api-client.js";
+import { claimJob } from "./api-client.js";
+import { runWorkerLoop } from "./loop.js";
 import { processClaim } from "./render.js";
 import { getActiveJobId } from "./runtime-state.js";
 import { SCENES } from "./scenes.js";
@@ -34,6 +35,8 @@ async function main() {
     poll_interval_ms: cfg.pollIntervalMs,
     render_api_url_host: safeHost(cfg.renderApiUrl),
     build_signature: BUILD_SIGNATURE,
+    paused: cfg.paused,
+    paused_reason: cfg.pausedReason,
   });
 
 
@@ -71,26 +74,13 @@ async function main() {
     });
   });
 
-  while (!stopping) {
-    try {
-      log.debug("bridge_claim_requested", { worker_id: cfg.workerId });
-      const claim = await claimJob(cfg);
-      if (!claim) {
-        await sleep(cfg.pollIntervalMs);
-        continue;
-      }
-      await processClaim(cfg, claim);
-    } catch (err) {
-      if (err instanceof RenderApiError) {
-        log.error("bridge_error", { status: err.status, code: err.code });
-      } else {
-        log.error("tick_exception", {
-          message: err instanceof Error ? err.message.slice(0, 300) : "unknown",
-        });
-      }
-      await sleep(cfg.pollIntervalMs);
-    }
+  if (cfg.pausedReason === "unrecognized_value") {
+    log.warn("worker_paused_value_unrecognized", {
+      hint: "WORKER_PAUSED aceita true/false; valor não reconhecido mantém o worker pausado",
+    });
   }
+
+  await runWorkerLoop(cfg, { claimJob, processClaim, sleep, isStopping: () => stopping });
 
   log.info("worker_stopped", {});
   process.exit(0);

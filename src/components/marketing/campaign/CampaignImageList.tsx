@@ -1,12 +1,17 @@
-import { LumePulse } from "../MarketingMotion";
 // Grid de imagens da campanha com drag-and-drop nativo HTML5.
 // Sem dependências extras. Suporta reorder, remover, marcar principal e
 // abrir o editor de focal point.
 
 import { useCallback, useState } from "react";
-import { GripVertical, Star, StarOff, X, Crop, ArrowDown } from "lucide-react";
+import { GripVertical, Star, StarOff, X, Crop, Loader2, RotateCcw } from "lucide-react";
+import { MEDIA_ERROR_MESSAGE, type MediaLoadError } from "@/lib/marketing/campaign-media";
 import { Button } from "@/components/ui/button";
 import type { FocalPointInput } from "@/data/marketingRepo";
+import type { FrameSize } from "@/lib/render-engine/focal-geometry";
+import { FocalImage } from "./FocalImage";
+
+// Miniatura quadrada: usa a mesma geometria do render para posicionar o foco.
+const THUMBNAIL_FRAME: FrameSize = { width: 1, height: 1 };
 
 export interface CampaignImageItem {
   key: string; // stable id
@@ -17,6 +22,8 @@ export interface CampaignImageItem {
   storagePath?: string;
   previewUrl: string | null;
   loadingPreview?: boolean;
+  /** Por que a prévia não carregou (null = sem erro). */
+  previewError?: MediaLoadError | null;
   focal_point?: FocalPointInput | null;
 }
 
@@ -26,6 +33,8 @@ interface Props {
   onRemove: (key: string) => void;
   onMakePrimary: (key: string) => void;
   onEditFocal: (key: string) => void;
+  /** Tenta carregar de novo a prévia de um item que falhou. */
+  onRetryPreview?: (key: string) => void;
 }
 
 export function CampaignImageList({
@@ -34,6 +43,7 @@ export function CampaignImageList({
   onRemove,
   onMakePrimary,
   onEditFocal,
+  onRetryPreview,
 }: Props) {
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -56,10 +66,7 @@ export function CampaignImageList({
 
   if (items.length === 0) {
     return (
-      <div className="mkt-drop-hint rounded-md border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
-        <span aria-hidden>
-          <ArrowDown size={16} />
-        </span>
+      <div className="rounded-md border bg-muted/40 p-4 text-center text-sm text-muted-foreground">
         Selecione uma ou mais imagens abaixo para montar a campanha.
       </div>
     );
@@ -99,24 +106,23 @@ export function CampaignImageList({
           >
             {it.loadingPreview && !it.previewUrl ? (
               <div className="absolute inset-0 flex items-center justify-center">
-                <LumePulse className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : it.previewUrl ? (
-              <img
+              <FocalImage
                 src={it.previewUrl}
                 alt={`Imagem ${idx + 1} da campanha`}
-                className="absolute inset-0 h-full w-full object-cover"
-                style={
-                  it.focal_point
-                    ? {
-                        objectPosition: `${(it.focal_point.x * 100).toFixed(1)}% ${(it.focal_point.y * 100).toFixed(1)}%`,
-                      }
-                    : undefined
-                }
+                frame={THUMBNAIL_FRAME}
+                focalPoint={it.focal_point}
               />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-                Sem prévia
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-2 pt-8 text-center text-[11px] text-muted-foreground" role="alert">
+                <span>{MEDIA_ERROR_MESSAGE[it.previewError ?? "url_failed"]}</span>
+                {onRetryPreview && it.previewError !== "not_found" && (
+                  <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={() => onRetryPreview(it.key)} aria-label={`Tentar carregar a imagem ${idx + 1} novamente`}>
+                    <RotateCcw className="h-3 w-3" /> Tentar novamente
+                  </Button>
+                )}
               </div>
             )}
 
@@ -130,6 +136,20 @@ export function CampaignImageList({
                 </span>
               )}
             </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="absolute right-1 top-1 z-10 h-7 px-2 text-[11px] shadow-sm"
+              onClick={() => onEditFocal(it.key)}
+              title="Ajustar enquadramento"
+              aria-label={`Ajustar enquadramento da imagem ${idx + 1}`}
+              disabled={!it.previewUrl}
+            >
+              <Crop className="h-3.5 w-3.5" />
+              Ajustar
+            </Button>
 
             {/* Ações */}
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -155,18 +175,6 @@ export function CampaignImageList({
                     <StarOff className="h-3.5 w-3.5" />
                   </span>
                 )}
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  className="h-7 w-7"
-                  onClick={() => onEditFocal(it.key)}
-                  title="Ajustar enquadramento"
-                  aria-label={`Ajustar enquadramento da imagem ${idx + 1}`}
-                  disabled={!it.previewUrl}
-                >
-                  <Crop className="h-3.5 w-3.5" />
-                </Button>
               </div>
               <Button
                 type="button"

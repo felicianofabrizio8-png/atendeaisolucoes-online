@@ -24,7 +24,21 @@ export interface ManualCampaignFields {
 
 export type ManualCampaignFormats = "feed" | "story" | "feed_story";
 
-/** Limites alinhados com o schema de aprovação (`ApproveInput`). */
+/**
+ * Limites do texto que aparece SOBRE o vídeo. São os mesmos dos CHECKs do
+ * banco em `marketing_contents` (overlay_headline ≤ 40, overlay_subheadline
+ * ≤ 60, overlay_cta ≤ 40). Tudo que grava essas colunas precisa respeitá-los.
+ */
+export const OVERLAY_LIMITS = {
+  headline: 40,
+  subheadline: 60,
+  cta: 40,
+} as const;
+
+/**
+ * Limites dos campos do formulário manual. O título e o subtítulo completos
+ * vão para a legenda; no vídeo entra a versão ajustada a `OVERLAY_LIMITS`.
+ */
 export const MANUAL_LIMITS = {
   headline: 80,
   subheadline: 120,
@@ -36,8 +50,18 @@ function clean(v: string | null | undefined): string | null {
   return t.length > 0 ? t : null;
 }
 
-function truncate(v: string, max: number): string {
-  return v.length <= max ? v : `${v.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+/**
+ * Ajusta um texto ao limite do overlay cortando em fim de palavra, sem
+ * reticências (o texto vai grande sobre o vídeo). Palavra única maior que o
+ * limite é cortada no limite.
+ */
+export function fitOverlayText(value: string, max: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (Array.from(text).length <= max) return text;
+  const head = Array.from(text).slice(0, max + 1).join("");
+  const lastSpace = head.lastIndexOf(" ");
+  const cut = lastSpace >= Math.floor(max / 2) ? head.slice(0, lastSpace) : Array.from(text).slice(0, max).join("");
+  return cut.replace(/[\s,;:.\-–—]+$/u, "").trim();
 }
 
 /**
@@ -49,14 +73,14 @@ export function buildManualOverlay(fields: ManualCampaignFields): {
   overlay_subheadline: string | null;
   overlay_cta: string | null;
 } {
-  const headline = truncate(clean(fields.title) ?? "", MANUAL_LIMITS.headline);
+  const headline = fitOverlayText(clean(fields.title) ?? "", OVERLAY_LIMITS.headline);
   const subRaw =
     clean(fields.subtitle) ?? clean(fields.promo_text) ?? clean(fields.price);
   const ctaRaw = clean(fields.cta_text);
   return {
     overlay_headline: headline,
-    overlay_subheadline: subRaw ? truncate(subRaw, MANUAL_LIMITS.subheadline) : null,
-    overlay_cta: ctaRaw ? truncate(ctaRaw, MANUAL_LIMITS.cta) : null,
+    overlay_subheadline: subRaw ? fitOverlayText(subRaw, OVERLAY_LIMITS.subheadline) || null : null,
+    overlay_cta: ctaRaw ? fitOverlayText(ctaRaw, OVERLAY_LIMITS.cta) || null : null,
   };
 }
 

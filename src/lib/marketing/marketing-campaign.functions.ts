@@ -25,6 +25,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireTeamPermission } from "@/lib/team/middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { generateMarketingContent } from "./marketing-ai.functions";
+import { matchesPrimary, readStoredSequence, sequenceToStore } from "./campaign-image-sequence";
 import type {
   MarketingContentRow,
   MarketingContentFormat,
@@ -50,9 +51,14 @@ import {
   formatsTelemetry,
   type CampaignRole,
 } from "./campaign-formats";
-import { buildThemeSnapshot, themeIdForTemplate } from "./theme-snapshot";
+import { buildThemeSnapshot, sanitizeThemeSnapshot, themeIdForTemplate } from "./theme-snapshot";
+import { PROCESSING_STALL_MS, detectRenderStall, type RenderStall } from "./render-status";
+import { getScene, normalizeLayout } from "./video-editor/scenes/registry";
+import { documentFromContentRow } from "./studio/content-mapping";
+import { fitPaletteToScene, paletteToThemeInput } from "./video-editor/palette";
 import {
   MANUAL_LIMITS,
+  OVERLAY_LIMITS,
   buildManualOverlay,
   composeManualCaption,
   normalizeHashtags,
@@ -70,6 +76,10 @@ const FocalPointSchema = z
     x: z.number().min(0).max(1),
     y: z.number().min(0).max(1),
     zoom: z.number().min(1).max(3).default(1),
+    // Enquadramento: "contain" mostra a imagem inteira na área do modelo.
+    // Ausente = "cover" (formato antigo). `fill` = como preencher a sobra.
+    fit: z.enum(["contain", "cover"]).optional(),
+    fill: z.enum(["blur", "color"]).optional(),
   })
   .strict();
 
@@ -145,6 +155,17 @@ async function resolveCompanyId(supabase: SB, userId: string): Promise<string> {
   if (error || !data?.company_id) throw new Error("company_not_found");
   return data.company_id;
 }
+async function updateMarketingContentOrThrow(supabase: SB, companyId: string, id: string, patch: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.from("marketing_contents").update(patch as never).eq("id", id).eq("company_id", companyId);
+  if (error) throw new Error(overlayLimitMessage(error.message) ?? "marketing_content_update_failed");
+}
+
+/** Traduz a violação dos CHECKs de tamanho do overlay em uma mensagem útil. */
+function overlayLimitMessage(dbMessage: string | null | undefined): string | null {
+  if (!dbMessage || !/marketing_contents_overlay_(headline|subheadline|cta)_len/.test(dbMessage)) return null;
+  return `O texto do vídeo passou do limite: título até ${OVERLAY_LIMITS.headline}, subtítulo até ${OVERLAY_LIMITS.subheadline} e botão até ${OVERLAY_LIMITS.cta} caracteres.`;
+}
+
 
 type ImageOwnershipRef =
   | { source: "marketing_media"; image_id: string }
@@ -220,6 +241,11 @@ async function validateOneImage(
 }
 
 /** Normaliza payload em lista de imagens (converte legado → novo internamente). */
+/**
+ * Recupera as imagens escolhidas na criação e revalida ownership antes de criar o job.
+ * Campanhas antigas sem image_sequence seguem pelo caminho legado da imagem primária.
+ */
+async function resolveRenderImages(supabase: SB, companyId: string, aiPrompt: unknown, primaryImage: ImageOwnershipRef): Promise<{ imageSequence: RenderImageSequenceItem[] | null; primaryFocalPoint: FocalPoint | null }> { const stored = readStoredSequence(aiPrompt); if (stored.length === 0) return { imageSequence: null, primaryFocalPoint: null }; if (!matchesPrimary(stored[0], primaryImage)) throw new Error("campaign_image_sequence_invalid:primary_mismatch"); const validated: ValidatedImage[] = []; for (const item of stored) { const input = item.origin === "marketing" ? { origin: "marketing" as const, media_id: item.media_id, focal_point: item.focal_point } : { origin: "product" as const, product_id: item.product_id, image_path: item.image_path, focal_point: item.focal_point }; validated.push(await validateOneImage(supabase, companyId, input, item.position, item.primary)); } const sequence = sequenceToStore(validated.map((item) => item.sequenceItem)); return { imageSequence: sequence, primaryFocalPoint: validated[0]?.focalPoint ?? null }; }
 function normalizeImages(
   data: z.infer<typeof GenerateCampaignInput>,
 ): Array<z.infer<typeof CampaignImageSchema>> {
@@ -559,17 +585,23 @@ export const generateMarketingCampaign = createServerFn({ method: "POST" })
       audio_start_second: data.audio_start_second,
       duration_seconds: data.duration_seconds,
     };
+    const storedSequence = sequenceToStore(validated.map((item) => item.sequenceItem));
+    const withStoredSequence = (row: { ai_prompt?: unknown }) =>
+      storedSequence
+        ? {
+            ai_prompt: {
+              ...(row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt)
+                ? (row.ai_prompt as Record<string, unknown>)
+                : {}),
+              image_sequence: storedSequence,
+            } as unknown as never,
+          }
+        : {};
     if (feedRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ ...commonPatch, campaign_role: "feed" })
-        .eq("id", feedRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { ...commonPatch, ...withStoredSequence(feedRow as { ai_prompt?: unknown }), campaign_role: "feed" });
     }
     if (storyRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ ...commonPatch, campaign_role: "story" })
-        .eq("id", storyRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { ...commonPatch, ...withStoredSequence(storyRow as { ai_prompt?: unknown }), campaign_role: "story" });
     }
 
     // eslint-disable-next-line no-console
@@ -686,7 +718,7 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
       (x): x is string => typeof x === "string",
     );
     for (const id of regenIds) {
-      await supabase.from("marketing_contents").update(overlayPatch).eq("id", id);
+      await updateMarketingContentOrThrow(supabase, companyId, id, overlayPatch);
     }
 
     // Remove as linhas efêmeras geradas (não pertencem a nenhuma campanha).
@@ -728,11 +760,85 @@ export const regenerateCampaignTexts = createServerFn({ method: "POST" })
 // Este é o único ponto onde o Render Engine passa a receber trabalho para
 // esta campanha.
 
+/**
+ * Libera um job PARADO para que um novo possa ser criado, sem risco de dois
+ * vídeos para a mesma campanha. Só age quando `detectRenderStall` acusa parada,
+ * e sempre com UPDATE condicional ao estado lido — se o worker pegar ou concluir
+ * o job nesse meio-tempo, nenhuma linha é alterada e devolvemos `false`
+ * (o chamador continua com o job existente).
+ *
+ *  - Parado na fila: cancela pelo cliente do usuário (a RLS só permite
+ *    cancelar job próprio ainda em `queued`).
+ *  - Parado em processamento: a RLS não permite ao usuário alterar; depois de
+ *    confirmar pelo cliente do usuário que o job é da empresa, marca como
+ *    falho com a service role, filtrando por id + company_id + estado + tempo.
+ *    As rotas do worker recusam concluir job que não esteja em `processing`,
+ *    então um worker atrasado não consegue publicar vídeo em duplicidade.
+ */
+async function releaseStalledRenderJob(supabase: SB, companyId: string, jobId: string): Promise<boolean> {
+  const { data: job } = await supabase
+    .from("video_render_jobs")
+    .select("id, status, created_at, available_at, updated_at, locked_at")
+    .eq("id", jobId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  const stall = detectRenderStall(job, Date.now());
+  if (!job || !stall) return false;
+  const now = new Date().toISOString();
+  let released = 0;
+  if (stall === "queue_stalled") {
+    const { data: rows } = await supabase
+      .from("video_render_jobs")
+      .update({ status: "cancelled", failed_at: now, error_code: "queue_stalled_replaced" })
+      .eq("id", jobId)
+      .eq("company_id", companyId)
+      .eq("status", "queued")
+      .select("id");
+    released = rows?.length ?? 0;
+  } else {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const cutoff = new Date(Date.now() - PROCESSING_STALL_MS).toISOString();
+      const { data: rows } = await supabaseAdmin
+        .from("video_render_jobs")
+        .update({
+          status: "failed",
+          failed_at: now,
+          error_code: "worker_lock_expired",
+          error_message_sanitized: "worker_lock_expired",
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq("id", jobId)
+        .eq("company_id", companyId)
+        .eq("status", "processing")
+        .lt("updated_at", cutoff)
+        .select("id");
+      released = rows?.length ?? 0;
+    } catch {
+      released = 0;
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.info(
+    JSON.stringify({
+      ts: now,
+      level: released ? "warn" : "info",
+      event: released ? "campaign_stalled_render_released" : "campaign_stalled_render_release_skipped",
+      company_id: companyId,
+      job_id: jobId,
+      stall,
+    }),
+  );
+  return released === 1;
+}
+
 const ApproveInput = z.object({
   campaign_id: z.string().uuid(),
-  headline: z.string().trim().min(1).max(80),
-  subheadline: z.string().trim().max(120).nullable().optional(),
-  cta: z.string().trim().max(60).nullable().optional(),
+  // Mesmos limites dos CHECKs do banco para o texto sobre o vídeo.
+  headline: z.string().trim().min(1).max(OVERLAY_LIMITS.headline, "overlay_headline_too_long"),
+  subheadline: z.string().trim().max(OVERLAY_LIMITS.subheadline, "overlay_subheadline_too_long").nullable().optional(),
+  cta: z.string().trim().max(OVERLAY_LIMITS.cta, "overlay_cta_too_long").nullable().optional(),
   // Fase M4-editor: layout visual + template persistidos junto do texto
   // aprovado. Nesta rodada o worker ainda não consome; ficam prontos para
   // a próxima fase ler `video_layout` do content ou `brand_snapshot.overlay_layout`.
@@ -740,6 +846,16 @@ const ApproveInput = z.object({
   template: z.string().max(40).nullable().optional(),
   /** ID do tema escolhido (biblioteca de temas). Opcional. */
   theme: z.string().max(40).nullable().optional(),
+  /** Sequência editada no editor, persistida antes do render. */
+  images: z.array(CampaignImageSchema).min(1).max(MAX_CAMPAIGN_IMAGES).optional(),
+  /** Duração escolhida no editor. Ausente = mantém a da campanha. */
+  duration_seconds: z
+    .number()
+    .int()
+    .refine((v): v is RenderDuration => (RENDER_DURATIONS as readonly number[]).includes(v), {
+      message: "duration_seconds_not_allowed",
+    })
+    .optional(),
 });
 
 export const approveCampaignAndRender = createServerFn({ method: "POST" })
@@ -822,7 +938,9 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         prev.status !== "completed" &&
         prev.status !== "failed" &&
         prev.status !== "cancelled";
-      if (inFlight) {
+      // Job em andamento é reaproveitado — exceto se estiver parado: aí ele é
+      // liberado com segurança e um novo é criado com o estado atual do editor.
+      if (inFlight && !(await releaseStalledRenderJob(supabase, companyId, previousJobId))) {
         return { job_id: previousJobId };
       }
     }
@@ -830,6 +948,60 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
     if (!baseRow.primary_audio_id) throw new Error("campaign_missing_primary_audio");
     if (!baseRow.primary_image_media_id && !baseRow.primary_image_product_ref) {
       throw new Error("campaign_missing_primary_image");
+    }
+
+    // A sequência editada precisa ser validada e persistida antes de montar o snapshot do job.
+    // O company_id é sempre derivado da sessão e também restringe cada update.
+    let renderPrompt: unknown = baseRow.ai_prompt;
+    if (data.images) {
+      const edited: ValidatedImage[] = [];
+      for (let i = 0; i < data.images.length; i++) {
+        edited.push(await validateOneImage(supabase, companyId, data.images[i], i, i === 0));
+      }
+      const first = edited[0]?.ref;
+      const primaryMatches = first && ((first.source === "marketing_media" && baseRow.primary_image_media_id === first.image_id) || (first.source === "product_image" && baseRow.primary_image_product_ref?.product_id === first.product_id && baseRow.primary_image_product_ref?.image_path === first.product_image_path));
+      // Capa trocada no editor: a nova primeira imagem (já validada como da
+      // empresa) passa a ser a imagem principal da campanha — é ela que as
+      // listas mostram e que abre o vídeo.
+      if (!primaryMatches) {
+        if (!first) throw new Error("campaign_image_sequence_invalid:primary_mismatch");
+        const primaryPatch =
+          first.source === "marketing_media"
+            ? { primary_image_media_id: first.image_id, primary_image_product_ref: null }
+            : { primary_image_media_id: null, primary_image_product_ref: { product_id: first.product_id, image_path: first.product_image_path } };
+        for (const row of [feedRow, storyRow].filter(Boolean) as MarketingContentRow[]) {
+          const result = await supabase.from("marketing_contents").update(primaryPatch as never).eq("id", row.id).eq("company_id", companyId);
+          if (result.error) throw new Error("campaign_image_sequence_persist_failed");
+        }
+        Object.assign(baseRow, primaryPatch);
+        // eslint-disable-next-line no-console
+        console.info(JSON.stringify({ ts: new Date().toISOString(), level: "info", event: "campaign_cover_changed", campaign_id: data.campaign_id, company_id: companyId, source: first.source }));
+      }
+      const persistedSequence = sequenceToStore(edited.map((item) => item.sequenceItem));
+      for (const row of [feedRow, storyRow].filter(Boolean) as MarketingContentRow[]) {
+        const currentPrompt = row.ai_prompt && typeof row.ai_prompt === "object" && !Array.isArray(row.ai_prompt) ? row.ai_prompt as Record<string, unknown> : {};
+        const result = await supabase.from("marketing_contents").update({ ai_prompt: { ...currentPrompt, image_sequence: persistedSequence } as never }).eq("id", row.id).eq("company_id", companyId);
+        if (result.error) throw new Error("campaign_image_sequence_persist_failed");
+      }
+      renderPrompt = { ...(baseRow.ai_prompt && typeof baseRow.ai_prompt === "object" && !Array.isArray(baseRow.ai_prompt) ? baseRow.ai_prompt as Record<string, unknown> : {}), image_sequence: persistedSequence };
+    }
+    // Layout do editor: normalizado contra a cena no servidor, para que o
+    // banco e o worker só recebam valores dentro dos limites do contrato.
+    const approvedTemplate =
+      data.template ?? ((baseRow as { video_template?: string | null }).video_template ?? null);
+    const approvedScene = getScene(approvedTemplate);
+    const approvedLayout = data.layout ? normalizeLayout(data.layout, approvedScene) : null;
+
+    // Duração escolhida no editor: o trecho de áudio precisa comportá-la.
+    const approvedDuration = data.duration_seconds ?? Number(baseRow.duration_seconds ?? 15);
+    if (data.duration_seconds !== undefined) {
+      await assertPrimaryAudio(
+        supabase,
+        companyId,
+        baseRow.primary_audio_id,
+        Number(baseRow.audio_start_second ?? 0),
+        data.duration_seconds,
+      );
     }
 
     // Persistência do texto aprovado + layout/template do editor visual
@@ -842,15 +1014,40 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       overlay_cta: data.cta ?? null,
       overlay_approved_at: new Date().toISOString(),
       ...(data.layout !== undefined
-        ? { video_layout: data.layout as unknown as never }
+        ? { video_layout: approvedLayout as unknown as never }
         : {}),
       ...(data.template !== undefined ? { video_template: data.template } : {}),
+      ...(data.duration_seconds !== undefined ? { duration_seconds: data.duration_seconds } : {}),
     };
     const approveTargetIds = [feedRow?.id, storyRow?.id].filter(
       (x): x is string => typeof x === "string",
     );
     for (const id of approveTargetIds) {
-      await supabase.from("marketing_contents").update(approvedPatch).eq("id", id);
+      await updateMarketingContentOrThrow(supabase, companyId, id, approvedPatch);
+    }
+
+    // Documento do Estúdio Criativo equivalente ao que foi aprovado. É um
+    // espelho: o render continua lendo as colunas acima. Melhor esforço — num
+    // banco ainda sem a coluna `design`, o vídeo é gerado normalmente.
+    try {
+      const design = documentFromContentRow({
+        ...baseRow,
+        design: null,
+        overlay_headline: data.headline,
+        overlay_subheadline: data.subheadline ?? null,
+        overlay_cta: data.cta ?? null,
+        video_template: approvedTemplate,
+        video_layout: approvedLayout ?? (baseRow as { video_layout?: unknown }).video_layout ?? null,
+        ai_prompt: renderPrompt,
+      });
+      if (design) {
+        for (const id of approveTargetIds) {
+          const saved = await supabase.from("marketing_contents").update({ design: design as unknown as never }).eq("id", id).eq("company_id", companyId);
+          if (saved.error) break;
+        }
+      }
+    } catch {
+      // Espelho opcional: nunca impede a geração do vídeo.
     }
 
     // Master 9:16 (Story quando habilitada; senão a linha disponível).
@@ -897,7 +1094,16 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         data.template ??
           ((baseRow as { video_template?: string | null }).video_template ?? null),
       );
-    const themeSnapshot = buildThemeSnapshot(themeId);
+    // As cores escolhidas no editor (paleta dentro do layout) têm prioridade
+    // sobre qualquer tema: é exatamente o que a prévia mostrou.
+    const themeSnapshot = approvedLayout?.colors
+      ? sanitizeThemeSnapshot(
+          paletteToThemeInput(
+            fitPaletteToScene(approvedLayout.colors, approvedScene),
+            approvedLayout.colorMode ?? "custom",
+          ),
+        )
+      : buildThemeSnapshot(themeId);
 
     // eslint-disable-next-line no-console
     console.info(
@@ -921,16 +1127,17 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
       }),
     );
 
+    const renderImages = await resolveRenderImages(supabase, companyId, renderPrompt, image);
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
       role: "story",
       primaryImage: image,
-      primaryFocalPoint: null,
-      imageSequence: null,
+      primaryFocalPoint: renderImages.primaryFocalPoint,
+      imageSequence: renderImages.imageSequence,
       audioId: baseRow.primary_audio_id,
       audioStart: Number(baseRow.audio_start_second ?? 0),
-      duration: Number(baseRow.duration_seconds ?? 15),
+      duration: approvedDuration,
       // Nunca reusa job antigo aqui — se chegamos até este ponto, ou não
       // havia job, ou o anterior estava em estado terminal. Um novo job
       // com snapshot atual é criado e re-vinculado abaixo.
@@ -939,22 +1146,16 @@ export const approveCampaignAndRender = createServerFn({ method: "POST" })
         ...resolved.content,
         companyName,
         template: data.template ?? null,
-        overlayLayout: (data.layout ?? null) as Record<string, unknown> | null,
+        overlayLayout: (approvedLayout ?? null) as Record<string, unknown> | null,
         theme: themeSnapshot,
       },
     });
 
     if (feedRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ feed_render_job_id: jobId })
-        .eq("id", feedRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { feed_render_job_id: jobId });
     }
     if (storyRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ story_render_job_id: jobId })
-        .eq("id", storyRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { story_render_job_id: jobId });
     }
 
     return { job_id: jobId };
@@ -989,14 +1190,27 @@ export const getCampaignRenderStatus = createServerFn({ method: "POST" })
     ].filter((x): x is string => typeof x === "string" && x.length > 0);
 
     let jobs: Array<
-      Pick<RenderJobRow, "id" | "status" | "progress" | "error_code" | "video_format">
+      Pick<RenderJobRow, "id" | "status" | "progress" | "error_code" | "video_format"> & {
+        /** Job ativo que parou de andar (fila sem worker ou worker que caiu). */
+        stall: RenderStall | null;
+      }
     > = [];
     if (jobIds.length > 0) {
       const { data: jobRows } = await supabase
         .from("video_render_jobs")
-        .select("id, status, progress, error_code, video_format")
+        .select("id, company_id, status, progress, error_code, video_format, created_at, available_at, updated_at, locked_at")
+        .eq("company_id", companyId)
         .in("id", jobIds);
-      jobs = (jobRows ?? []) as typeof jobs;
+      // A parada é decidida no servidor: o relógio do navegador não é confiável.
+      const now = Date.now();
+      jobs = (jobRows ?? []).map((j) => ({
+        id: j.id,
+        status: j.status as RenderJobRow["status"],
+        progress: j.progress,
+        error_code: j.error_code,
+        video_format: j.video_format as RenderJobRow["video_format"],
+        stall: detectRenderStall(j, now),
+      }));
     }
     const byId = new Map(jobs.map((j) => [j.id, j]));
 
@@ -1048,7 +1262,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     const { data: rows, error } = await supabase
       .from("marketing_contents")
       .select(
-        "id, company_id, campaign_role, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id",
+        "id, company_id, campaign_role, primary_image_media_id, primary_image_product_ref, primary_audio_id, audio_start_second, duration_seconds, title, body, cta_text, overlay_headline, overlay_subheadline, overlay_cta, feed_render_job_id, story_render_job_id, feed_video_id, story_video_id, ai_prompt",
       )
       .eq("company_id", companyId)
       .eq("campaign_id", data.campaign_id);
@@ -1072,6 +1286,7 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       story_render_job_id: string | null;
       feed_video_id: string | null;
       story_video_id: string | null;
+      ai_prompt: unknown;
     }>;
     const feedRow = list.find((r) => r.campaign_role === "feed") ?? null;
     const storyRow = list.find((r) => r.campaign_role === "story") ?? null;
@@ -1127,9 +1342,13 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
         .from("video_render_jobs")
         .select("id, status")
         .in("id", candidateJobIds);
-      const active = (js ?? []).find(
+      const activeJob = (js ?? []).find(
         (j) => j.status === "queued" || j.status === "processing",
       );
+      // Job ativo é reaproveitado (sem duplicar). Se estiver PARADO, é liberado
+      // de forma condicional e seguimos para criar um novo.
+      const active =
+        activeJob && !(await releaseStalledRenderJob(supabase, companyId, activeJob.id)) ? activeJob : null;
       if (active) {
         // eslint-disable-next-line no-console
         console.info(
@@ -1145,16 +1364,10 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
         );
         // Reforça o vínculo em ambas as linhas (idempotente).
         if (feedRow) {
-          await supabase
-            .from("marketing_contents")
-            .update({ feed_render_job_id: active.id })
-            .eq("id", feedRow.id);
+          await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { feed_render_job_id: active.id });
         }
         if (storyRow) {
-          await supabase
-            .from("marketing_contents")
-            .update({ story_render_job_id: active.id })
-            .eq("id", storyRow.id);
+          await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { story_render_job_id: active.id });
         }
         return { job_id: active.id };
       }
@@ -1200,13 +1413,14 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
       }),
     );
 
+    const retryImages = await resolveRenderImages(supabase, companyId, src.ai_prompt, image);
     const { jobId } = await ensureCampaignJob(supabase, {
       companyId,
       userId,
       role: "story", // master é sempre 9:16
       primaryImage: image,
-      primaryFocalPoint: null,
-      imageSequence: null,
+      primaryFocalPoint: retryImages.primaryFocalPoint,
+      imageSequence: retryImages.imageSequence,
       audioId: src.primary_audio_id,
       audioStart: Number(src.audio_start_second ?? 0),
       duration: Number(src.duration_seconds ?? 15),
@@ -1215,16 +1429,10 @@ export const retryCampaignRender = createServerFn({ method: "POST" })
     });
 
     if (feedRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ feed_render_job_id: jobId })
-        .eq("id", feedRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, feedRow.id, { feed_render_job_id: jobId });
     }
     if (storyRow) {
-      await supabase
-        .from("marketing_contents")
-        .update({ story_render_job_id: jobId })
-        .eq("id", storyRow.id);
+      await updateMarketingContentOrThrow(supabase, companyId, storyRow.id, { story_render_job_id: jobId });
     }
 
     return { job_id: jobId };
@@ -1320,6 +1528,7 @@ export const generateManualCampaign = createServerFn({ method: "POST" })
       template: data.template ?? null,
       media_ids: mediaIds,
       promotion_id: data.promotion_id ?? null,
+      image_sequence: sequenceToStore(validated.map((item) => item.sequenceItem)),
     };
 
     const campaignId = crypto.randomUUID();
@@ -1383,7 +1592,7 @@ export const generateManualCampaign = createServerFn({ method: "POST" })
       .from("marketing_contents")
       .insert(rowsToInsert as never)
       .select("*");
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(overlayLimitMessage(error.message) ?? error.message);
 
     // eslint-disable-next-line no-console
     console.info(
