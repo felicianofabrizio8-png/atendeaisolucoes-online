@@ -172,21 +172,19 @@ function PostSlot({
   children: ReactNode;
 }) {
   const d = depth[index];
-  const rotateY = useTransform(sx, (v) => v * d);
-  const rotateX = useTransform(sy, (v) => v * -d * 0.7);
-  const x = useTransform(sx, (v) => v * d * 1.6);
-  const y = useTransform(sy, (v) => v * d * 1.1);
+  // Só deslocamento 2D, em pixels inteiros: inclinação 3D, escala e desfoque fazem o
+  // navegador rasterizar o card como textura e reamostrar o texto, que fica borrado.
+  const x = useTransform(sx, (v) => Math.round(v * d * 1.6));
+  const y = useTransform(sy, (v) => Math.round(v * d * 1.1));
   return (
-    <motion.div
-      className={`mkt-post-slot mkt-post-slot-${index}`}
-      style={{ rotateX, rotateY, x, y }}
-    >
-      <div className="mkt-post-base">
-        <div className="mkt-post-float">
+    <motion.div className={`mkt-post-slot mkt-post-slot-${index}`} style={{ x, y }}>
+      {/* A flutuação envolve a inclinação: o card é pintado já inclinado, com nitidez. */}
+      <div className="mkt-post-float">
+        <div className="mkt-post-base">
           <motion.div
             className="mkt-post-enter"
-            initial={reduce ? false : { opacity: 0, y: 40, scale: 0.94, filter: "blur(14px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+            initial={reduce ? false : { opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{
               type: "spring",
               stiffness: 90,
@@ -197,7 +195,7 @@ function PostSlot({
           >
             <motion.article
               className="mkt-post"
-              whileHover={reduce ? undefined : { y: -10, scale: 1.025 }}
+              whileHover={reduce ? undefined : { y: -10 }}
               transition={{ type: "spring", stiffness: 260, damping: 24 }}
             >
               <span className="mkt-post-glow" />

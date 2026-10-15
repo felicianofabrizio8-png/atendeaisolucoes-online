@@ -91,104 +91,178 @@ export function MarketingArtwork({
 
 type Paint = { u: (name: string) => string; n: (name: string) => string };
 
-/** A thick liquid-glass capsule lying on a diagonal, refracting a band of light. */
+/**
+ * A thick liquid-glass capsule lying on a diagonal. Realism comes from layering what real
+ * glass does: a mostly see-through body, an inverted (refracted) view of the surroundings,
+ * a thick edge with internal reflection, a lit bevel, crisp tapered speculars, a faint
+ * colour fringe on the rim and light focused into a caustic at the far end.
+ */
 function Lens({ u, n }: Paint) {
+  const capsule = { x: 128, y: 46, width: 144, height: 300, rx: 72 };
+  const edge =
+    "M200 46a72 72 0 0 1 72 72v156a72 72 0 0 1-144 0V118a72 72 0 0 1 72-72Z" +
+    "M200 60a58 58 0 0 0-58 58v156a58 58 0 0 0 116 0V118a58 58 0 0 0-58-58Z";
   return (
     <g transform="rotate(-28 200 196)">
       <defs>
-        <linearGradient id={n("lens-body")} x1="0" y1="0" x2="0.35" y2="1">
-          {stop(0, "--g-body-a", 0.92)}
-          {stop(0.42, "--g-body-b", 0.86)}
-          {stop(1, "--g-body-c", 0.96)}
+        <linearGradient id={n("lens-body")} x1="0" y1="0" x2="0.3" y2="1">
+          {stop(0, "--g-body-a", 0.5)}
+          {stop(0.45, "--g-body-b", 0.32)}
+          {stop(0.8, "--g-body-a", 0.42)}
+          {stop(1, "--g-glow", 0.55)}
         </linearGradient>
-        <radialGradient id={n("lens-light")} cx="0.5" cy="0.5" r="0.5">
-          {stop(0, "--g-glow", 0.95)}
-          {stop(0.6, "--g-glow", 0.28)}
+        <linearGradient id={n("lens-edge")} x1="0" y1="0" x2="1" y2="0">
+          {stop(0, "--g-hi", 0.34)}
+          {stop(0.16, "--g-hi", 0.06)}
+          {stop(0.5, "--g-body-c", 0.1)}
+          {stop(0.84, "--g-glow", 0.28)}
+          {stop(1, "--g-rim", 0.5)}
+        </linearGradient>
+        <linearGradient id={n("lens-streak")} x1="0" y1="0" x2="0" y2="1">
+          {stop(0, "--g-hi", 0)}
+          {stop(0.25, "--g-hi", 0.95)}
+          {stop(0.7, "--g-hi", 0.75)}
+          {stop(1, "--g-hi", 0)}
+        </linearGradient>
+        <linearGradient id={n("lens-outline")} x1="0" y1="0" x2="1" y2="1">
+          {stop(0, "--g-hi", 0.9)}
+          {stop(0.3, "--g-hi", 0.28)}
+          {stop(0.55, "--g-hi", 0.05)}
+          {stop(0.85, "--g-rim", 0.55)}
+          {stop(1, "--g-hi", 0.8)}
+        </linearGradient>
+        <radialGradient id={n("lens-caustic")} cx="0.5" cy="0.5" r="0.5">
+          {stop(0, "--g-hi", 0.85)}
+          {stop(0.18, "--g-rim", 0.75)}
+          {stop(0.55, "--g-glow", 0.4)}
           {stop(1, "--g-glow", 0)}
         </radialGradient>
-        <linearGradient id={n("lens-band")} x1="0" y1="0" x2="1" y2="0">
-          {stop(0, "--g-body-c", 0)}
-          {stop(0.5, "--g-body-c", 0.95)}
-          {stop(1, "--g-body-c", 0)}
-        </linearGradient>
+        <radialGradient id={n("lens-behind")} cx="0.5" cy="0.5" r="0.5">
+          {stop(0, "--g-glow", 0.6)}
+          {stop(1, "--g-glow", 0)}
+        </radialGradient>
         <clipPath id={n("lens-clip")}>
-          <rect x="128" y="46" width="144" height="300" rx="72" />
+          <rect {...capsule} />
         </clipPath>
+        {/* Bevel: a blurred copy of the shape lit from the top-left reads as rounded glass. */}
+        <filter id={n("lens-bevel")} x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="height" />
+          <feSpecularLighting
+            in="height"
+            surfaceScale="5"
+            specularConstant="1.15"
+            specularExponent="42"
+            lightingColor="#ffffff"
+            result="light"
+          >
+            <feDistantLight azimuth="235" elevation="38" />
+          </feSpecularLighting>
+          <feComposite in="light" in2="SourceAlpha" operator="in" />
+        </filter>
       </defs>
-      <rect x="128" y="46" width="144" height="300" rx="72" fill={u("lens-body")} />
+
+      {/* Light passing through the glass and pooling behind it. */}
+      <ellipse cx="214" cy="250" rx="96" ry="120" fill={u("lens-behind")} filter={u("soft")} />
+
+      <rect {...capsule} fill={u("lens-body")} />
       <g clipPath={u("lens-clip")}>
-        <ellipse cx="226" cy="268" rx="78" ry="104" fill={u("lens-light")} filter={u("soft")} />
+        {/* Refraction flips the surroundings: dark horizon up top, light gathered below. */}
         <ellipse
-          cx="164"
-          cy="104"
-          rx="52"
-          ry="40"
-          fill={u("lens-light")}
-          opacity=".45"
+          cx="196"
+          cy="156"
+          rx="96"
+          ry="42"
+          fill="var(--g-body-c)"
+          opacity=".55"
           filter={u("soft")}
         />
         <path
-          d="M96 236C150 214 190 252 238 222S300 176 316 186"
-          stroke={u("lens-band")}
-          strokeWidth="34"
+          d="M110 214C152 196 196 226 236 206S290 176 300 182"
+          stroke="var(--g-glow)"
+          strokeOpacity=".45"
+          strokeWidth="26"
           filter={u("blur")}
         />
-        <path
-          d="M120 258C168 240 204 272 246 246S292 214 306 220"
-          stroke="var(--g-hi)"
-          strokeOpacity=".5"
-          strokeWidth="1.6"
+        <ellipse cx="224" cy="292" rx="52" ry="40" fill={u("lens-caustic")} filter={u("blur")} />
+        <ellipse
+          cx="230"
+          cy="300"
+          rx="16"
+          ry="9"
+          fill="var(--g-hi)"
+          opacity=".55"
           filter={u("hair")}
         />
-        <path
-          d="M132 160C170 150 206 170 240 152"
-          stroke="var(--g-cool)"
-          strokeOpacity=".28"
-          strokeWidth="10"
-          filter={u("blur")}
+        {/* Thick wall: internal reflection keeps the edge brighter than the core. */}
+        <path d={edge} fillRule="evenodd" fill={u("lens-edge")} filter={u("hair")} />
+        <rect
+          x="142"
+          y="60"
+          width="116"
+          height="272"
+          rx="58"
+          stroke="var(--g-hi)"
+          strokeOpacity=".16"
+          strokeWidth="1"
+        />
+        <rect
+          {...capsule}
+          fill="#ffffff"
+          opacity=".38"
+          filter={u("lens-bevel")}
+          style={{ mixBlendMode: "screen" }}
+        />
+        {/* Window reflection on the far wall. */}
+        <rect
+          x="232"
+          y="110"
+          width="14"
+          height="120"
+          rx="7"
+          fill="var(--g-hi)"
+          opacity=".1"
+          filter={u("hair")}
         />
       </g>
+
+      {/* Chromatic fringe: the rim splits light slightly into cool and warm edges. */}
       <rect
-        x="141"
-        y="59"
-        width="118"
-        height="274"
-        rx="59"
-        stroke="var(--g-hi)"
-        strokeOpacity=".12"
-        strokeWidth="1.4"
+        {...capsule}
+        transform="translate(-1.2 0.6)"
+        stroke="var(--g-cool)"
+        strokeOpacity=".4"
+        strokeWidth="1"
       />
-      <rect x="128" y="46" width="144" height="300" rx="72" stroke={u("rim")} strokeWidth="2.4" />
+      <rect
+        {...capsule}
+        transform="translate(1.2 -0.6)"
+        stroke="var(--g-rim)"
+        strokeOpacity=".35"
+        strokeWidth="1"
+      />
+      <rect {...capsule} stroke={u("lens-outline")} strokeWidth="1.4" />
+
+      {/* Crisp, tapered speculars: long edge streak, cap crescent and a hot spot. */}
+      <path d="M151 122C139 164 139 230 151 274C146 230 146 164 156 124Z" fill={u("lens-streak")} />
       <path
-        d="M146 128C140 160 140 228 146 262"
-        stroke="var(--g-hi)"
-        strokeOpacity=".75"
-        strokeWidth="5"
-        strokeLinecap="round"
-        filter={u("hair")}
-      />
-      <path
-        d="M156 76C172 62 196 56 220 60"
-        stroke="var(--g-hi)"
-        strokeOpacity=".85"
-        strokeWidth="3"
-        strokeLinecap="round"
-        filter={u("hair")}
-      />
-      <ellipse
-        cx="172"
-        cy="90"
-        rx="13"
-        ry="5"
-        transform="rotate(-24 172 90)"
+        d="M146 98A62 62 0 0 1 230 62A54 54 0 0 0 152 102Z"
         fill="var(--g-hi)"
         opacity=".9"
         filter={u("hair")}
       />
+      <ellipse cx="168" cy="86" rx="7" ry="3" transform="rotate(-36 168 86)" fill="var(--g-hi)" />
       <path
-        d="M258 300C250 318 236 330 216 336"
+        d="M262 300A64 64 0 0 1 186 334"
         stroke="var(--g-rim)"
-        strokeOpacity=".7"
+        strokeOpacity=".85"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        filter={u("hair")}
+      />
+      <path
+        d="M254 150C258 176 258 214 254 238"
+        stroke="var(--g-hi)"
+        strokeOpacity=".35"
         strokeWidth="2"
         strokeLinecap="round"
         filter={u("hair")}

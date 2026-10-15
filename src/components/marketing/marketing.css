@@ -644,12 +644,9 @@
 .mkt-posts {
   position: relative;
   height: 460px;
-  perspective: 1200px;
 }
 .mkt-post-slot {
   position: absolute;
-  transform-style: preserve-3d;
-  will-change: transform;
 }
 .mkt-post-slot-0,
 .mkt-post-slot-1,
@@ -681,7 +678,6 @@
   transform: rotate(5deg);
 }
 .mkt-post-float {
-  will-change: transform;
   animation: mkt-float 8s ease-in-out infinite alternate;
   animation-play-state: paused;
 }
@@ -2626,10 +2622,10 @@
 }
 @keyframes mkt-float {
   from {
-    transform: translate3d(0, 6px, 0) rotate(-0.6deg);
+    transform: translateY(6px);
   }
   to {
-    transform: translate3d(0, -8px, 0) rotate(0.6deg);
+    transform: translateY(-8px);
   }
 }
 @keyframes mkt-glow {
@@ -2817,7 +2813,7 @@
   position: absolute;
   left: -70%;
   width: 240%;
-  height: 20%;
+  height: 12%;
   border-radius: 50%;
   background: linear-gradient(
     90deg,
@@ -2827,9 +2823,8 @@
     var(--v-orchid) 60%,
     transparent 82%
   );
-  filter: blur(12px);
-  opacity: 0.5;
-  will-change: transform;
+  filter: blur(4px);
+  opacity: 0.55;
   animation: mkt-stream 9s ease-in-out infinite alternate;
   animation-play-state: paused;
 }

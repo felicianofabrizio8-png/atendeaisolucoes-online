@@ -146,46 +146,55 @@ export function MarketingWorkspace({ companyId }: { companyId: string }) {
             </TabsContent>
 
             <TabsContent value="criar" className="mkt-tab-panel mkt-tool-panel">
-              <ChipRow label="Criar" className="mkt-chip-row">
-                <Chip
-                  className="mkt-chip"
-                  active={createScreen === "generator"}
-                  onClick={() => setCreateScreen("generator")}
-                >
-                  Nova publicação
-                </Chip>
-                <Chip
-                  className="mkt-chip"
-                  active={createScreen === "studio"}
-                  onClick={() => setCreateScreen("studio")}
-                >
-                  Estúdio criativo
-                </Chip>
-                <Chip
-                  className="mkt-chip"
-                  active={createScreen === "promotions"}
-                  onClick={() => setCreateScreen("promotions")}
-                >
-                  Promoções
-                </Chip>
-              </ChipRow>
-              {createScreen === "generator" ? (
-                <MarketingGenerator
-                  key={seed.nonce}
-                  companyId={companyId}
-                  initialSelection={seed.selection}
-                  onGenerated={() => {
-                    // A próxima criação começa do zero, sem a mídia da anterior.
-                    setSeed((cur) => ({ selection: [], nonce: cur.nonce + 1 }));
-                    setGroup(GENERATED_DESTINATION.group);
-                    setPublishView("review");
-                  }}
-                />
-              ) : createScreen === "studio" ? (
-                <StudioLauncher companyId={companyId} />
-              ) : (
-                <MarketingPromotions companyId={companyId} />
-              )}
+              {/* Mesmo cabeçalho de Acervo e Publicar. */}
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight">Criar</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Publicações, artes no estúdio e promoções em um só lugar.
+                  </p>
+                </div>
+                <ChipRow label="Criar" className="mkt-chip-row">
+                  <Chip
+                    className="mkt-chip"
+                    active={createScreen === "generator"}
+                    onClick={() => setCreateScreen("generator")}
+                  >
+                    Nova publicação
+                  </Chip>
+                  <Chip
+                    className="mkt-chip"
+                    active={createScreen === "studio"}
+                    onClick={() => setCreateScreen("studio")}
+                  >
+                    Estúdio criativo
+                  </Chip>
+                  <Chip
+                    className="mkt-chip"
+                    active={createScreen === "promotions"}
+                    onClick={() => setCreateScreen("promotions")}
+                  >
+                    Promoções
+                  </Chip>
+                </ChipRow>
+                {createScreen === "generator" ? (
+                  <MarketingGenerator
+                    key={seed.nonce}
+                    companyId={companyId}
+                    initialSelection={seed.selection}
+                    onGenerated={() => {
+                      // A próxima criação começa do zero, sem a mídia da anterior.
+                      setSeed((cur) => ({ selection: [], nonce: cur.nonce + 1 }));
+                      setGroup(GENERATED_DESTINATION.group);
+                      setPublishView("review");
+                    }}
+                  />
+                ) : createScreen === "studio" ? (
+                  <StudioLauncher companyId={companyId} />
+                ) : (
+                  <MarketingPromotions companyId={companyId} />
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="acervo" className="mkt-tab-panel mkt-tool-panel">
