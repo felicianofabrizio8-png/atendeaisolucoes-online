@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -61,6 +61,7 @@ import { EventDrawer } from "@/components/agenda/EventDrawer";
 import { EventFormModal } from "@/components/agenda/EventFormModal";
 import { useEventTypes } from "@/components/agenda/useEventTypes";
 import { AgendaCustomize } from "@/components/agenda/AgendaCustomize";
+import { LumeDock } from "@/components/lume/LumeDock";
 import {
   applyFilters,
   daysOf,
@@ -205,6 +206,12 @@ function AgendaPage() {
   const [sendTarget, setSendTarget] = useState<Visit | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [customizing, setCustomizing] = useState(false);
+  const [lumeSignal, setLumeSignal] = useState(0);
+  // Link de aviso da Lume (/agenda?evento=…) abre o compromisso direto.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("evento");
+    if (id) setSelectedId(id);
+  }, []);
   const [preferences, setPreferences] = useState<AgendaPreferences>(() => {
     try {
       return { ...DEFAULT_PREFERENCES, ...JSON.parse(readPreference("prefs", "{}")) };
@@ -299,7 +306,11 @@ function AgendaPage() {
   return (
     <div className="lume-agenda flex-1">
       <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <AgendaHero pulse={pulse} onCreate={() => openCreate()} />
+        <AgendaHero
+          pulse={pulse}
+          onCreate={() => openCreate()}
+          onAskLume={() => setLumeSignal((n) => n + 1)}
+        />
 
         <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
           <AgendaToolbar
@@ -369,6 +380,22 @@ function AgendaPage() {
           )}
         </section>
       </div>
+
+      <LumeDock
+        page="Agenda"
+        greeting="O que vamos organizar?"
+        openSignal={lumeSignal}
+        suggestions={[
+          "O que eu tenho amanhã?",
+          "Marque uma reunião de equipe sexta às 10h",
+          "Ache um horário livre de 1h nesta semana",
+          "Me avise 30 minutos antes de cada visita",
+        ]}
+        onChanged={(touched) => {
+          void reload();
+          if (touched.length === 1) setSelectedId(touched[0]);
+        }}
+      />
 
       <AgendaCustomize
         open={customizing}

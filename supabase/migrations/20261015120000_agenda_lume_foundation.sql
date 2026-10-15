@@ -198,8 +198,23 @@ DECLARE
   v_key text;
   v_actor uuid := auth.uid();
   v_name text;
-  v_source text := COALESCE(NULLIF(current_setting('lume.source', true), ''), v_row->>'source', 'tela');
+  v_headers jsonb;
+  v_source text;
 BEGIN
+  -- Quem pediu: a Lume manda o cabeçalho x-lume-source em cada requisição.
+  BEGIN
+    v_headers := NULLIF(current_setting('request.headers', true), '')::jsonb;
+  EXCEPTION WHEN others THEN v_headers := NULL;
+  END;
+  v_source := COALESCE(
+    NULLIF(v_headers->>'x-lume-source', ''),
+    NULLIF(current_setting('lume.source', true), ''),
+    CASE WHEN TG_OP = 'INSERT' THEN v_row->>'source' END,
+    'tela'
+  );
+  IF v_source NOT IN ('tela', 'lume', 'atendimento', 'google', 'sistema') THEN
+    v_source := 'tela';
+  END IF;
   IF TG_OP = 'UPDATE' THEN
     FOR v_key IN SELECT jsonb_object_keys(v_row) LOOP
       CONTINUE WHEN v_key IN ('updated_at', 'updated_by', 'created_by', 'created_at');
@@ -331,6 +346,16 @@ ALTER TABLE public.lume_notifications ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS lume_notifications_own ON public.lume_notifications;
 CREATE POLICY lume_notifications_own ON public.lume_notifications FOR SELECT TO authenticated
   USING (user_id = auth.uid() AND company_id = public.current_company_id());
+-- Avisar colegas: quem gerencia a agenda pode notificar pessoas da própria empresa.
+DROP POLICY IF EXISTS lume_notifications_send ON public.lume_notifications;
+CREATE POLICY lume_notifications_send ON public.lume_notifications FOR INSERT TO authenticated
+  WITH CHECK (
+    public.agenda_can_access(company_id, true)
+    AND EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = lume_notifications.user_id AND p.company_id = lume_notifications.company_id
+    )
+  );
 DROP POLICY IF EXISTS lume_notifications_mark_read ON public.lume_notifications;
 CREATE POLICY lume_notifications_mark_read ON public.lume_notifications FOR UPDATE TO authenticated
   USING (user_id = auth.uid() AND company_id = public.current_company_id())
