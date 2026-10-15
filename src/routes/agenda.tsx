@@ -57,6 +57,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { AgendaHero } from "@/components/agenda/AgendaHero";
+import { AgendaToolbar } from "@/components/agenda/AgendaToolbar";
+import { MonthView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
+import { useAgendaEvents } from "@/components/agenda/useAgendaEvents";
+import {
+  applyFilters,
+  daysOf,
+  EMPTY_FILTERS,
+  findConflicts,
+  peopleOf,
+  pulseOf,
+  shiftFocus,
+  viewRange,
+  type AgendaFilters,
+  type AgendaView,
+} from "@/components/agenda/agenda-model";
+import "@/components/agenda/agenda.css";
 
 export const Route = createFileRoute("/agenda")({
   component: AgendaPage,
@@ -172,275 +189,233 @@ function onlyDigits(s: string): string {
 
 
 
-// ---------- Página ----------
+/// ---------- Página ----------
 function AgendaPage() {
   const { company } = useAuth();
   const companyId = company?.id;
 
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<AgendaView>(() => readPreference("view", "semana"));
+  const [focus, setFocus] = useState(() => new Date());
+  const [filters, setFilters] = useState<AgendaFilters>(EMPTY_FILTERS);
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Visit | null>(null);
+  const [createAt, setCreateAt] = useState<Date | null>(null);
   const [sendTarget, setSendTarget] = useState<Visit | null>(null);
-  const [typeFilter, setTypeFilter] = useState<"todos" | AppointmentType>("todos");
-  const [viewMode, setViewMode] = useState<"dia" | "semana" | "todos">("semana");
 
+  const range = useMemo(() => viewRange(view, focus), [view, focus]);
+  const { events, loading, error, reload, setStatus, reschedule, remove } = useAgendaEvents(
+    companyId,
+    range,
+  );
+  const pulse = useMemo(() => pulseOf(events), [events]);
+  const people = useMemo(() => peopleOf(events), [events]);
+  const inRange = useMemo(
+    () =>
+      applyFilters(events, filters).filter((event) => {
+        const at = new Date(event.scheduled_at);
+        return at >= range.from && at <= range.to;
+      }),
+    [events, filters, range],
+  );
+  const conflicts = useMemo(() => findConflicts(inRange), [inRange]);
+  const days = useMemo(() => daysOf(range.from, range.to), [range]);
 
-  const loadVisits = useCallback(async () => {
-    if (!companyId) {
-      setVisits([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("visits")
-      .select(
-        "id,title,address,scheduled_at,status,notes,customer_name,customer_phone,product,lead_id,quote_id,appointment_type,city,salesperson,technician",
-      )
-      .eq("company_id", companyId)
-      .order("scheduled_at", { ascending: true });
-
-    if (error) {
-      console.error("loadVisits", error);
-      toast.error("Não foi possível carregar a agenda");
-    } else {
-      setVisits((data ?? []) as Visit[]);
-    }
-    setLoading(false);
-  }, [companyId]);
-
-  useEffect(() => {
-    void loadVisits();
-  }, [loadVisits]);
-
-  const filteredVisits = useMemo(() => {
-    const now = new Date();
-    return visits.filter((v) => {
-      if (typeFilter !== "todos" && v.appointment_type !== typeFilter) return false;
-      const d = new Date(v.scheduled_at);
-      if (viewMode === "dia") return isToday(d);
-      if (viewMode === "semana") return isThisWeek(d, { locale: ptBR });
-      return true;
+  function changeView(next: AgendaView) {
+    setView(next);
+    writePreference("view", next);
+  }
+  function openCreate(at: Date | null = null) {
+    setEditing(null);
+    setCreateAt(at);
+    setOpenForm(true);
+  }
+  function openEdit(event: Visit) {
+    setEditing(event);
+    setCreateAt(null);
+    setOpenForm(true);
+  }
+  async function move(event: Visit, at: Date) {
+    if (at.getTime() === new Date(event.scheduled_at).getTime()) return;
+    const before = new Date(event.scheduled_at);
+    if (!(await reschedule(event.id, at))) return;
+    toast.success(`Remarcado para ${format(at, "EEE dd/MM 'às' HH:mm", { locale: ptBR })}`, {
+      action: { label: "Desfazer", onClick: () => void reschedule(event.id, before) },
     });
-  }, [visits, typeFilter, viewMode]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, Visit[]>();
-    for (const v of filteredVisits) {
-      const dayKey = v.scheduled_at.slice(0, 10);
-      const arr = map.get(dayKey) ?? [];
-      arr.push(v);
-      map.set(dayKey, arr);
-    }
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredVisits]);
-
-  // Próximo compromisso nas próximas 2 horas — aviso destacado
-  const upcoming = useMemo(() => {
-    const now = new Date();
-    const horizon = addMinutes(now, 120);
-    return visits
-      .filter(
-        (v) =>
-          (v.status === "agendada" || v.status === "confirmada") &&
-          isAfter(new Date(v.scheduled_at), now) &&
-          new Date(v.scheduled_at) <= horizon,
-      )
-      .slice(0, 3);
-  }, [visits]);
-
-
-  async function handleDelete(id: string) {
-    if (!confirm("Excluir esta visita?")) return;
-    const { error } = await supabase.from("visits").delete().eq("id", id);
-    if (error) {
-      toast.error("Erro ao excluir");
-      return;
-    }
-    toast.success("Visita excluída");
-    setVisits((prev) => prev.filter((v) => v.id !== id));
+  }
+  async function handleDelete(event: Visit) {
+    if (!confirm(`Excluir "${event.title}"?`)) return;
+    if (await remove(event.id)) toast.success("Compromisso excluído");
   }
 
-  async function handleStatusChange(visit: Visit, status: VisitStatus) {
-    const { error } = await supabase
-      .from("visits")
-      .update({ status })
-      .eq("id", visit.id);
-    if (error) {
-      toast.error("Erro ao atualizar status");
-      return;
-    }
-    setVisits((prev) =>
-      prev.map((v) => (v.id === visit.id ? { ...v, status } : v)),
+  if (!companyId) {
+    return (
+      <div className="lume-agenda flex-1 p-6 text-sm text-[var(--ag-muted)]">
+        Faça login para gerenciar a agenda.
+      </div>
     );
   }
 
   return (
-    <div className="flex-1 p-4 md:p-8 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold">Agenda de compromissos</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Visitas técnicas, atendimentos na loja, retornos comerciais e mais.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setOpenForm(true);
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Novo compromisso
-        </Button>
+    <div className="lume-agenda flex-1">
+      <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+        <AgendaHero pulse={pulse} onCreate={() => openCreate()} />
+
+        <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
+          <AgendaToolbar
+            view={view}
+            focus={focus}
+            filters={filters}
+            people={people}
+            onView={changeView}
+            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
+            onToday={() => setFocus(new Date())}
+            onFilters={setFilters}
+          />
+          {conflicts.size > 0 && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
+              <Bell className="h-3.5 w-3.5" />
+              {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com borda
+              tracejada.
+            </p>
+          )}
+        </section>
+
+        {error && (
+          <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
+            <span>{error}</span>
+            <button type="button" className="ag-btn" onClick={() => void reload()}>
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        <section className="ag-panel overflow-hidden" aria-busy={loading}>
+          {view === "dia" || view === "semana" ? (
+            <TimeGridView
+              days={days}
+              events={inRange}
+              conflicts={conflicts}
+              onOpen={openEdit}
+              onCreateAt={(at) => openCreate(at)}
+              onMove={(event, at) => void move(event, at)}
+            />
+          ) : view === "mes" ? (
+            <MonthView
+              days={days}
+              focus={focus}
+              events={inRange}
+              conflicts={conflicts}
+              onOpen={openEdit}
+              onOpenDay={(day) => {
+                setFocus(day);
+                changeView("dia");
+              }}
+            />
+          ) : view === "linha" ? (
+            <TimelineView days={days} events={inRange} conflicts={conflicts} onOpen={openEdit} />
+          ) : (
+            <ListView
+              events={inRange}
+              loading={loading}
+              onEdit={openEdit}
+              onDelete={(event) => void handleDelete(event)}
+              onStatus={(event, status) => void setStatus(event.id, status)}
+              onSend={setSendTarget}
+            />
+          )}
+        </section>
       </div>
-
-      {!companyId && (
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            Faça login para gerenciar a agenda.
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Aviso de próximos compromissos */}
-      {companyId && upcoming.length > 0 && (
-        <Card className="border-amber-500/40 bg-amber-500/5">
-          <CardContent className="p-4 flex items-start gap-3">
-            <Bell className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                {upcoming.length === 1
-                  ? "1 compromisso nas próximas 2 horas"
-                  : `${upcoming.length} compromissos nas próximas 2 horas`}
-              </div>
-              <ul className="mt-1 space-y-0.5 text-xs text-foreground/80">
-                {upcoming.map((v) => {
-                  const M = TYPE_META[v.appointment_type];
-                  return (
-                    <li key={v.id} className="flex items-center gap-1.5">
-                      <M.icon className="h-3 w-3" />
-                      <span className="font-medium">
-                        {format(new Date(v.scheduled_at), "HH:mm")}
-                      </span>
-                      <span className="text-muted-foreground">·</span>
-                      <span className="truncate">{v.title}</span>
-                      {v.customer_name && (
-                        <span className="text-muted-foreground truncate">
-                          · {v.customer_name}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Filtros */}
-      {companyId && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex items-center rounded-md bg-secondary p-0.5 text-xs">
-            {(["dia", "semana", "todos"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setViewMode(m)}
-                className={cn(
-                  "px-3 py-1.5 rounded capitalize transition-colors",
-                  viewMode === m
-                    ? "bg-background shadow-sm font-medium"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {m === "dia" ? "Hoje" : m === "semana" ? "Esta semana" : "Todos"}
-              </button>
-            ))}
-          </div>
-          <div className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
-            <Filter className="h-3.5 w-3.5" />
-            Tipo:
-          </div>
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
-            <SelectTrigger className="h-8 w-[200px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos" className="text-xs">
-                Todos os tipos
-              </SelectItem>
-              {TYPE_KEYS.map((k) => (
-                <SelectItem key={k} value={k} className="text-xs">
-                  {TYPE_META[k].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {companyId && loading && (
-        <p className="text-sm text-muted-foreground">Carregando...</p>
-      )}
-
-      {companyId && !loading && filteredVisits.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            {visits.length === 0
-              ? 'Nenhum compromisso ainda. Clique em "Novo compromisso" para começar.'
-              : "Nenhum compromisso para os filtros selecionados."}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="space-y-6">
-        {grouped.map(([day, items]) => (
-          <div key={day}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              {format(new Date(day + "T12:00:00"), "EEEE, dd 'de' MMMM", { locale: ptBR })}
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {items.map((v) => (
-                <VisitCard
-                  key={v.id}
-                  visit={v}
-                  onEdit={() => {
-                    setEditing(v);
-                    setOpenForm(true);
-                  }}
-                  onDelete={() => handleDelete(v.id)}
-                  onStatusChange={(s) => handleStatusChange(v, s)}
-                  onSend={() => setSendTarget(v)}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
 
       {openForm && (
         <VisitFormModal
           companyId={companyId ?? null}
           visit={editing}
+          initialAt={createAt}
           onClose={() => setOpenForm(false)}
           onSaved={() => {
             setOpenForm(false);
-            void loadVisits();
+            void reload();
           }}
         />
       )}
 
       {sendTarget && (
-        <SendTechnicianModal
-          visit={sendTarget}
-          onClose={() => setSendTarget(null)}
-        />
+        <SendTechnicianModal visit={sendTarget} onClose={() => setSendTarget(null)} />
       )}
     </div>
   );
+}
+
+/** Lista: os cartões completos de sempre (status, WhatsApp, conversa, técnico), por dia. */
+function ListView({
+  events,
+  loading,
+  onEdit,
+  onDelete,
+  onStatus,
+  onSend,
+}: {
+  events: Visit[];
+  loading: boolean;
+  onEdit: (event: Visit) => void;
+  onDelete: (event: Visit) => void;
+  onStatus: (event: Visit, status: VisitStatus) => void;
+  onSend: (event: Visit) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, Visit[]>();
+    for (const event of events) {
+      const key = format(new Date(event.scheduled_at), "yyyy-MM-dd");
+      map.set(key, [...(map.get(key) ?? []), event]);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [events]);
+
+  if (!grouped.length)
+    return (
+      <p className="p-10 text-center text-sm text-[var(--ag-muted)]">
+        {loading ? "Carregando…" : "Nenhum compromisso neste período."}
+      </p>
+    );
+  return (
+    <div className="space-y-6 p-4 sm:p-5">
+      {grouped.map(([day, items]) => (
+        <div key={day}>
+          <h3 className="ag-mono mb-2">
+            {format(new Date(`${day}T12:00:00`), "EEEE, dd 'de' MMMM", { locale: ptBR })}
+          </h3>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((event) => (
+              <VisitCard
+                key={event.id}
+                visit={event}
+                onEdit={() => onEdit(event)}
+                onDelete={() => onDelete(event)}
+                onStatusChange={(status) => onStatus(event, status)}
+                onSend={() => onSend(event)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Preferências da visão ficam no navegador de cada usuário.
+function readPreference<T extends string>(key: string, fallback: T): T {
+  try {
+    return (localStorage.getItem(`lume.agenda.${key}`) as T | null) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writePreference(key: string, value: string) {
+  try {
+    localStorage.setItem(`lume.agenda.${key}`, value);
+  } catch {
+    /* navegação privada: segue sem lembrar */
+  }
 }
 
 // ---------- Card ----------
@@ -605,11 +580,14 @@ function useQuotesList() {
 function VisitFormModal({
   companyId,
   visit,
+  initialAt = null,
   onClose,
   onSaved,
 }: {
   companyId: string | null;
   visit: Visit | null;
+  /** Horário escolhido na grade ao criar. */
+  initialAt?: Date | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -618,10 +596,12 @@ function VisitFormModal({
 
   const initialDate = visit
     ? format(new Date(visit.scheduled_at), "yyyy-MM-dd")
-    : format(new Date(), "yyyy-MM-dd");
+    : format(initialAt ?? new Date(), "yyyy-MM-dd");
   const initialTime = visit
     ? format(new Date(visit.scheduled_at), "HH:mm")
-    : "09:00";
+    : initialAt
+      ? format(initialAt, "HH:mm")
+      : "09:00";
 
   const [appointmentType, setAppointmentType] = useState<AppointmentType>(
     visit?.appointment_type ?? "visita_tecnica",
