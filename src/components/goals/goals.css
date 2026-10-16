@@ -263,7 +263,6 @@
   font-size: clamp(30px, 6vw, 44px);
   font-weight: 700;
   letter-spacing: -0.045em;
-  text-transform: capitalize;
 }
 .lume-goals .gl-panel {
   border-radius: 26px;
@@ -338,4 +337,131 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .gl-ring { animation: none; }
+}
+
+/* ---------- Lume ---------- */
+.lume-goals .gl-lume {
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgb(124 58 237 / 0.22), transparent 55%),
+    linear-gradient(145deg, #19171f, #121214);
+}
+.gl-lume-item,
+.gl-lume-suggestion {
+  border-radius: 16px;
+  padding: 10px 12px;
+  font-size: 13px;
+  background: rgb(255 255 255 / 0.04);
+}
+.gl-lume-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgb(181 148 255 / 0.25);
+}
+.gl-lume-apply {
+  display: inline-flex;
+  min-height: 32px !important;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.gl-lume-dismiss {
+  display: inline-flex;
+  height: 32px;
+  width: 32px;
+  min-height: 32px !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.gl-lume-ask {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 4px 4px 4px 16px;
+}
+.gl-lume-ask input {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  font-size: 14px;
+  outline: none;
+}
+.gl-lume-ask button {
+  display: inline-flex;
+  height: 36px;
+  width: 36px;
+  min-height: 36px !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+}
+.gl-lume-ask button:disabled {
+  opacity: 0.4;
+}
+
+/* ---------- Botões e página ---------- */
+.gl-primary,
+.gl-secondary {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 650;
+  transition: transform 160ms ease, filter 160ms ease;
+}
+.gl-primary {
+  background: #fff;
+  color: #0b0b0c;
+  box-shadow: 0 10px 30px -12px rgb(168 85 247 / 0.7);
+}
+.gl-secondary {
+  border: 1px solid var(--border);
+  background: rgb(255 255 255 / 0.04);
+}
+.gl-primary:active,
+.gl-secondary:active {
+  transform: scale(0.97);
+}
+@media (max-width: 767px) {
+  .lume-goals header .gl-primary {
+    width: 100%;
+  }
+}
+/* A página cresce com o conteúdo e o espaço da barra inferior fica no mesmo fundo. */
+.app-content > .lume-goals {
+  flex: 1 0 auto;
+}
+.app-content:has(> .lume-goals) {
+  background: #09090b;
+}
+@media (max-width: 767px) {
+  /* Celular: o anel vai para o canto de cima, menor, e não cobre o número. */
+  .gl-ring {
+    top: 12px;
+    right: 12px;
+    height: 30px;
+    width: 30px;
+    margin-top: 0;
+    -webkit-mask: radial-gradient(circle, transparent 10px, #000 11px);
+    mask: radial-gradient(circle, transparent 10px, #000 11px);
+  }
+  .gl-stat-value {
+    font-size: 28px;
+  }
 }

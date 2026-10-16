@@ -9,7 +9,6 @@ import { useGoals } from "@/lib/goals/useGoals";
 import { formatGoalValue, type Goal, type GoalDraft, type GoalProgress } from "@/lib/goals/model";
 import type { GoalInsight, GoalStage } from "@/lib/goals/api";
 import { MobileSection, MobileSections } from "@/components/layout/MobileSections";
-import { MobileRail } from "@/components/layout/MobileRail";
 import { SegmentedTabs } from "@/components/layout/MobileSections";
 import "@/components/dashboard/dashboard.css";
 import "./goals.css";
@@ -96,7 +95,7 @@ export function GoalsDashboardView(props: GoalsDashboardProps) {
             </h1>
           </div>
           {canManage && (
-            <button type="button" className="lq-primary" onClick={props.onCreate}>
+            <button type="button" className="gl-primary" onClick={props.onCreate}>
               <Plus className="h-4 w-4" aria-hidden /> Nova meta
             </button>
           )}
@@ -109,16 +108,13 @@ export function GoalsDashboardView(props: GoalsDashboardProps) {
           </div>
         ) : (
           <div className="flex flex-col gap-5">
-            <MobileRail
-              breakpoint="md"
-              label="Resumo"
-              className="grid grid-cols-2 gap-3 lg:grid-cols-4"
-            >
+            {/* Quatro números curtos: no celular cabem numa grade 2×2, sem carrossel. */}
+            <section aria-label="Resumo" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Stat label="No ritmo" value={counts.no_ritmo} tone="ok" />
               <Stat label="Em risco" value={counts.em_risco} tone="warn" />
               <Stat label="Atrasadas" value={counts.atrasada} tone="bad" />
               <Stat label="% geral" value={`${Math.round(overall)}%`} tone="ring" pct={overall} />
-            </MobileRail>
+            </section>
 
             <GoalsLumeCard
               insights={insights.filter((i) => i.kind !== "dica")}
@@ -157,7 +153,7 @@ export function GoalsDashboardView(props: GoalsDashboardProps) {
                         !canManage && goal.measure === "manual" && goal.memberIds.includes(me) ? (
                           <button
                             type="button"
-                            className="lq-secondary relative z-[1]"
+                            className="gl-secondary relative z-[1]"
                             onClick={() => props.onEntry(goal)}
                           >
                             Lançar progresso
