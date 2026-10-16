@@ -468,3 +468,24 @@ REVOKE ALL ON FUNCTION public.goals_roll_periods(date) FROM PUBLIC, anon, authen
 GRANT EXECUTE ON FUNCTION public.goals_roll_periods(date) TO service_role;
 REVOKE ALL ON FUNCTION public.goals_apply_insight(uuid), public.goals_dismiss_insight(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.goals_apply_insight(uuid), public.goals_dismiss_insight(uuid) TO authenticated;
+
+-- ---------- 7. Edição da meta acompanha o período aberto ----------
+-- Mudar início, fim ou repetição pelo formulário recalcula o período em
+-- andamento (prazo único: as próprias datas; recorrente: o período de hoje).
+-- Períodos já fechados não mudam.
+CREATE OR REPLACE FUNCTION public.goals_sync_open_period()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE b record; ref date;
+BEGIN
+  IF (NEW.starts_on, NEW.ends_on, NEW.recurrence) IS NOT DISTINCT FROM (OLD.starts_on, OLD.ends_on, OLD.recurrence) THEN
+    RETURN NEW;
+  END IF;
+  ref := greatest(NEW.starts_on, (public.goals_now() AT TIME ZONE 'America/Sao_Paulo')::date);
+  SELECT * INTO b FROM public.goals_period_bounds(NEW.recurrence, NEW.starts_on, NEW.ends_on, ref);
+  UPDATE public.goal_periods SET starts_on = b.starts_on, ends_on = b.ends_on
+  WHERE goal_id = NEW.id AND closed_at IS NULL;
+  RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS goals_sync_open_period ON public.goals;
+CREATE TRIGGER goals_sync_open_period AFTER UPDATE OF starts_on, ends_on, recurrence ON public.goals
+  FOR EACH ROW EXECUTE FUNCTION public.goals_sync_open_period();

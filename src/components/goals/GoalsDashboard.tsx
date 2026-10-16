@@ -282,6 +282,13 @@ export function GoalsPage() {
     }
   };
 
+  // Sem empresa (sessão encerrada ou modo demo) não há metas para buscar.
+  if (!data.companyId)
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        Entre na sua conta para ver as metas da equipe.
+      </div>
+    );
   if (data.ready === false)
     return (
       <div className="p-6 text-sm text-muted-foreground">

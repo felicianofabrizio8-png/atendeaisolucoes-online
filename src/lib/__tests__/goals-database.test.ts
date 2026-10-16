@@ -395,3 +395,27 @@ describe.sequential("metas: isolamento entre empresas e contribuições", () => 
     expect((await contributions()).map((c) => c.userId)).toEqual([empA, empB]);
   });
 });
+
+describe.sequential("metas: edição atualiza o período aberto", () => {
+  it("mudar o fim da meta muda o fim do período aberto", async () => {
+    await db.exec("SELECT set_config('lume.goals_now','2026-10-20T12:00:00-03:00',false)");
+    await asUser(admin);
+    const id = await value<string>(goal({ name: "'Prazo editável'" }));
+    await asUser(lead);
+    await db.query(`UPDATE goals SET ends_on='2026-11-15' WHERE id='${id}'`);
+    await root();
+    expect(await value<string>(`SELECT ends_on::text AS v FROM goal_periods WHERE goal_id='${id}' AND closed_at IS NULL`)).toBe("2026-11-15");
+  });
+
+  it("virar recorrente mensal recalcula o período aberto pelo mês atual", async () => {
+    await asUser(admin);
+    const id = await value<string>(goal({ name: "'Vira mensal'" }));
+    await db.query(`UPDATE goals SET ends_on=NULL, recurrence='mensal' WHERE id='${id}'`);
+    await root();
+    expect(await value<string>(`SELECT starts_on||'..'||ends_on AS v FROM goal_periods WHERE goal_id='${id}' AND closed_at IS NULL`)).toBe("2026-10-01..2026-10-31");
+    await asUser(admin);
+    await db.query(`UPDATE goals SET recurrence='semanal' WHERE id='${id}'`);
+    await root();
+    expect(await value<string>(`SELECT starts_on||'..'||ends_on AS v FROM goal_periods WHERE goal_id='${id}' AND closed_at IS NULL`)).toBe("2026-10-19..2026-10-25");
+  });
+});
