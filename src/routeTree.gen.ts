@@ -125,6 +125,7 @@ import { Route as ApiPublicRenderCompleteRouteImport } from './routes/api.public
 import { Route as ApiPublicRenderClaimRouteImport } from './routes/api.public.render.claim'
 import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
 import { Route as ApiPublicHooksPublisherTickRouteImport } from './routes/api.public.hooks.publisher-tick'
+import { Route as ApiPublicHooksGoalsTickRouteImport } from './routes/api.public.hooks.goals-tick'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
@@ -761,6 +762,11 @@ const ApiPublicHooksPublisherTickRoute =
     path: '/api/public/hooks/publisher-tick',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksGoalsTickRoute = ApiPublicHooksGoalsTickRouteImport.update({
+  id: '/api/public/hooks/goals-tick',
+  path: '/api/public/hooks/goals-tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksFollowupTickRoute =
   ApiPublicHooksFollowupTickRouteImport.update({
     id: '/api/public/hooks/followup-tick',
@@ -898,6 +904,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/goals-tick': typeof ApiPublicHooksGoalsTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
@@ -1021,6 +1028,7 @@ export interface FileRoutesByTo {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/goals-tick': typeof ApiPublicHooksGoalsTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
@@ -1146,6 +1154,7 @@ export interface FileRoutesById {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/goals-tick': typeof ApiPublicHooksGoalsTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
@@ -1272,6 +1281,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/goals-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/render/claim'
@@ -1395,6 +1405,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/goals-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/render/claim'
@@ -1519,6 +1530,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/goals-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/render/claim'
@@ -1639,6 +1651,7 @@ export interface RootRouteChildren {
   ApiExecutiveConversationIntelligenceJobRoute: typeof ApiExecutiveConversationIntelligenceJobRoute
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
+  ApiPublicHooksGoalsTickRoute: typeof ApiPublicHooksGoalsTickRoute
   ApiPublicHooksPublisherTickRoute: typeof ApiPublicHooksPublisherTickRoute
   ApiPublicHooksRuntimeTickRoute: typeof ApiPublicHooksRuntimeTickRoute
   ApiPublicRenderClaimRoute: typeof ApiPublicRenderClaimRoute
@@ -2480,6 +2493,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksPublisherTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/goals-tick': {
+      id: '/api/public/hooks/goals-tick'
+      path: '/api/public/hooks/goals-tick'
+      fullPath: '/api/public/hooks/goals-tick'
+      preLoaderRoute: typeof ApiPublicHooksGoalsTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/followup-tick': {
       id: '/api/public/hooks/followup-tick'
       path: '/api/public/hooks/followup-tick'
@@ -2648,6 +2668,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiExecutiveConversationIntelligenceJobRoute,
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
+  ApiPublicHooksGoalsTickRoute: ApiPublicHooksGoalsTickRoute,
   ApiPublicHooksPublisherTickRoute: ApiPublicHooksPublisherTickRoute,
   ApiPublicHooksRuntimeTickRoute: ApiPublicHooksRuntimeTickRoute,
   ApiPublicRenderClaimRoute: ApiPublicRenderClaimRoute,
