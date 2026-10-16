@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   "campaigns.manage": "Gerenciar campanhas e marketing",
   "ai.manage": "Configurar motor da IA",
   "settings.manage": "Gerenciar configurações e integrações",
+  "goals.view": "Ver metas",
+  "goals.manage": "Gerenciar metas",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -29,6 +31,7 @@ export const DEFAULT_ATTENDANT: Permission[] = [
   "quotes.manage",
   "agenda.manage",
   "products.view",
+  "goals.view",
 ];
 export interface TeamAccess {
   schemaReady?: boolean;
@@ -55,6 +58,7 @@ export function pagePermission(path: string): Permission | "admin" | null {
   if (path.startsWith("/configuracoes/usuarios")) return "admin";
   if (/^\/(configuracoes\/(coach|regras|recovery))/.test(path)) return "ai.manage";
   if (/^\/(configuracoes|onboarding)/.test(path)) return "settings.manage";
+  if (path.startsWith("/metas")) return "goals.view";
   return "admin";
 }
 export function canOpenPage(access: TeamAccess | undefined, path: string): boolean {
@@ -92,6 +96,7 @@ export function apiPermission(path: string): Permission | "admin" {
   if (/^\/api\/(ai|runtime|coach|executive|scientific|business|system-health)/.test(path))
     return "ai.manage";
   if (/^\/api\/(meta|whatsapp|onboarding)/.test(path)) return "settings.manage";
+  if (/^\/api\/goals\//.test(path)) return "goals.view";
   return "admin";
 }
 
@@ -111,6 +116,13 @@ export const PERMISSION_GROUPS: Array<{ module: string; items: Array<{ key: Perm
     items: [
       { key: "agenda.manage", hint: "Tem a própria agenda: clientes, lembretes e tarefas." },
       { key: "agenda.team", hint: "Cria compromissos da equipe e vê a agenda de todos." },
+    ],
+  },
+  {
+    module: "Metas",
+    items: [
+      { key: "goals.view", hint: "Vê as metas da empresa e as próprias." },
+      { key: "goals.manage", hint: "Cria, edita e acompanha as metas de todos." },
     ],
   },
   { module: "Orçamentos", items: [{ key: "quotes.manage", hint: "Cria e envia orçamentos." }] },
@@ -139,6 +151,10 @@ export function presetOf(permissions: Permission[], role: TeamRole | null) {
   if (same(permissions, PROFILE_PRESETS.gestor_agenda)) return "gestor_agenda" as const;
   if (same(permissions, PROFILE_PRESETS.funcionario)) return "funcionario" as const;
   return "personalizado" as const;
+}
+
+export function canManageGoals(access: TeamAccess | undefined): boolean {
+  return can(access, "goals.manage");
 }
 
 export function canManageTeamAgenda(access: TeamAccess | undefined): boolean {

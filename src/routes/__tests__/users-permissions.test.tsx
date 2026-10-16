@@ -42,7 +42,7 @@ const wrap = () =>
 beforeEach(() => {
   api.users = [
     { id: "admin", displayName: "Ana", email: "ana@x", role: "admin", active: true, permissions: [], createdAt: "", lastSeenAt: null },
-    { id: "u2", displayName: "Bruno", email: "b@x", role: "atendente", active: true, permissions: ["conversations.read","conversations.reply","quotes.manage","agenda.manage","products.view"], createdAt: "", lastSeenAt: null },
+    { id: "u2", displayName: "Bruno", email: "b@x", role: "atendente", active: true, permissions: ["conversations.read","conversations.reply","quotes.manage","agenda.manage","products.view","goals.view"], createdAt: "", lastSeenAt: null },
     { id: "u3", displayName: "Carla", email: "c@x", role: "atendente", active: false, approvalPending: true, permissions: ["agenda.manage"], createdAt: "", lastSeenAt: null },
   ];
   api.links = [];

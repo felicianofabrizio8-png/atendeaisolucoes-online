@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   apiPermission,
   can,
+  canManageGoals,
   canOpenPage,
   DEFAULT_ATTENDANT,
+  pagePermission,
+  PERMISSION_GROUPS,
   type TeamAccess,
 } from "../team/permissions";
 const attendant: TeamAccess = { active: true, role: "atendente", permissions: DEFAULT_ATTENDANT };
@@ -37,5 +40,24 @@ describe("team permission boundaries", () => {
     expect(apiPermission("/api/whatsapp/send-media")).toBe("conversations.reply");
     expect(apiPermission("/api/whatsapp/token-refresh")).toBe("settings.manage");
     expect(apiPermission("/api/new-sensitive-route")).toBe("admin");
+  });
+});
+
+
+describe("metas: permissões", () => {
+  it("rota e API das metas", () => {
+    expect(pagePermission("/metas")).toBe("goals.view");
+    expect(apiPermission("/api/goals/ask")).toBe("goals.view");
+  });
+  it("funcionário vê metas por padrão, mas não gerencia", () => {
+    const access = { active: true, role: "atendente" as const, permissions: [...DEFAULT_ATTENDANT] };
+    expect(can(access, "goals.view")).toBe(true);
+    expect(canManageGoals(access)).toBe(false);
+    expect(canManageGoals({ ...access, permissions: [...DEFAULT_ATTENDANT, "goals.manage"] })).toBe(true);
+    expect(canManageGoals({ ...access, role: "admin" })).toBe(true);
+  });
+  it("aparece na tela de permissões com explicação", () => {
+    const metas = PERMISSION_GROUPS.find((g) => g.module === "Metas");
+    expect(metas?.items.map((i) => i.key)).toEqual(["goals.view", "goals.manage"]);
   });
 });

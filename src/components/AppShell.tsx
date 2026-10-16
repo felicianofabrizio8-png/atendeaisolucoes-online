@@ -22,6 +22,7 @@ import {
   Brain,
   Wand2,
   Bot,
+  Target,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
@@ -54,6 +55,7 @@ type NavItem = {
     | "/orcamentos"
     | "/produtos"
     | "/relatorios"
+    | "/metas"
     | "/executivo"
     | "/ia"
     | "/campanhas"
@@ -85,6 +87,7 @@ const nav: NavItem[] = [
   { to: "/marketing", label: "Marketing IA", icon: Sparkles, group: "Marketing e IA" },
   { to: "/produtos", label: "Produtos", icon: Package, group: "Vendas" },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3, group: "Vendas" },
+  { to: "/metas", label: "Metas", icon: Target, group: "Vendas" },
   { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true, group: "Vendas" },
   { to: "/ia", label: "IA de Atendimento", icon: Bot, group: "Marketing e IA" },
   { to: "/saude", label: "Saúde do sistema", icon: Activity, group: "Sistema" },
