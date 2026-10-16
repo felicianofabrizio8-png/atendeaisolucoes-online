@@ -9,7 +9,7 @@ Uma aba **Metas** em que o administrador monta, do zero, as metas da empresa, de
 Sucesso:
 - O admin cria uma meta automática ("R$ 100 mil em vendas no mês") e uma manual ("8 posts") pelo formulário, sem nenhum modelo pronto.
 - O progresso automático bate com os dados reais e é o mesmo número para todos que podem ver a meta.
-- A visão semanal mostra o ritmo real de cada semana, a partir de fotos diárias, e não de estimativas.
+- A visão semanal mostra o realizado de cada semana calculado com os dados reais daquela semana, e não por estimativa. As fotos diárias guardam a série histórica para tendências e para a IA.
 - A Lume entrega, todo dia, um resumo, pontos de atenção e sugestões aplicáveis; nada muda sem confirmação do admin.
 - Um funcionário não cria, edita nem move metas, nem pela tela nem chamando a API, e não vê metas individuais de colegas.
 - Funciona bem de 320 px (celular pequeno) a desktop largo.
@@ -143,11 +143,11 @@ Permissões novas `goals.view` e `goals.manage` entram no catálogo de `company_
   - `goal_snapshots`: leitura por `goals_can_see`; escrita só pela chave de serviço (rotina diária).
   - `goal_insights`: leitura do resumo/atenção/sugestão para quem vê a meta; `dica` só para o `user_id` dela; decidir sugestão só gestor.
 - **Progresso**: RPC `goals_progress(_company uuid, _goal_ids uuid[] default null)` devolve, por meta e período atual, realizado, esperado, selo, semanas (realizado × esperado por semana, das fotos + o dia corrente) e contribuição por pessoa (só para gestor ou em meta de empresa). Respeita `goals_can_see`.
-- **Aplicar sugestão**: RPC `goals_apply_insight(_insight uuid)`; só gestor; executa a ação do `action` (ajustar alvo, redistribuir alvo entre pessoas, dividir meta, mudar etapa) numa transação e marca `aplicada`.
+- **Aplicar sugestão**: RPC `goals_apply_insight(_insight uuid)`; só gestor; executa a ação do `action` (ajustar alvo, ajustar prazo ou mudar etapa) numa transação e marca `aplicada`.
 
 ## 6. Rotina diária
 
-- Novo passo no gancho agendado já existente (`/api/public/hooks/runtime-tick`, com segredo e trava global como o follow-up), executado uma vez por dia por empresa (marca do último dia processado).
+- Gancho próprio `POST /api/public/hooks/goals-tick`, no mesmo padrão do follow-up (segredo `GOALS_TICK_SECRET` com comparação segura, corpo vazio estrito, limite de taxa e trava global), chamado uma vez por dia pelo `pg_cron`. Rodar duas vezes no mesmo dia não duplica nada (fotos com chave por dia; análise substitui a do dia).
 - Para cada meta ativa:
   1. Calcula o valor do dia (mesma regra da RPC) e grava em `goal_snapshots`.
   2. Fecha períodos vencidos e abre o próximo das recorrentes.
@@ -160,7 +160,7 @@ Permissões novas `goals.view` e `goals.manage` entram no catálogo de `company_
 - **Saída da análise diária**:
   - `resumo`: até 2 frases.
   - `atencao[]`: por meta, o motivo ("orçamentos 30% abaixo do ritmo na 2ª semana").
-  - `sugestoes[]`: ação estruturada de um conjunto fechado — `ajustar_alvo`, `redistribuir`, `dividir`, `mover_etapa`, `foco_semana` (esta última é só texto) — com justificativa curta.
+  - `sugestoes[]`: ação estruturada de um conjunto fechado — `ajustar_alvo` (novo alvo), `ajustar_prazo` (nova data de fim, só prazo único), `mover_etapa` (etapa existente) e `foco_semana` (só texto, sem ação) — com justificativa curta.
   - `dicas[]`: por pessoa, só sobre as metas dela, citando o que dá para fazer hoje ("6 conversas paradas pedindo orçamento").
 - **Pergunte à Lume**: `POST /api/goals/ask`, com a sessão do usuário; o contexto inclui só as metas que ele vê. Pode propor uma sugestão, que vira cartão com Aplicar/Dispensar (só gestor aplica).
 - **Sem chave configurada**: o cartão da Lume explica o que falta; o resto da aba funciona.
@@ -221,6 +221,7 @@ Linguagem visual do dashboard atual (`lume-dashboard`) com as referências envia
 - **Regressão**: suítes de permissões, dashboard, Lume e agenda.
 
 ## 11. Fora do escopo
+- Sugestões da IA de redistribuir alvo entre pessoas ou dividir meta (precisam de alvo por pessoa).
 - Bônus/comissão atrelados a metas.
 - Notificações por e-mail ou push (os alertas aparecem na aba).
 - Metas por produto ou por canal.
