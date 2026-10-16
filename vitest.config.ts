@@ -45,6 +45,8 @@ export default defineConfig({
       "src/components/atendimento/__tests__/**/*.test.tsx",
       "src/components/agenda/__tests__/**/*.test.ts",
       "src/components/agenda/__tests__/**/*.test.tsx",
+      "src/lib/goals/__tests__/**/*.test.ts",
+      "src/components/goals/__tests__/**/*.test.tsx",
     ],
 
     environment: "node",
