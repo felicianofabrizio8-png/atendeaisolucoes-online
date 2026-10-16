@@ -94,7 +94,118 @@ body[data-scroll-locked]:has(.landing-page) {
   }
 }
 
+/* ───────── Menu mobile ─────────
+   Só opacity/transform animam. O painel cresce a partir do canto do botão
+   (transform-origin) e os itens entram em cascata curta. */
+.landing-burger-lines {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 12px;
+}
+.landing-burger-lines i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 1.75px;
+  width: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transition:
+    transform 340ms cubic-bezier(0.32, 1.28, 0.5, 1),
+    opacity 200ms ease;
+}
+.landing-burger-lines i:nth-child(1) {
+  transform: translateY(0);
+}
+.landing-burger-lines i:nth-child(2) {
+  left: 30%;
+  width: 70%;
+  transform: translateY(5px);
+}
+.landing-burger-lines i:nth-child(3) {
+  transform: translateY(10px);
+}
+.landing-burger[data-open] .landing-burger-lines i:nth-child(1) {
+  transform: translateY(5px) rotate(45deg);
+}
+.landing-burger[data-open] .landing-burger-lines i:nth-child(2) {
+  opacity: 0;
+  transform: translate(8px, 5px);
+}
+.landing-burger[data-open] .landing-burger-lines i:nth-child(3) {
+  transform: translateY(5px) rotate(-45deg);
+}
+
+.landing-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.landing-menu[data-state="open"] {
+  pointer-events: auto;
+}
+.landing-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(5 3 10 / 0.62);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+.landing-menu[data-state="open"] .landing-menu-backdrop {
+  opacity: 1;
+}
+.landing-menu-panel {
+  position: absolute;
+  top: 72px;
+  left: 12px;
+  right: 12px;
+  border-radius: 28px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  padding: 16px 12px;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgb(139 92 246 / 0.24), transparent 60%),
+    linear-gradient(180deg, rgb(26 18 38 / 0.95), rgb(14 9 22 / 0.97));
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow:
+    0 30px 60px -20px rgb(0 0 0 / 0.75),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  transform-origin: top right;
+  opacity: 0;
+  transform: translate3d(0, -10px, 0) scale(0.95);
+  transition:
+    opacity 200ms ease,
+    transform 380ms cubic-bezier(0.32, 1.28, 0.5, 1);
+}
+.landing-menu[data-state="open"] .landing-menu-panel {
+  opacity: 1;
+  transform: none;
+}
+.landing-menu-item {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 240ms ease,
+    transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.landing-menu[data-state="open"] .landing-menu-item {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(var(--i, 0) * 45ms + 60ms);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .landing-burger-lines i,
+  .landing-menu-backdrop,
+  .landing-menu-panel,
+  .landing-menu-item {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
   .auth-dialog-overlay,
   .auth-dialog-content {
     animation-duration: 0.01ms !important;
