@@ -1968,6 +1968,36 @@ button.lq-stat:hover .lq-stat-arrow {
   .lq-shell {
     padding: 20px 16px 96px;
   }
+  /* Resumo compacto: o card principal em largura total e os três números
+     numa linha só, em vez de uma grade 2×2 de cards altos. */
+  .lume-quotes .lq-overview {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .lume-quotes .lq-stat:not(.lq-stat-hero) {
+    min-height: 0;
+    padding: 12px;
+    border-radius: 18px;
+  }
+  .lume-quotes .lq-stat:not(.lq-stat-hero) .lq-stat-top {
+    font-size: 11px;
+    gap: 5px;
+  }
+  .lume-quotes .lq-stat:not(.lq-stat-hero) .lq-stat-top .lq-stat-arrow {
+    display: none;
+  }
+  .lume-quotes .lq-stat:not(.lq-stat-hero) strong {
+    margin-top: 8px;
+    font-size: 1.45rem;
+  }
+  .lume-quotes .lq-stat:not(.lq-stat-hero) .lq-stat-foot {
+    display: none;
+  }
+  .lume-quotes .lq-header {
+    margin-bottom: 18px;
+  }
+
   .lq-header .lq-primary {
     width: 100%;
   }

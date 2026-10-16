@@ -55,6 +55,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { AgendaHero } from "@/components/agenda/AgendaHero";
 import { AgendaToolbar } from "@/components/agenda/AgendaToolbar";
+import { AgendaMobile } from "@/components/agenda/AgendaMobile";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MonthView, TeamView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
 import { useAgendaEvents } from "@/components/agenda/useAgendaEvents";
 import { EventDrawer } from "@/components/agenda/EventDrawer";
@@ -205,6 +207,7 @@ function AgendaPage() {
   const teamAccess = useTeamAccess();
   const manager = canManageTeamAgenda(teamAccess.access);
   const companyId = company?.id;
+  const isMobile = useIsMobile();
 
   const [view, setView] = useState<AgendaView>(() => readPreference("view", "semana"));
   const [focus, setFocus] = useState(() => new Date());
@@ -350,61 +353,10 @@ function AgendaPage() {
     });
   }
 
-  if (!companyId) {
-    return (
-      <div className="lume-agenda flex-1 p-6 text-sm text-[var(--ag-muted)]">
-        Faça login para gerenciar a agenda.
-      </div>
-    );
-  }
-
-  return (
-    <div className="lume-agenda flex-1">
-      <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <AgendaHero
-          pulse={pulse}
-          onCreate={() => openCreate()}
-          onAskLume={() => setLumeSignal((n) => n + 1)}
-        />
-
-        <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
-          <AgendaToolbar
-            view={view}
-            focus={focus}
-            filters={filters}
-            people={people}
-            onView={changeView}
-            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
-            onToday={() => setFocus(new Date())}
-            onFilters={setFilters}
-            onCustomize={() => setCustomizing(true)}
-            customTypes={eventTypes.types.filter((type) => type.active)}
-            tags={hierarchy ? agendaTags.tags : undefined}
-            manager={hierarchy && manager}
-            scope={effectiveScope}
-            members={members}
-            onScope={changeScope}
-            hideTeamView={hierarchy && !manager}
-          />
-          {conflicts.size > 0 && (
-            <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
-              <Bell className="h-3.5 w-3.5" />
-              {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com borda
-              tracejada.
-            </p>
-          )}
-        </section>
-
-        {error && (
-          <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
-            <span>{error}</span>
-            <button type="button" className="ag-btn" onClick={() => void reload()}>
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        <section className="ag-panel overflow-hidden" aria-busy={loading}>
+  // A visão escolhida (grade, mês, linha, pessoas ou lista). O layout do
+  // celular reaproveita as mesmas visões para Dia, Lista, Pessoas e Linha.
+  const renderView = () => (
+    <>
           {view === "dia" || view === "semana" ? (
             <TimeGridView
               days={days}
@@ -453,8 +405,106 @@ function AgendaPage() {
               onSend={setSendTarget}
             />
           )}
+    </>
+  );
+
+  if (!companyId) {
+    return (
+      <div className="lume-agenda flex-1 p-6 text-sm text-[var(--ag-muted)]">
+        Faça login para gerenciar a agenda.
+      </div>
+    );
+  }
+
+  return (
+    <div className="lume-agenda flex-1">
+      {isMobile ? (
+        <div className="px-3 pb-6 pt-3">
+          {error && (
+            <div className="ag-panel mb-3 flex items-center justify-between gap-3 p-4 text-sm">
+              <span>{error}</span>
+              <button type="button" className="ag-btn" onClick={() => void reload()}>
+                Tentar novamente
+              </button>
+            </div>
+          )}
+          <AgendaMobile
+            view={view}
+            focus={focus}
+            events={inRange}
+            conflicts={conflicts}
+            pulse={pulse}
+            loading={loading}
+            filters={filters}
+            people={people}
+            customTypes={eventTypes.types.filter((type) => type.active)}
+            tags={hierarchy ? agendaTags.tags : undefined}
+            manager={hierarchy && manager}
+            scope={effectiveScope}
+            members={members}
+            hideTeamView={hierarchy && !manager}
+            onView={changeView}
+            onFocus={setFocus}
+            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
+            onFilters={setFilters}
+            onScope={changeScope}
+            onOpen={(event) => setSelectedId(event.id)}
+            onCreate={(at) => openCreate(at)}
+            onAskLume={() => setLumeSignal((n) => n + 1)}
+            onCustomize={() => setCustomizing(true)}
+            renderView={renderView}
+          />
+        </div>
+      ) : (
+      <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+        <AgendaHero
+          pulse={pulse}
+          onCreate={() => openCreate()}
+          onAskLume={() => setLumeSignal((n) => n + 1)}
+        />
+
+        <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
+          <AgendaToolbar
+            view={view}
+            focus={focus}
+            filters={filters}
+            people={people}
+            onView={changeView}
+            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
+            onToday={() => setFocus(new Date())}
+            onFilters={setFilters}
+            onCustomize={() => setCustomizing(true)}
+            customTypes={eventTypes.types.filter((type) => type.active)}
+            tags={hierarchy ? agendaTags.tags : undefined}
+            manager={hierarchy && manager}
+            scope={effectiveScope}
+            members={members}
+            onScope={changeScope}
+            hideTeamView={hierarchy && !manager}
+          />
+          {conflicts.size > 0 && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
+              <Bell className="h-3.5 w-3.5" />
+              {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com borda
+              tracejada.
+            </p>
+          )}
+        </section>
+
+        {error && (
+          <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
+            <span>{error}</span>
+            <button type="button" className="ag-btn" onClick={() => void reload()}>
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        <section className="ag-panel overflow-hidden" aria-busy={loading}>
+          {renderView()}
         </section>
       </div>
+      )}
 
       <LumeDock
         page="Agenda"

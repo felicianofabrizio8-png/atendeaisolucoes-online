@@ -19,8 +19,8 @@ describe("barra de ação da criação", () => {
     const bar = screen.getByRole("region", { name: "Ações da campanha" });
     // Colada em bottom-0 ela ficaria sob a MobileBottomNav (fixa, mesma camada).
     expect(bar.className).not.toMatch(/(^|\s)bottom-0(\s|$)/);
-    expect(bar.className).toContain("bottom-[calc(3.8125rem+env(safe-area-inset-bottom))]");
-    expect(bar.className).toContain("md:bottom-[calc(4.8125rem+env(safe-area-inset-bottom))]");
+    expect(bar.className).toContain("bottom-[var(--mobile-dock-space)]");
+    expect(bar.className).toContain("md:bottom-6");
     expect(bar.className).toContain("lg:bottom-6");
   });
 });

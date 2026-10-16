@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SegmentedTabs } from "@/components/layout/MobileSections";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
@@ -364,20 +365,16 @@ function ConfiguracoesIA() {
       <SalesAgentMasterSwitch companyId={companyId} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 w-full min-w-0">
-        {/* Mobile: select dropdown for tabs (no horizontal scroll) */}
-        <div className="md:hidden">
-          <Select value={activeTab} onValueChange={setActiveTab}>
-            <SelectTrigger className="w-full h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TAB_OPTIONS.map((t) => (
-                <SelectItem key={t.value} value={t.value} className="text-base">
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Mobile: abas deslizantes com a pastilha animada — todas as seções
+            ficam à vista (rolando na horizontal), em vez de escondidas num
+            seletor que exige abrir para descobrir o que existe. */}
+        <div className="md:hidden -mx-3 px-3">
+          <SegmentedTabs
+            label="Seções da IA"
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={TAB_OPTIONS.map((t) => ({ id: t.value, label: t.label, icon: TAB_ICONS[t.value] }))}
+          />
         </div>
         {/* Desktop: full tabs list */}
         <TabsList className="hidden md:flex md:flex-wrap h-auto w-fit max-w-full justify-start gap-1 p-1 rounded-lg">

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { CalendarDays } from "lucide-react";
 
+import { MobileSection, MobileSections, type MobileSectionTab } from "@/components/layout/MobileSections";
+
 import { AICommand } from "@/components/dashboard/AICommand";
 import { CampaignEfficiency } from "@/components/dashboard/CampaignEfficiency";
 import { KpiHero, PeriodSwitcher } from "@/components/dashboard/KpiHero";
@@ -17,6 +19,13 @@ import { useDashboardMetrics, type Periodo } from "@/components/dashboard/useDas
 import "./dashboard.css";
 import { DashboardAnalysisContext } from "./charts/ChartExplorer";
 import { dashboardContexts } from "./chart-contexts";
+
+const SECOES: MobileSectionTab[] = [
+  { id: "agora", label: "Agora" },
+  { id: "vendas", label: "Vendas" },
+  { id: "marketing", label: "Marketing" },
+  { id: "ia", label: "IA" },
+];
 
 const ROTULO: Record<Periodo, string> = {
   semana: "últimos 7 dias",
@@ -74,7 +83,7 @@ export function DashboardView({
     >
       <main className="lume-dashboard min-h-screen bg-background">
         <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-          <header className="mb-7 flex flex-wrap items-end justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-7 sm:gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                 {primeiroNome ? `Olá, ${primeiroNome}` : "Visão geral"}
@@ -101,34 +110,57 @@ export function DashboardView({
               periodoLabel={ROTULO[periodo]}
             />
 
-            <div className="grid grid-cols-12 gap-4">
-              <RevenueTrend m={m} periodoLabel={ROTULO[periodo]} />
-              <LeadsTrend m={m} periodoLabel={ROTULO[periodo]} />
-            </div>
+            {/* No mobile, os painéis abaixo dos KPIs viram abas: a mesma
+                informação, uma pergunta por vez. No desktop as seções somem
+                do layout (display: contents) e o grid é o de sempre. */}
+            <MobileSections tabs={SECOES} label="Seções do dashboard">
+              <div className="m-row grid grid-cols-12 gap-4">
+                <MobileSection id="vendas">
+                  <RevenueTrend m={m} periodoLabel={ROTULO[periodo]} />
+                  <LeadsTrend m={m} periodoLabel={ROTULO[periodo]} />
+                </MobileSection>
+              </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <AttentionQueue
-                m={m}
-                campanhasComProblema={campanhasComProblema}
-                publicacoesComFalha={publicacoesComFalha}
-              />
-              <LossInsights m={m} />
-              <ChannelMix m={m} />
-            </div>
+              <div className="m-row grid grid-cols-12 gap-4">
+                <MobileSection id="agora">
+                  <AttentionQueue
+                    m={m}
+                    campanhasComProblema={campanhasComProblema}
+                    publicacoesComFalha={publicacoesComFalha}
+                  />
+                </MobileSection>
+                <MobileSection id="vendas">
+                  <LossInsights m={m} />
+                </MobileSection>
+                <MobileSection id="marketing">
+                  <ChannelMix m={m} />
+                </MobileSection>
+              </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <SalesFunnel m={m} />
-              <CampaignEfficiency data={data} ticketMedio={m.ticketMedio} />
-            </div>
+              <div className="m-row grid grid-cols-12 gap-4">
+                <MobileSection id="vendas">
+                  <SalesFunnel m={m} />
+                </MobileSection>
+                <MobileSection id="marketing">
+                  <CampaignEfficiency data={data} ticketMedio={m.ticketMedio} />
+                </MobileSection>
+              </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <ActivityPanel m={m} />
-              <MarketingPanel data={data} />
-            </div>
+              <div className="m-row grid grid-cols-12 gap-4">
+                <MobileSection id="agora">
+                  <ActivityPanel m={m} />
+                </MobileSection>
+                <MobileSection id="marketing">
+                  <MarketingPanel data={data} />
+                </MobileSection>
+              </div>
 
-            <div className="grid grid-cols-12 gap-4">
-              <AICommand data={data} />
-            </div>
+              <div className="m-row grid grid-cols-12 gap-4">
+                <MobileSection id="ia">
+                  <AICommand data={data} />
+                </MobileSection>
+              </div>
+            </MobileSections>
           </div>
         </div>
       </main>

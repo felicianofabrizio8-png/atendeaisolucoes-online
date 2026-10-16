@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { useCallback, useMemo, useState, useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { MobileSection, MobileSections, type MobileSectionTab } from "@/components/layout/MobileSections";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Search, Play, Star, StarOff, ChevronDown, ChevronRight, Clock,
@@ -138,7 +139,7 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
   return (
     <div className="flex-1 min-w-0 flex flex-col">
       {/* Header — status geral + Modo Foco */}
-      <header className="border-b border-border bg-gradient-to-b from-background to-background/60 px-4 md:px-6 py-4">
+      <header className="border-b border-border bg-gradient-to-b from-background to-background/60 px-4 md:px-6 md:pr-48 py-4">
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="min-w-0">
             <h1 className="text-lg md:text-xl font-semibold flex items-center gap-2">
@@ -149,22 +150,25 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
               {ranked.length} conversas ativas · {dayStats.pendentes} aguardando · SLA {settings.slaMinutes}m
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 md:w-auto">
             <SearchBar value={query} onChange={setQuery} />
             <button
               type="button"
               onClick={iniciarAtendimento}
               disabled={fazerAgora.length === 0}
-              className="h-10 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:bg-primary/90 disabled:opacity-50 shadow-sm"
+              aria-label="Iniciar Atendimento"
+              className="h-10 shrink-0 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 hover:bg-primary/90 disabled:opacity-50 shadow-sm"
             >
               <Play className="h-4 w-4 fill-current" />
-              Iniciar Atendimento
+              <span className="md:hidden">Iniciar</span>
+              <span className="hidden md:inline">Iniciar Atendimento</span>
             </button>
           </div>
         </div>
 
-        {/* Painel do Dia */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+        {/* Painel do Dia — no celular vira uma faixa deslizante de
+            contadores compactos em vez de 4 linhas de cards. */}
+        <div className="mt-3 md:mt-4 m-rail m-rail-auto grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2" style={{ gap: 8 }}>
           <Kpi label="Atendidos" value={dayStats.atendidosHoje} tone="text-emerald-500" />
           <Kpi label="Pendentes" value={dayStats.pendentes} tone="text-primary" />
           <Kpi label="Em negociação" value={dayStats.emNegociacao} tone="text-amber-500" />
@@ -176,7 +180,9 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-4 md:px-6 py-5 space-y-6">
+        <div className="mx-auto max-w-6xl px-4 md:px-6 pb-5 pt-2 md:pt-5 flex flex-col gap-6">
+          <MobileSections tabs={COCKPIT_TABS} label="Seções da central" className="mb-0">
+          <MobileSection id="agora">
 
           {/* Continuar de onde parei */}
           {recentes.length > 0 && (
@@ -236,6 +242,9 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
             </Section>
           )}
 
+          </MobileSection>
+
+          <MobileSection id="dia">
           {/* Meu Dia */}
           <Section
             title="Meu dia"
@@ -281,6 +290,9 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
             </div>
           </Section>
 
+          </MobileSection>
+
+          <MobileSection id="fila">
           {/* Fila geral por tempo */}
           <Section
             title="Fila geral"
@@ -322,6 +334,8 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
               })}
             </div>
           </Section>
+          </MobileSection>
+          </MobileSections>
 
         </div>
       </div>
@@ -330,6 +344,12 @@ export function OpsCockpit({ alertsByConv }: { alertsByConv: Map<string, CoachAl
 }
 
 // ---------- Componentes locais ----------------------------------------------
+
+const COCKPIT_TABS: MobileSectionTab[] = [
+  { id: "agora", label: "Fazer agora" },
+  { id: "dia", label: "Meu dia" },
+  { id: "fila", label: "Fila geral" },
+];
 
 function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
@@ -347,8 +367,8 @@ function SearchBar({ value, onChange }: { value: string; onChange: (v: string) =
 
 function Kpi({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{label}</div>
+    <div className="min-w-[104px] rounded-xl border border-border bg-card px-3 py-2 md:min-w-0 md:rounded-lg">
+      <div className="whitespace-nowrap text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{label}</div>
       <div className={cn("text-xl font-bold tabular-nums", tone)}>{value}</div>
     </div>
   );
@@ -364,11 +384,11 @@ function Section({
     <section>
       <header className="flex items-center gap-2 mb-2">
         {icon}
-        <h2 className="text-sm font-semibold">{title}</h2>
+        <h2 className="whitespace-nowrap text-sm font-semibold">{title}</h2>
         {typeof badge === "number" && (
           <span className="text-[10px] font-bold rounded-full bg-secondary px-1.5 py-0.5 tabular-nums">{badge}</span>
         )}
-        {subtitle && <span className="text-[11px] text-muted-foreground truncate">· {subtitle}</span>}
+        {subtitle && <span className="hidden min-w-0 truncate text-[11px] text-muted-foreground sm:inline">· {subtitle}</span>}
       </header>
       {children}
     </section>

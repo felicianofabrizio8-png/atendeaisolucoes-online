@@ -12,6 +12,7 @@ import { ConversationRail } from "@/components/atendimento/ConversationRail";
 import { ChatThread } from "@/components/atendimento/ChatThread";
 import { InsightPanel } from "@/components/atendimento/InsightPanel";
 import "@/components/atendimento/atendimento.css";
+import { useHideMobileNav } from "@/components/layout/MobileBottomNav";
 
 export const Route = createFileRoute("/atendimento")({
   component: AtendimentoPage,
@@ -57,6 +58,8 @@ function AtendimentoPage() {
   const atendimentoFollowup = useAtendimentoFollowup({ enabled: !isSimulated });
   const compact = useIsCompact();
   const [selectedId, setSelectedId] = useState<string | null>(requestedConversationId);
+  // Conversa aberta: o rodapé é do composer, a barra inferior desce.
+  useHideMobileNav(!!selectedId);
   const [query, setQuery] = useState("");
   const [statFilter, setStatFilter] = useState<string | null>(null);
   // O texto do composer mora aqui, e não dentro do ChatThread, só para o

@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Minus, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MobileRail } from "@/components/layout/MobileRail";
 
 import { brl, brlCompact, num, pct, useCountUp } from "./charts/primitives";
 import type { Periodo, ValorComparado } from "./useDashboardMetrics";
@@ -222,7 +223,7 @@ export function KpiHero({
     </>
   );
   return (
-    <section className="viz-fade-up grid gap-4 sm:grid-cols-3">
+    <MobileRail as="section" breakpoint="sm" label="Indicadores" className="viz-fade-up grid gap-4 sm:grid-cols-3">
       <div className="dash-kpi dash-kpi-revenue">
         <span className="dash-kpi-symbol">
           <ChartExplorer title="Receita" chartClass="dash-kpi dash-kpi-revenue">
@@ -247,6 +248,6 @@ export function KpiHero({
         </span>
         {conversionContent}
       </div>
-    </section>
+    </MobileRail>
   );
 }

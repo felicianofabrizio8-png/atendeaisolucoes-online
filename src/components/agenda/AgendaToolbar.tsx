@@ -116,7 +116,7 @@ export function AgendaToolbar({
           <SlidersHorizontal className="h-4 w-4" />
         </button>
         {manager && scope && onScope && (
-          <div className="ag-pills" role="tablist" aria-label="De quem">
+          <div className="ag-pills ag-scroll-row max-md:w-full" role="tablist" aria-label="De quem">
             <button
               type="button"
               role="tab"
@@ -158,7 +158,7 @@ export function AgendaToolbar({
             )}
           </div>
         )}
-        <div className="ag-pills" role="tablist" aria-label="Visão da agenda">
+        <div className="ag-pills ag-scroll-row max-md:w-full max-md:justify-between" role="tablist" aria-label="Visão da agenda">
           {VIEWS.filter((item) => !(hideTeamView && item === "equipe")).map((item) => (
             <button
               key={item}
@@ -175,17 +175,20 @@ export function AgendaToolbar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <label className="relative">
+        <label className="relative max-md:w-full">
           <span className="sr-only">Buscar na agenda</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--ag-faint)]" />
           <input
-            className="ag-input w-[220px]"
+            className="ag-input w-[220px] max-md:w-full"
             placeholder="Buscar cliente, cidade, nota…"
             value={filters.search}
             onChange={(e) => onFilters({ ...filters, search: e.target.value })}
           />
         </label>
-        <div className="flex flex-wrap gap-1.5" aria-label="Filtrar por tipo">
+        <div
+          className="ag-chip-row flex flex-wrap gap-1.5 max-md:-mx-4 max-md:w-[calc(100%+2rem)] max-md:px-4"
+          aria-label="Filtrar por tipo"
+        >
           {tags
             ? tags.map((tag) => (
                 <button
@@ -232,7 +235,7 @@ export function AgendaToolbar({
         </div>
         <select
           aria-label="Filtrar por status"
-          className="ag-input !pl-3 w-auto"
+          className="ag-input !pl-3 w-auto max-md:min-w-0 max-md:flex-1"
           value={filters.statuses[0] ?? ""}
           onChange={(e) =>
             onFilters({ ...filters, statuses: e.target.value ? [e.target.value as never] : [] })
@@ -248,7 +251,7 @@ export function AgendaToolbar({
         {people.length > 0 && (
           <select
             aria-label="Filtrar por pessoa da equipe"
-            className="ag-input !pl-3 w-auto"
+            className="ag-input !pl-3 w-auto max-md:min-w-0 max-md:flex-1"
             value={filters.person ?? ""}
             onChange={(e) => onFilters({ ...filters, person: e.target.value || null })}
           >

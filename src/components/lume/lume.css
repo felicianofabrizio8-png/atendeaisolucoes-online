@@ -28,7 +28,7 @@
 }
 @media (max-width: 767px) {
   .lume-launcher {
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(var(--mobile-dock-space, 88px) + 4px);
   }
 }
 
@@ -59,7 +59,7 @@
     left: 8px;
     right: 8px;
     width: auto;
-    bottom: calc(124px + env(safe-area-inset-bottom));
+    bottom: calc(var(--mobile-dock-space, 88px) + 56px);
     height: min(600px, calc(100dvh - 170px));
     padding: 18px;
   }

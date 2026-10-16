@@ -13,7 +13,6 @@ import {
   Megaphone,
   LogOut,
   LogIn,
-  Menu,
   Activity,
   Crown,
   Rocket,
@@ -21,9 +20,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Brain,
+  Wand2,
+  Bot,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import {
   getAppearance,
   getServerAppearance,
@@ -34,7 +35,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { loadRemote, refreshTeamScope, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBridge } from "@/components/NotificationBridge";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { openSettings } from "@/lib/settings-dialog";
@@ -65,24 +66,29 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   badge?: number;
   adminOnly?: boolean;
+  /** Grupo no menu em grade do mobile. */
+  group: NavGroup;
 };
 
+type NavGroup = "Principal" | "Vendas" | "Marketing e IA" | "Sistema";
+const NAV_GROUPS: NavGroup[] = ["Principal", "Vendas", "Marketing e IA", "Sistema"];
+
 const nav: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/onboarding", label: "Primeiros passos", icon: Rocket, adminOnly: true },
-  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare },
-  { to: "/atendimento", label: "Atendimento 2.0", icon: MessagesSquare },
-  { to: "/agenda", label: "Agenda", icon: Calendar },
-  { to: "/orcamentos", label: "Orçamentos", icon: FileText },
-  { to: "/campanhas", label: "Campanhas", icon: Megaphone },
-  { to: "/criativos", label: "Criativos IA", icon: Sparkles },
-  { to: "/marketing", label: "Marketing IA", icon: Sparkles },
-  { to: "/produtos", label: "Produtos", icon: Package },
-  { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
-  { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true },
-  { to: "/ia", label: "IA de Atendimento", icon: Sparkles },
-  { to: "/saude", label: "Saúde do sistema", icon: Activity },
-  { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true },
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, group: "Principal" },
+  { to: "/onboarding", label: "Primeiros passos", icon: Rocket, adminOnly: true, group: "Sistema" },
+  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare, group: "Principal" },
+  { to: "/atendimento", label: "Chat", icon: MessagesSquare, group: "Principal" },
+  { to: "/agenda", label: "Agenda", icon: Calendar, group: "Principal" },
+  { to: "/orcamentos", label: "Orçamentos", icon: FileText, group: "Vendas" },
+  { to: "/campanhas", label: "Campanhas", icon: Megaphone, group: "Marketing e IA" },
+  { to: "/criativos", label: "Criativos IA", icon: Wand2, group: "Marketing e IA" },
+  { to: "/marketing", label: "Marketing IA", icon: Sparkles, group: "Marketing e IA" },
+  { to: "/produtos", label: "Produtos", icon: Package, group: "Vendas" },
+  { to: "/relatorios", label: "Relatórios", icon: BarChart3, group: "Vendas" },
+  { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true, group: "Vendas" },
+  { to: "/ia", label: "IA de Atendimento", icon: Bot, group: "Marketing e IA" },
+  { to: "/saude", label: "Saúde do sistema", icon: Activity, group: "Sistema" },
+  { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true, group: "Sistema" },
 ];
 
 export function AppShell() {
@@ -200,6 +206,16 @@ export function AppShell() {
     setMobileOpen(false);
     openSettings();
   };
+
+  // Menu em grade do mobile: mesmos itens e permissões da sidebar, agrupados.
+  // `order` corre por todos os grupos e escalona a entrada dos blocos.
+  let launcherOrder = 0;
+  const launcherGroups = NAV_GROUPS.map((group) => ({
+    group,
+    items: nav
+      .filter((item) => item.group === group && ((!user && demoMode) || access.canOpen(item.to)))
+      .map((item) => ({ item, order: launcherOrder++ })),
+  })).filter((g) => g.items.length > 0);
 
   const SettingsButton = (
     <button
@@ -465,39 +481,155 @@ export function AppShell() {
       </TooltipProvider>
 
       <main className="flex-1 min-w-0 min-h-0 h-full flex flex-col">
-        {/* Topbar mobile */}
-        <div className="md:hidden safe-top px-3 border-b border-border flex items-center gap-2 bg-sidebar shrink-0">
-          <div className="h-14 flex items-center gap-2 w-full">
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <SheetTrigger asChild>
-                <button
-                  aria-label="Abrir menu"
-                  className="h-11 w-11 inline-flex items-center justify-center rounded-md hover:bg-accent active:bg-accent"
-                >
-                  <Menu className="h-5 w-5" />
-                </button>
-              </SheetTrigger>
-              <SheetContent
-                side="left"
-                className="w-[85%] max-w-[320px] p-0 flex flex-col bg-sidebar safe-top safe-bottom"
-              >
-                <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-                {renderBrand(false)}
-                {renderNavList(false)}
-                {access.can("ai.manage") && <NeuralIntelligencePanel />}
-                {FooterPanel}
-              </SheetContent>
-            </Sheet>
-            <div className="flex items-center min-w-0 flex-1">
+        {/* Topbar mobile — marca à esquerda, conta à direita. O avatar abre
+            o mesmo menu em grade da barra inferior; é o caminho para o menu
+            nas rotas em que a barra inferior não aparece (conversa aberta). */}
+        <div className="md:hidden safe-top px-3 border-b border-border/70 flex items-center gap-2 bg-sidebar shrink-0">
+          <div className="h-14 flex items-center gap-1 w-full">
+            <Link to="/" aria-label="Lume — início" className="flex items-center min-w-0 flex-1 pl-1">
               <LumeLogo
                 variant="lockup"
                 aria-label="Lume"
                 className="h-7 w-[98px] text-sidebar-foreground"
               />
-            </div>
-            {SignOutButton}
+            </Link>
+            <button
+              onClick={handleOpenSettings}
+              aria-label="Configurações"
+              className="h-11 w-11 inline-flex items-center justify-center rounded-full text-muted-foreground active:bg-accent"
+            >
+              <Settings className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              onClick={() => setMobileOpen(true)}
+              aria-label="Abrir menu"
+              aria-expanded={mobileOpen}
+              className="h-11 w-11 inline-flex items-center justify-center rounded-full active:bg-accent"
+            >
+              <span
+                className={cn(
+                  "h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-semibold",
+                  user ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {user ? initials || "U" : "DM"}
+              </span>
+            </button>
           </div>
         </div>
+
+        {/* Menu completo no mobile: folha que sobe de baixo (alcance do
+            polegar) com os destinos em grade, agrupados — o mesmo acesso da
+            sidebar do desktop, filtrado pelas mesmas permissões. */}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetContent
+            side="bottom"
+            mobileFullscreen={false}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className="mobile-launcher md:hidden max-h-[88dvh] rounded-t-[28px] border-sidebar-border bg-sidebar p-0 flex flex-col gap-0"
+          >
+            <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
+            <div aria-hidden className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" />
+
+            <div className="flex items-center gap-3 px-5 pt-3 pb-4 pr-14">
+              <div
+                className={cn(
+                  "h-11 w-11 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold",
+                  user ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
+                )}
+              >
+                {user ? initials || "U" : "DM"}
+              </div>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-[15px] font-semibold">
+                  {user ? (profile?.display_name ?? user.email?.split("@")[0]) : "Visitante"}
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {user ? (company?.name ?? "Carregando…") : "Modo demo · dados de exemplo"}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
+              {launcherGroups.map(({ group, items }) => (
+                <section key={group} className="mb-4">
+                  <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    {group}
+                  </h3>
+                  <div className="grid grid-cols-4 gap-2">
+                    {items.map(({ item, order }) => {
+                      const Icon = item.icon;
+                      const active =
+                        item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+                      const badge = item.to === "/inbox" && unreadTotal > 0 ? unreadTotal : 0;
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          aria-current={active ? "page" : undefined}
+                          data-active={active || undefined}
+                          className="launcher-tile"
+                          style={{ "--i": order } as CSSProperties}
+                        >
+                          <span className="launcher-tile-icon">
+                            <Icon className="h-[22px] w-[22px]" aria-hidden />
+                            {badge ? (
+                              <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-[var(--status-urgent)] px-1 text-center text-[9px] font-bold leading-4 text-[var(--status-urgent-foreground)] ring-2 ring-sidebar">
+                                {badge > 99 ? "99+" : badge}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="launcher-tile-label">{item.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+
+              {access.can("ai.manage") && (
+                <div className="mb-4 overflow-hidden rounded-2xl border border-sidebar-border">
+                  <NeuralIntelligencePanel />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleOpenSettings}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-sidebar-accent text-sm font-medium"
+                >
+                  <Settings className="h-4 w-4" />
+                  Configurações
+                </button>
+                {user ? (
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-sidebar-accent text-sm font-medium text-muted-foreground"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sair
+                  </button>
+                ) : (
+                  <button
+                    onClick={leaveDemoForAuth}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-medium text-primary-foreground"
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Entrar
+                  </button>
+                )}
+              </div>
+              {!user && !demoMode && (
+                <button
+                  onClick={enableDemo}
+                  className="mt-3 w-full text-xs text-muted-foreground underline underline-offset-2"
+                >
+                  Continuar como demo
+                </button>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
 
         {/*
           Na conversa o scroll pertence exclusivamente à lista de mensagens:
@@ -506,9 +638,9 @@ export function AppShell() {
         */}
         <div
           className={
-            "flex-1 min-w-0 min-h-0 flex flex-col md:pb-0 " +
+            "app-content flex-1 min-w-0 min-h-0 flex flex-col md:pb-0 " +
             (showBottomNav
-              ? "overflow-auto pb-[calc(60px+env(safe-area-inset-bottom))]"
+              ? "overflow-auto pb-[var(--mobile-dock-space)]"
               : "overflow-hidden pb-0")
           }
         >
@@ -516,7 +648,12 @@ export function AppShell() {
         </div>
 
         {showBottomNav ? (
-          <MobileBottomNav unreadTotal={unreadTotal} onOpenMenu={() => setMobileOpen(true)} />
+          <MobileBottomNav
+            unreadTotal={unreadTotal}
+            menuOpen={mobileOpen}
+            onOpenMenu={() => setMobileOpen(true)}
+            canOpen={(to) => (!user && demoMode) || access.canOpen(to)}
+          />
         ) : null}
       </main>
     </div>
