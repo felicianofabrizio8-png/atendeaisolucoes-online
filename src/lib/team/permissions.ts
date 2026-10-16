@@ -69,6 +69,8 @@ export function canOpenPage(access: TeamAccess | undefined, path: string): boole
 export function apiPermission(path: string): Permission | "admin" {
   if (path === "/api/dashboard/analyze") return "dashboard.view";
   if (path === "/api/atendimento/copilot") return "conversations.read";
+  // Lume: hoje age só na Agenda; novos domínios entram com a permissão deles.
+  if (/^\/api\/lume\/(chat|action|status)$/.test(path)) return "agenda.manage";
   if (path === "/api/atendimento/followup" || path === "/api/ai/followup-status")
     return "conversations.read";
   if (/^\/api\/whatsapp\/(send(?:-|$)|forward-message|templates\/send)/.test(path))

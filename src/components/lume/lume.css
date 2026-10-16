@@ -1,0 +1,270 @@
+/*
+ * Lume Dock — botão no canto e janela da Lume. A janela segue a do Dashboard
+ * (análise de gráfico): fundo do tema, borda fina, cantos de 28px e conversa limpa.
+ */
+.lume-launcher {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+  transition: filter 0.2s;
+}
+.lume-launcher:hover {
+  filter: brightness(1.08);
+}
+.lume-launcher:focus-visible {
+  outline: 2px solid #b594ff;
+  outline-offset: 2px;
+}
+@media (max-width: 767px) {
+  .lume-launcher {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+}
+
+.lume-window {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 52px);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 32px));
+  height: min(680px, calc(100dvh - 110px));
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 0 30px 120px #0008;
+  overflow: hidden;
+  animation: lume-window-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dark .lume-window,
+:root:not(.light) .lume-window {
+  background: #000;
+}
+@media (max-width: 767px) {
+  .lume-window {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(124px + env(safe-area-inset-bottom));
+    height: min(600px, calc(100dvh - 170px));
+    padding: 18px;
+  }
+}
+@keyframes lume-window-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.lume-window-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.lume-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 2px;
+}
+.lume-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 20px;
+}
+.lume-setup {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.lume-user,
+.lume-answer {
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  margin-bottom: 20px;
+}
+.lume-user {
+  margin-left: 24px;
+  padding: 12px 16px;
+  border-radius: 20px 20px 6px 20px;
+  background: var(--secondary);
+}
+.lume-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  line-height: 1.4;
+}
+.lume-action[data-status="pendente"] {
+  border-color: color-mix(in oklch, #9b7bf0 55%, var(--border));
+}
+.lume-action[data-status="cancelada"],
+.lume-action[data-status="desfeita"] {
+  opacity: 0.55;
+}
+.lume-action[data-status="falhou"] {
+  border-color: color-mix(in oklch, var(--destructive) 50%, var(--border));
+}
+.lume-action-status {
+  font: 10px ui-monospace, Menlo, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lume-action-summary {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.lume-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.lume-chip:hover {
+  background: var(--accent);
+}
+.lume-chip-primary {
+  border: 0;
+  color: #fff;
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+}
+.lume-chip-primary:hover {
+  filter: brightness(1.08);
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+}
+/* Mesma pílula do campo da IA no Atendimento e no Dashboard. */
+.lume-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 6px 4px 16px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--secondary) 40%, transparent);
+}
+.lume-composer:focus-within {
+  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+.lume-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  max-height: 144px;
+  resize: none;
+  align-self: center;
+  background: transparent;
+  outline: none;
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+.lume-composer textarea::placeholder {
+  color: var(--muted-foreground);
+}
+.lume-icon {
+  display: inline-flex;
+  height: 32px;
+  width: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.lume-icon:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.lume-icon[data-active="true"] {
+  background: var(--destructive);
+  color: #fff;
+}
+.lume-icon:disabled,
+.lume-send:disabled {
+  opacity: 0.3;
+}
+.lume-send {
+  display: inline-flex;
+  height: 32px;
+  width: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+}
+.lume-recording {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.lume-rec-dot {
+  height: 9px;
+  width: 9px;
+  border-radius: 999px;
+  background: var(--destructive);
+  transition: transform 0.08s linear;
+}
+.lume-link {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-decoration: underline;
+}
+.lume-error {
+  font-size: 12px;
+  color: var(--destructive);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lume-window {
+    animation: none;
+  }
+  .lume-rec-dot {
+    transition: none;
+  }
+}

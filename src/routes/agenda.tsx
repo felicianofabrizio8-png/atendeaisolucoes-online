@@ -1,15 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { format, isAfter, isToday, isThisWeek, addMinutes } from "date-fns";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CalendarIcon,
   MapPin,
   Phone,
   User,
   Package,
   StickyNote,
-  Plus,
   Send,
   Trash2,
   Wrench,
@@ -23,7 +21,6 @@ import {
   Building2,
   UserCog,
   Clock,
-  Filter,
   Bell,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,7 +29,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthContext";
 import { getLeads, subscribeRepo } from "@/data/leadRepo";
 import { getConversations } from "@/data/leadRepo";
-import { listQuotes, subscribeQuotes } from "@/data/quotes";
 // whatsappProvider (Evolution) descontinuado — envio agora usa wa.me ou Cloud API oficial.
 import { cn } from "@/lib/utils";
 
@@ -57,6 +53,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { AgendaHero } from "@/components/agenda/AgendaHero";
+import { AgendaToolbar } from "@/components/agenda/AgendaToolbar";
+import { MonthView, TeamView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
+import { useAgendaEvents } from "@/components/agenda/useAgendaEvents";
+import { EventDrawer } from "@/components/agenda/EventDrawer";
+import { EventFieldSection } from "@/components/agenda/EventFieldSection";
+import { EventFormModal } from "@/components/agenda/EventFormModal";
+import { useEventTypes } from "@/components/agenda/useEventTypes";
+import { AgendaCustomize } from "@/components/agenda/AgendaCustomize";
+import { LumeDock } from "@/components/lume/LumeDock";
+import {
+  applyFilters,
+  daysOf,
+  EMPTY_FILTERS,
+  findConflicts,
+  peopleOf,
+  pulseOf,
+  shiftFocus,
+  viewRange,
+  DEFAULT_PREFERENCES,
+  type AgendaEvent,
+  type AgendaFilters,
+  type AgendaPreferences,
+  type AgendaView,
+} from "@/components/agenda/agenda-model";
+import "@/components/agenda/agenda.css";
 
 export const Route = createFileRoute("/agenda")({
   component: AgendaPage,
@@ -164,7 +186,6 @@ const TYPE_META: Record<
   },
 };
 
-const TYPE_KEYS = Object.keys(TYPE_META) as AppointmentType[];
 
 function onlyDigits(s: string): string {
   return s.replace(/\D+/g, "");
@@ -172,275 +193,340 @@ function onlyDigits(s: string): string {
 
 
 
-// ---------- Página ----------
+/// ---------- Página ----------
 function AgendaPage() {
   const { company } = useAuth();
   const companyId = company?.id;
 
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<AgendaView>(() => readPreference("view", "semana"));
+  const [focus, setFocus] = useState(() => new Date());
+  const [filters, setFilters] = useState<AgendaFilters>(EMPTY_FILTERS);
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Visit | null>(null);
+  const [createAt, setCreateAt] = useState<Date | null>(null);
   const [sendTarget, setSendTarget] = useState<Visit | null>(null);
-  const [typeFilter, setTypeFilter] = useState<"todos" | AppointmentType>("todos");
-  const [viewMode, setViewMode] = useState<"dia" | "semana" | "todos">("semana");
-
-
-  const loadVisits = useCallback(async () => {
-    if (!companyId) {
-      setVisits([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("visits")
-      .select(
-        "id,title,address,scheduled_at,status,notes,customer_name,customer_phone,product,lead_id,quote_id,appointment_type,city,salesperson,technician",
-      )
-      .eq("company_id", companyId)
-      .order("scheduled_at", { ascending: true });
-
-    if (error) {
-      console.error("loadVisits", error);
-      toast.error("Não foi possível carregar a agenda");
-    } else {
-      setVisits((data ?? []) as Visit[]);
-    }
-    setLoading(false);
-  }, [companyId]);
-
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [customizing, setCustomizing] = useState(false);
+  const [lumeSignal, setLumeSignal] = useState(0);
+  // Link de aviso da Lume (/agenda?evento=…) abre o compromisso direto.
   useEffect(() => {
-    void loadVisits();
-  }, [loadVisits]);
-
-  const filteredVisits = useMemo(() => {
-    const now = new Date();
-    return visits.filter((v) => {
-      if (typeFilter !== "todos" && v.appointment_type !== typeFilter) return false;
-      const d = new Date(v.scheduled_at);
-      if (viewMode === "dia") return isToday(d);
-      if (viewMode === "semana") return isThisWeek(d, { locale: ptBR });
-      return true;
-    });
-  }, [visits, typeFilter, viewMode]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, Visit[]>();
-    for (const v of filteredVisits) {
-      const dayKey = v.scheduled_at.slice(0, 10);
-      const arr = map.get(dayKey) ?? [];
-      arr.push(v);
-      map.set(dayKey, arr);
+    const id = new URLSearchParams(window.location.search).get("evento");
+    if (id) setSelectedId(id);
+  }, []);
+  const [preferences, setPreferences] = useState<AgendaPreferences>(() => {
+    try {
+      return { ...DEFAULT_PREFERENCES, ...JSON.parse(readPreference("prefs", "{}")) };
+    } catch {
+      return DEFAULT_PREFERENCES;
     }
-    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredVisits]);
+  });
 
-  // Próximo compromisso nas próximas 2 horas — aviso destacado
-  const upcoming = useMemo(() => {
-    const now = new Date();
-    const horizon = addMinutes(now, 120);
-    return visits
-      .filter(
-        (v) =>
-          (v.status === "agendada" || v.status === "confirmada") &&
-          isAfter(new Date(v.scheduled_at), now) &&
-          new Date(v.scheduled_at) <= horizon,
-      )
-      .slice(0, 3);
-  }, [visits]);
-
-
-  async function handleDelete(id: string) {
-    if (!confirm("Excluir esta visita?")) return;
-    const { error } = await supabase.from("visits").delete().eq("id", id);
-    if (error) {
-      toast.error("Erro ao excluir");
-      return;
-    }
-    toast.success("Visita excluída");
-    setVisits((prev) => prev.filter((v) => v.id !== id));
+  const range = useMemo(() => viewRange(view, focus), [view, focus]);
+  const { events, loading, error, extended, reload, setStatus, reschedule, remove, duplicate } =
+    useAgendaEvents(companyId, range);
+  const selected = useMemo(
+    () => events.find((event) => event.id === selectedId) ?? null,
+    [events, selectedId],
+  );
+  const eventTypes = useEventTypes(companyId, extended);
+  const typeById = useMemo(
+    () => new Map(eventTypes.types.map((type) => [type.id, type])),
+    [eventTypes.types],
+  );
+  const pulse = useMemo(() => pulseOf(events), [events]);
+  const people = useMemo(() => peopleOf(events), [events]);
+  const inRange = useMemo(
+    () =>
+      applyFilters(events, filters)
+        .filter((event) => {
+          const at = new Date(event.scheduled_at);
+          return at >= range.from && at <= range.to;
+        })
+        .map((event) => {
+          const type = event.event_type_id ? typeById.get(event.event_type_id) : undefined;
+          return type ? { ...event, type_hue: type.hue, type_name: type.name } : event;
+        }),
+    [events, filters, range, typeById],
+  );
+  const conflicts = useMemo(() => findConflicts(inRange), [inRange]);
+  const days = useMemo(() => {
+    const all = daysOf(range.from, range.to);
+    if (view !== "semana" || !preferences.hideWeekends) return all;
+    return all.filter((day) => day.getDay() !== 0 && day.getDay() !== 6);
+  }, [range, view, preferences.hideWeekends]);
+  function changePreferences(next: AgendaPreferences) {
+    setPreferences(next);
+    writePreference("prefs", JSON.stringify(next));
   }
 
-  async function handleStatusChange(visit: Visit, status: VisitStatus) {
-    const { error } = await supabase
-      .from("visits")
-      .update({ status })
-      .eq("id", visit.id);
-    if (error) {
-      toast.error("Erro ao atualizar status");
-      return;
+  function changeView(next: AgendaView) {
+    setView(next);
+    writePreference("view", next);
+  }
+  function openCreate(at: Date | null = null) {
+    setEditing(null);
+    setCreateAt(at);
+    setOpenForm(true);
+  }
+  function openEdit(event: Visit) {
+    setEditing(event);
+    setCreateAt(null);
+    setOpenForm(true);
+  }
+  async function move(event: Visit, at: Date) {
+    if (at.getTime() === new Date(event.scheduled_at).getTime()) return;
+    const before = new Date(event.scheduled_at);
+    if (!(await reschedule(event.id, at))) return;
+    toast.success(`Remarcado para ${format(at, "EEE dd/MM 'às' HH:mm", { locale: ptBR })}`, {
+      action: { label: "Desfazer", onClick: () => void reschedule(event.id, before) },
+    });
+  }
+  async function handleDelete(event: Visit) {
+    if (!confirm(`Excluir "${event.title}"?`)) return;
+    if (await remove(event.id)) {
+      setSelectedId((current) => (current === event.id ? null : current));
+      toast.success("Compromisso excluído");
     }
-    setVisits((prev) =>
-      prev.map((v) => (v.id === visit.id ? { ...v, status } : v)),
+  }
+  async function handleDuplicate(event: AgendaEvent) {
+    const id = await duplicate(event);
+    if (!id) return;
+    toast.success("Cópia criada no dia seguinte", {
+      action: { label: "Abrir", onClick: () => setSelectedId(id) },
+    });
+  }
+
+  if (!companyId) {
+    return (
+      <div className="lume-agenda flex-1 p-6 text-sm text-[var(--ag-muted)]">
+        Faça login para gerenciar a agenda.
+      </div>
     );
   }
 
   return (
-    <div className="flex-1 p-4 md:p-8 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl md:text-2xl font-semibold">Agenda de compromissos</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Visitas técnicas, atendimentos na loja, retornos comerciais e mais.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setOpenForm(true);
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Novo compromisso
-        </Button>
+    <div className="lume-agenda flex-1">
+      <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+        <AgendaHero
+          pulse={pulse}
+          onCreate={() => openCreate()}
+          onAskLume={() => setLumeSignal((n) => n + 1)}
+        />
+
+        <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
+          <AgendaToolbar
+            view={view}
+            focus={focus}
+            filters={filters}
+            people={people}
+            onView={changeView}
+            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
+            onToday={() => setFocus(new Date())}
+            onFilters={setFilters}
+            onCustomize={() => setCustomizing(true)}
+            customTypes={eventTypes.types.filter((type) => type.active)}
+          />
+          {conflicts.size > 0 && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
+              <Bell className="h-3.5 w-3.5" />
+              {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com borda
+              tracejada.
+            </p>
+          )}
+        </section>
+
+        {error && (
+          <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
+            <span>{error}</span>
+            <button type="button" className="ag-btn" onClick={() => void reload()}>
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        <section className="ag-panel overflow-hidden" aria-busy={loading}>
+          {view === "dia" || view === "semana" ? (
+            <TimeGridView
+              days={days}
+              events={inRange}
+              conflicts={conflicts}
+              onOpen={(event) => setSelectedId(event.id)}
+              startHour={preferences.dayStartHour}
+              onCreateAt={(at) => openCreate(at)}
+              onMove={(event, at) => void move(event, at)}
+            />
+          ) : view === "mes" ? (
+            <MonthView
+              days={days}
+              focus={focus}
+              events={inRange}
+              conflicts={conflicts}
+              onOpen={(event) => setSelectedId(event.id)}
+              onOpenDay={(day) => {
+                setFocus(day);
+                changeView("dia");
+              }}
+            />
+          ) : view === "linha" ? (
+            <TimelineView days={days} events={inRange} conflicts={conflicts} onOpen={(event) => setSelectedId(event.id)} />
+          ) : view === "equipe" ? (
+            <TeamView
+              days={days}
+              events={inRange}
+              conflicts={conflicts}
+              onOpen={(event) => setSelectedId(event.id)}
+            />
+          ) : (
+            <ListView
+              events={inRange}
+              loading={loading}
+              onEdit={openEdit}
+              onDelete={(event) => void handleDelete(event)}
+              onStatus={(event, status) => void setStatus(event.id, status)}
+              onSend={setSendTarget}
+            />
+          )}
+        </section>
       </div>
 
-      {!companyId && (
-        <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            Faça login para gerenciar a agenda.
-          </CardContent>
-        </Card>
-      )}
+      <LumeDock
+        page="Agenda"
+        greeting="O que vamos organizar?"
+        openSignal={lumeSignal}
+        suggestions={[
+          "O que tenho amanhã?",
+          "Reunião de equipe sexta às 10h",
+          "Achar 1h livre nesta semana",
+          "Lembrar 30 min antes das visitas",
+        ]}
+        onChanged={(touched) => {
+          void reload();
+          if (touched.length === 1) setSelectedId(touched[0]);
+        }}
+      />
 
-      {/* Aviso de próximos compromissos */}
-      {companyId && upcoming.length > 0 && (
-        <Card className="border-amber-500/40 bg-amber-500/5">
-          <CardContent className="p-4 flex items-start gap-3">
-            <Bell className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-                {upcoming.length === 1
-                  ? "1 compromisso nas próximas 2 horas"
-                  : `${upcoming.length} compromissos nas próximas 2 horas`}
-              </div>
-              <ul className="mt-1 space-y-0.5 text-xs text-foreground/80">
-                {upcoming.map((v) => {
-                  const M = TYPE_META[v.appointment_type];
-                  return (
-                    <li key={v.id} className="flex items-center gap-1.5">
-                      <M.icon className="h-3 w-3" />
-                      <span className="font-medium">
-                        {format(new Date(v.scheduled_at), "HH:mm")}
-                      </span>
-                      <span className="text-muted-foreground">·</span>
-                      <span className="truncate">{v.title}</span>
-                      {v.customer_name && (
-                        <span className="text-muted-foreground truncate">
-                          · {v.customer_name}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <AgendaCustomize
+        open={customizing}
+        extended={extended}
+        types={eventTypes.types}
+        preferences={preferences}
+        onClose={() => setCustomizing(false)}
+        onPreferences={changePreferences}
+        onSave={eventTypes.save}
+        onToggle={(id, active) => void eventTypes.setActive(id, active)}
+        onRemove={(id) => void eventTypes.remove(id)}
+        onSeed={() => void eventTypes.seedStarters()}
+      />
 
-      {/* Filtros */}
-      {companyId && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex items-center rounded-md bg-secondary p-0.5 text-xs">
-            {(["dia", "semana", "todos"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setViewMode(m)}
-                className={cn(
-                  "px-3 py-1.5 rounded capitalize transition-colors",
-                  viewMode === m
-                    ? "bg-background shadow-sm font-medium"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {m === "dia" ? "Hoje" : m === "semana" ? "Esta semana" : "Todos"}
-              </button>
-            ))}
-          </div>
-          <div className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
-            <Filter className="h-3.5 w-3.5" />
-            Tipo:
-          </div>
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
-            <SelectTrigger className="h-8 w-[200px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos" className="text-xs">
-                Todos os tipos
-              </SelectItem>
-              {TYPE_KEYS.map((k) => (
-                <SelectItem key={k} value={k} className="text-xs">
-                  {TYPE_META[k].label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {companyId && loading && (
-        <p className="text-sm text-muted-foreground">Carregando...</p>
-      )}
-
-      {companyId && !loading && filteredVisits.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            {visits.length === 0
-              ? 'Nenhum compromisso ainda. Clique em "Novo compromisso" para começar.'
-              : "Nenhum compromisso para os filtros selecionados."}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="space-y-6">
-        {grouped.map(([day, items]) => (
-          <div key={day}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              {format(new Date(day + "T12:00:00"), "EEEE, dd 'de' MMMM", { locale: ptBR })}
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {items.map((v) => (
-                <VisitCard
-                  key={v.id}
-                  visit={v}
-                  onEdit={() => {
-                    setEditing(v);
-                    setOpenForm(true);
-                  }}
-                  onDelete={() => handleDelete(v.id)}
-                  onStatusChange={(s) => handleStatusChange(v, s)}
-                  onSend={() => setSendTarget(v)}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
+      <EventDrawer
+        event={selected}
+        type={(selected?.event_type_id && typeById.get(selected.event_type_id)) || null}
+        extended={extended}
+        onClose={() => setSelectedId(null)}
+        onStatus={(status) => selected && void setStatus(selected.id, status)}
+        onEdit={() => selected && openEdit(selected)}
+        onDuplicate={() => selected && void handleDuplicate(selected)}
+        onDelete={() => selected && void handleDelete(selected)}
+        onSendTechnician={() => selected && setSendTarget(selected)}
+      >
+        {selected && extended && (
+          <EventFieldSection key={selected.id} eventId={selected.id} companyId={companyId} />
+        )}
+      </EventDrawer>
 
       {openForm && (
-        <VisitFormModal
-          companyId={companyId ?? null}
-          visit={editing}
+        <EventFormModal
+          companyId={companyId}
+          event={editing}
+          initialAt={createAt}
+          types={eventTypes.types}
+          extended={extended}
           onClose={() => setOpenForm(false)}
-          onSaved={() => {
+          onSaved={(id) => {
             setOpenForm(false);
-            void loadVisits();
+            setSelectedId(id);
+            void reload();
           }}
         />
       )}
 
       {sendTarget && (
-        <SendTechnicianModal
-          visit={sendTarget}
-          onClose={() => setSendTarget(null)}
-        />
+        <SendTechnicianModal visit={sendTarget} onClose={() => setSendTarget(null)} />
       )}
     </div>
   );
+}
+
+/** Lista: os cartões completos de sempre (status, WhatsApp, conversa, técnico), por dia. */
+function ListView({
+  events,
+  loading,
+  onEdit,
+  onDelete,
+  onStatus,
+  onSend,
+}: {
+  events: Visit[];
+  loading: boolean;
+  onEdit: (event: Visit) => void;
+  onDelete: (event: Visit) => void;
+  onStatus: (event: Visit, status: VisitStatus) => void;
+  onSend: (event: Visit) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<string, Visit[]>();
+    for (const event of events) {
+      const key = format(new Date(event.scheduled_at), "yyyy-MM-dd");
+      map.set(key, [...(map.get(key) ?? []), event]);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [events]);
+
+  if (!grouped.length)
+    return (
+      <p className="p-10 text-center text-sm text-[var(--ag-muted)]">
+        {loading ? "Carregando…" : "Nenhum compromisso neste período."}
+      </p>
+    );
+  return (
+    <div className="space-y-6 p-4 sm:p-5">
+      {grouped.map(([day, items]) => (
+        <div key={day}>
+          <h3 className="ag-mono mb-2">
+            {format(new Date(`${day}T12:00:00`), "EEEE, dd 'de' MMMM", { locale: ptBR })}
+          </h3>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((event) => (
+              <VisitCard
+                key={event.id}
+                visit={event}
+                onEdit={() => onEdit(event)}
+                onDelete={() => onDelete(event)}
+                onStatusChange={(status) => onStatus(event, status)}
+                onSend={() => onSend(event)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Preferências da visão ficam no navegador de cada usuário.
+function readPreference<T extends string>(key: string, fallback: T): T {
+  try {
+    return (localStorage.getItem(`lume.agenda.${key}`) as T | null) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writePreference(key: string, value: string) {
+  try {
+    localStorage.setItem(`lume.agenda.${key}`, value);
+  } catch {
+    /* navegação privada: segue sem lembrar */
+  }
 }
 
 // ---------- Card ----------
@@ -596,320 +682,6 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
 // ---------- Formulário ----------
 function useLeads() {
   return useSyncExternalStore(subscribeRepo, getLeads, getLeads);
-}
-
-function useQuotesList() {
-  return useSyncExternalStore(subscribeQuotes, listQuotes, listQuotes);
-}
-
-function VisitFormModal({
-  companyId,
-  visit,
-  onClose,
-  onSaved,
-}: {
-  companyId: string | null;
-  visit: Visit | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const leads = useLeads();
-  const quotes = useQuotesList();
-
-  const initialDate = visit
-    ? format(new Date(visit.scheduled_at), "yyyy-MM-dd")
-    : format(new Date(), "yyyy-MM-dd");
-  const initialTime = visit
-    ? format(new Date(visit.scheduled_at), "HH:mm")
-    : "09:00";
-
-  const [appointmentType, setAppointmentType] = useState<AppointmentType>(
-    visit?.appointment_type ?? "visita_tecnica",
-  );
-  const [title, setTitle] = useState(visit?.title ?? "Visita técnica");
-  const [date, setDate] = useState(initialDate);
-  const [time, setTime] = useState(initialTime);
-  const [leadId, setLeadId] = useState<string>(visit?.lead_id ?? "none");
-  const [customerName, setCustomerName] = useState(visit?.customer_name ?? "");
-  const [customerPhone, setCustomerPhone] = useState(visit?.customer_phone ?? "");
-  const [city, setCity] = useState(visit?.city ?? "");
-  const [address, setAddress] = useState(visit?.address ?? "");
-  const [product, setProduct] = useState(visit?.product ?? "");
-  const [quoteId, setQuoteId] = useState<string>(visit?.quote_id ?? "none");
-  const [salesperson, setSalesperson] = useState(visit?.salesperson ?? "");
-  const [technician, setTechnician] = useState(visit?.technician ?? "");
-  const [notes, setNotes] = useState(visit?.notes ?? "");
-  const [status, setStatus] = useState<VisitStatus>(visit?.status ?? "agendada");
-  const [saving, setSaving] = useState(false);
-
-  const meta = TYPE_META[appointmentType];
-  const isStore = appointmentType === "loja";
-
-  // Atualiza título sugerido quando troca o tipo (apenas na criação)
-  useEffect(() => {
-    if (!visit) setTitle(meta.label);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointmentType]);
-
-  // Quando escolhe lead, autopreenche nome/telefone
-  useEffect(() => {
-    if (leadId === "none") return;
-    const l = leads.find((x) => x.id === leadId);
-    if (l) {
-      if (!customerName) setCustomerName(l.name);
-      if (!customerPhone && l.phone) setCustomerPhone(l.phone);
-      if (!product && l.product) setProduct(l.product);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]);
-
-  const leadQuotes = useMemo(
-    () => (leadId !== "none" ? quotes.filter((q) => q.leadId === leadId) : []),
-    [quotes, leadId],
-  );
-
-  async function handleSave() {
-    if (!companyId) {
-      toast.error("Empresa não identificada");
-      return;
-    }
-    if (!title.trim()) return toast.error("Informe o título do compromisso");
-    if (!date || !time) return toast.error("Informe data e horário");
-    if (!customerName.trim()) return toast.error("Informe o nome do cliente");
-    if (meta.needsAddress && !address.trim()) {
-      return toast.error(`Informe o endereço para ${meta.label.toLowerCase()}`);
-    }
-
-    const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
-    const payload = {
-      company_id: companyId,
-      title: title.trim(),
-      appointment_type: appointmentType,
-      address: isStore ? null : address.trim() || null,
-      city: city.trim() || null,
-      scheduled_at: scheduledAt,
-      status,
-      notes: notes.trim() || null,
-      customer_name: customerName.trim() || null,
-      customer_phone: customerPhone.trim() || null,
-      product: product.trim() || null,
-      salesperson: salesperson.trim() || null,
-      technician: technician.trim() || null,
-      lead_id: leadId !== "none" ? leadId : null,
-      quote_id: quoteId !== "none" ? quoteId : null,
-    };
-
-
-    setSaving(true);
-    try {
-      if (visit) {
-        const { error } = await supabase.from("visits").update(payload).eq("id", visit.id);
-        if (error) throw error;
-        toast.success("Compromisso atualizado");
-      } else {
-        const { error } = await supabase.from("visits").insert(payload);
-        if (error) throw error;
-        toast.success("Compromisso agendado");
-      }
-      onSaved();
-    } catch (e) {
-      console.error(e);
-      toast.error("Erro ao salvar compromisso");
-
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{visit ? "Editar compromisso" : "Novo compromisso"}</DialogTitle>
-          <DialogDescription>
-            Cadastre os detalhes do compromisso. Você poderá enviar para o técnico ou cliente no WhatsApp.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4">
-          <div>
-            <Label>Tipo do compromisso *</Label>
-            <Select value={appointmentType} onValueChange={(v) => setAppointmentType(v as AppointmentType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TYPE_KEYS.map((k) => {
-                  const M = TYPE_META[k];
-                  const I = M.icon;
-                  return (
-                    <SelectItem key={k} value={k}>
-                      <span className="inline-flex items-center gap-2">
-                        <I className="h-3.5 w-3.5" />
-                        {M.label}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label>Título</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Dia</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </div>
-            <div>
-              <Label>Horário</Label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-          </div>
-
-          <div>
-            <Label>Cliente (opcional - vincular a lead existente)</Label>
-            <Select value={leadId} onValueChange={setLeadId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Cliente avulso —</SelectItem>
-                {leads.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name} {l.phone ? `· ${l.phone}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Nome do cliente *</Label>
-              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-            </div>
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="55 11 99999-9999"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Cidade</Label>
-              <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Ex.: Sorocaba" />
-            </div>
-            <div>
-              <Label>
-                Endereço {meta.needsAddress ? "*" : "(opcional)"}
-              </Label>
-              <Input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                disabled={isStore}
-                placeholder={isStore ? "Não necessário — atendimento na loja" : "Rua, número, bairro"}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Vendedor responsável</Label>
-              <Input
-                value={salesperson}
-                onChange={(e) => setSalesperson(e.target.value)}
-                placeholder="Nome do vendedor"
-              />
-            </div>
-            <div>
-              <Label>Técnico responsável</Label>
-              <Input
-                value={technician}
-                onChange={(e) => setTechnician(e.target.value)}
-                placeholder="Nome do técnico"
-                disabled={isStore}
-              />
-            </div>
-          </div>
-
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Produto / interesse</Label>
-              <Input
-                value={product}
-                onChange={(e) => setProduct(e.target.value)}
-                placeholder="Ex.: Piscina 6x3"
-              />
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as VisitStatus)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(STATUS_LABEL) as VisitStatus[]).map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {STATUS_LABEL[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {leadQuotes.length > 0 && (
-            <div>
-              <Label>Orçamento relacionado (opcional)</Label>
-              <Select value={quoteId} onValueChange={setQuoteId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Nenhum —</SelectItem>
-                  {leadQuotes.map((q) => (
-                    <SelectItem key={q.id} value={q.id}>
-                      {q.productName} · R$ {q.finalValue.toFixed(2)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div>
-            <Label>Observações</Label>
-            <Textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Informações para o técnico, acesso ao local, etc."
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            <CalendarIcon className="h-4 w-4" />
-            {saving ? "Salvando..." : visit ? "Salvar alterações" : "Agendar compromisso"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 // ---------- Envio ao técnico ----------
