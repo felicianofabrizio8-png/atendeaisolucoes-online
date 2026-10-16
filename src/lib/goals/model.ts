@@ -18,7 +18,13 @@ export type GoalMetric =
 export type GoalMeasure = "automatica" | "manual";
 export type GoalScope = "empresa" | "pessoa" | "grupo";
 export type GoalRecurrence = "semanal" | "mensal" | null;
-export type GoalStatus = "concluida" | "no_ritmo" | "em_risco" | "atrasada" | "sem_dados" | "encerrada";
+export type GoalStatus =
+  | "concluida"
+  | "no_ritmo"
+  | "em_risco"
+  | "atrasada"
+  | "sem_dados"
+  | "encerrada";
 
 export interface MetricInfo {
   label: string;
@@ -29,15 +35,55 @@ export interface MetricInfo {
 }
 
 export const METRICS: Record<GoalMetric, MetricInfo> = {
-  receita_fechada: { label: "Receita fechada", kind: "brl", lowerIsBetter: false, needsAgenda: false },
-  vendas_fechadas: { label: "Vendas fechadas", kind: "count", lowerIsBetter: false, needsAgenda: false },
+  receita_fechada: {
+    label: "Receita fechada",
+    kind: "brl",
+    lowerIsBetter: false,
+    needsAgenda: false,
+  },
+  vendas_fechadas: {
+    label: "Vendas fechadas",
+    kind: "count",
+    lowerIsBetter: false,
+    needsAgenda: false,
+  },
   leads_novos: { label: "Leads novos", kind: "count", lowerIsBetter: false, needsAgenda: false },
-  taxa_conversao: { label: "Taxa de conversão", kind: "pct", lowerIsBetter: false, needsAgenda: false },
-  orcamentos_criados: { label: "Orçamentos criados", kind: "count", lowerIsBetter: false, needsAgenda: false },
-  orcamentos_enviados: { label: "Orçamentos enviados", kind: "count", lowerIsBetter: false, needsAgenda: false },
-  conversas_respondidas: { label: "Conversas respondidas", kind: "count", lowerIsBetter: false, needsAgenda: false },
-  tempo_primeira_resposta: { label: "Tempo médio de 1ª resposta", kind: "min", lowerIsBetter: true, needsAgenda: false },
-  compromissos_concluidos: { label: "Compromissos concluídos", kind: "count", lowerIsBetter: false, needsAgenda: true },
+  taxa_conversao: {
+    label: "Taxa de conversão",
+    kind: "pct",
+    lowerIsBetter: false,
+    needsAgenda: false,
+  },
+  orcamentos_criados: {
+    label: "Orçamentos criados",
+    kind: "count",
+    lowerIsBetter: false,
+    needsAgenda: false,
+  },
+  orcamentos_enviados: {
+    label: "Orçamentos enviados",
+    kind: "count",
+    lowerIsBetter: false,
+    needsAgenda: false,
+  },
+  conversas_respondidas: {
+    label: "Conversas respondidas",
+    kind: "count",
+    lowerIsBetter: false,
+    needsAgenda: false,
+  },
+  tempo_primeira_resposta: {
+    label: "Tempo médio de 1ª resposta",
+    kind: "min",
+    lowerIsBetter: true,
+    needsAgenda: false,
+  },
+  compromissos_concluidos: {
+    label: "Compromissos concluídos",
+    kind: "count",
+    lowerIsBetter: false,
+    needsAgenda: true,
+  },
 };
 
 export const STATUS_LABEL: Record<GoalStatus, string> = {
@@ -206,7 +252,14 @@ export function splitWeeks(period: GoalPeriod, target: number, lowerIsBetter: bo
 export function buildProgress(goal: Goal, raw: GoalProgressRaw, today: string): GoalProgress {
   const period = { startsOn: raw.periodStart, endsOn: raw.periodEnd };
   const expected = expectedToDate(goal.target, period, today, goal.lowerIsBetter);
-  const status = goalStatus({ value: raw.value, expected, target: goal.target, lowerIsBetter: goal.lowerIsBetter, period, today });
+  const status = goalStatus({
+    value: raw.value,
+    expected,
+    target: goal.target,
+    lowerIsBetter: goal.lowerIsBetter,
+    period,
+    today,
+  });
   const planned = splitWeeks(period, goal.target, goal.lowerIsBetter);
   const weeks: GoalWeek[] = planned.map((week) => {
     const actual = raw.weeks.find((w) => w.startsOn === week.startsOn)?.actual ?? null;
@@ -241,20 +294,30 @@ export function validateGoalDraft(draft: GoalDraft): string[] {
   if (!draft.name.trim()) errors.push("Dê um nome para a meta.");
   if (draft.name.trim().length > 120) errors.push("O nome pode ter até 120 caracteres.");
   if (!(draft.target > 0)) errors.push("O alvo precisa ser maior que zero.");
-  if (draft.measure === "automatica" && !draft.metric) errors.push("Escolha o que o sistema vai medir.");
-  if (draft.measure === "manual" && !draft.unit.trim()) errors.push("Diga a unidade (ex.: visitas).");
-  if (draft.measure === "manual" && draft.unit.trim().length > 24) errors.push("A unidade pode ter até 24 caracteres.");
-  if (draft.scope === "pessoa" && draft.memberIds.length !== 1) errors.push("Escolha a pessoa da meta.");
-  if (draft.scope === "grupo" && draft.memberIds.length < 2) errors.push("Um grupo precisa de pelo menos 2 pessoas.");
+  if (draft.measure === "automatica" && !draft.metric)
+    errors.push("Escolha o que o sistema vai medir.");
+  if (draft.measure === "manual" && !draft.unit.trim())
+    errors.push("Diga a unidade (ex.: visitas).");
+  if (draft.measure === "manual" && draft.unit.trim().length > 24)
+    errors.push("A unidade pode ter até 24 caracteres.");
+  if (draft.scope === "pessoa" && draft.memberIds.length !== 1)
+    errors.push("Escolha a pessoa da meta.");
+  if (draft.scope === "grupo" && draft.memberIds.length < 2)
+    errors.push("Um grupo precisa de pelo menos 2 pessoas.");
   if (!draft.startsOn) errors.push("Escolha a data de início.");
   if (draft.deadline === "unico") {
     if (!draft.endsOn) errors.push("Escolha a data de fim.");
-    else if (draft.endsOn < draft.startsOn) errors.push("A data de fim precisa ser depois do início.");
+    else if (draft.endsOn < draft.startsOn)
+      errors.push("A data de fim precisa ser depois do início.");
   }
   return errors;
 }
 
-const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const brl = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  maximumFractionDigits: 0,
+});
 const dec = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
 export function formatGoalValue(
@@ -264,7 +327,7 @@ export function formatGoalValue(
   if (value === null || Number.isNaN(value)) return "—";
   if (goal.measure === "manual") return `${dec.format(value)} ${goal.unit ?? ""}`.trim();
   const kind = goal.metric ? METRICS[goal.metric].kind : "count";
-  if (kind === "brl") return brl.format(value).replace(/ /g, " ");
+  if (kind === "brl") return brl.format(value).replace(/[\u00a0\u202f]/g, " ");
   if (kind === "pct") return `${dec.format(value)}%`;
   if (kind === "min") return `${dec.format(value)} min`;
   return dec.format(value);

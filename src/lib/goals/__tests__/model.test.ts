@@ -34,7 +34,9 @@ describe("esperado até hoje", () => {
     expect(expectedToDate(100, oct, "2026-11-02", false)).toBe(100);
   });
   it("período de um dia que é hoje espera o alvo inteiro", () => {
-    expect(expectedToDate(8, { startsOn: "2026-10-16", endsOn: "2026-10-16" }, "2026-10-16", false)).toBe(8);
+    expect(
+      expectedToDate(8, { startsOn: "2026-10-16", endsOn: "2026-10-16" }, "2026-10-16", false),
+    ).toBe(8);
   });
   it("menor é melhor espera o próprio alvo", () => {
     expect(expectedToDate(10, oct, "2026-10-05", true)).toBe(10);
@@ -52,17 +54,28 @@ describe("selo", () => {
     expect(goalStatus({ ...base, value: 30, expected: 51.6 })).toBe("atrasada");
   });
   it("sem dados antes do primeiro terço", () => {
-    expect(goalStatus({ ...base, today: "2026-10-05", value: null, expected: 16 })).toBe("sem_dados");
+    expect(goalStatus({ ...base, today: "2026-10-05", value: null, expected: 16 })).toBe(
+      "sem_dados",
+    );
   });
   it("sem dados depois do primeiro terço vira atrasada", () => {
     expect(goalStatus({ ...base, value: null, expected: 51.6 })).toBe("atrasada");
   });
   it("encerrada quando o prazo passou sem bater", () => {
-    expect(goalStatus({ ...base, today: "2026-11-01", value: 80, expected: 100 })).toBe("encerrada");
+    expect(goalStatus({ ...base, today: "2026-11-01", value: 80, expected: 100 })).toBe(
+      "encerrada",
+    );
   });
   it("menor é melhor: sem conversa nunca conclui", () => {
     expect(
-      goalStatus({ ...base, lowerIsBetter: true, target: 10, value: null, expected: 10, today: "2026-11-01" }),
+      goalStatus({
+        ...base,
+        lowerIsBetter: true,
+        target: 10,
+        value: null,
+        expected: 10,
+        today: "2026-11-01",
+      }),
     ).toBe("sem_dados");
   });
   it("menor é melhor: abaixo do alvo está no ritmo e no fim conclui", () => {
@@ -86,17 +99,41 @@ describe("semanas", () => {
 
 describe("progresso", () => {
   const goal: Goal = {
-    id: "g1", companyId: "c1", name: "Vendas", description: null, hue: 275,
-    measure: "automatica", metric: "vendas_fechadas", target: 31, unit: null, lowerIsBetter: false,
-    scope: "empresa", startsOn: "2026-10-01", endsOn: "2026-10-31", recurrence: null,
-    stageId: null, archivedAt: null, memberIds: [],
+    id: "g1",
+    companyId: "c1",
+    name: "Vendas",
+    description: null,
+    hue: 275,
+    measure: "automatica",
+    metric: "vendas_fechadas",
+    target: 31,
+    unit: null,
+    lowerIsBetter: false,
+    scope: "empresa",
+    startsOn: "2026-10-01",
+    endsOn: "2026-10-31",
+    recurrence: null,
+    stageId: null,
+    archivedAt: null,
+    memberIds: [],
   };
   it("junta valor, esperado, selo e semanas", () => {
-    const p = buildProgress(goal, {
-      goalId: "g1", periodId: "p1", periodStart: "2026-10-01", periodEnd: "2026-10-31", value: 9,
-      weeks: [{ startsOn: "2026-10-01", endsOn: "2026-10-04", actual: 4 }, { startsOn: "2026-10-05", endsOn: "2026-10-11", actual: 5 }],
-      contributions: [{ userId: "u1", value: 9 }],
-    }, "2026-10-10");
+    const p = buildProgress(
+      goal,
+      {
+        goalId: "g1",
+        periodId: "p1",
+        periodStart: "2026-10-01",
+        periodEnd: "2026-10-31",
+        value: 9,
+        weeks: [
+          { startsOn: "2026-10-01", endsOn: "2026-10-04", actual: 4 },
+          { startsOn: "2026-10-05", endsOn: "2026-10-11", actual: 5 },
+        ],
+        contributions: [{ userId: "u1", value: 9 }],
+      },
+      "2026-10-10",
+    );
     expect(p.expected).toBe(10);
     expect(p.status).toBe("no_ritmo");
     expect(p.pct).toBeCloseTo(29.03, 1);
@@ -106,24 +143,49 @@ describe("progresso", () => {
 
 describe("rascunho", () => {
   const ok: GoalDraft = {
-    name: "Vendas de outubro", description: "", hue: 275, measure: "automatica",
-    metric: "receita_fechada", target: 100000, unit: "", scope: "empresa", memberIds: [],
-    deadline: "unico", startsOn: "2026-10-01", endsOn: "2026-10-31", recurrence: "mensal", stageId: null,
+    name: "Vendas de outubro",
+    description: "",
+    hue: 275,
+    measure: "automatica",
+    metric: "receita_fechada",
+    target: 100000,
+    unit: "",
+    scope: "empresa",
+    memberIds: [],
+    deadline: "unico",
+    startsOn: "2026-10-01",
+    endsOn: "2026-10-31",
+    recurrence: "mensal",
+    stageId: null,
   };
   it("aceita um rascunho válido", () => expect(validateGoalDraft(ok)).toEqual([]));
   it("explica cada problema", () => {
     expect(validateGoalDraft({ ...ok, name: " " })).toContain("Dê um nome para a meta.");
     expect(validateGoalDraft({ ...ok, target: 0 })).toContain("O alvo precisa ser maior que zero.");
-    expect(validateGoalDraft({ ...ok, metric: null })).toContain("Escolha o que o sistema vai medir.");
-    expect(validateGoalDraft({ ...ok, measure: "manual", unit: "" })).toContain("Diga a unidade (ex.: visitas).");
-    expect(validateGoalDraft({ ...ok, scope: "pessoa", memberIds: [] })).toContain("Escolha a pessoa da meta.");
-    expect(validateGoalDraft({ ...ok, scope: "grupo", memberIds: ["a"] })).toContain("Um grupo precisa de pelo menos 2 pessoas.");
-    expect(validateGoalDraft({ ...ok, endsOn: "2026-09-01" })).toContain("A data de fim precisa ser depois do início.");
+    expect(validateGoalDraft({ ...ok, metric: null })).toContain(
+      "Escolha o que o sistema vai medir.",
+    );
+    expect(validateGoalDraft({ ...ok, measure: "manual", unit: "" })).toContain(
+      "Diga a unidade (ex.: visitas).",
+    );
+    expect(validateGoalDraft({ ...ok, scope: "pessoa", memberIds: [] })).toContain(
+      "Escolha a pessoa da meta.",
+    );
+    expect(validateGoalDraft({ ...ok, scope: "grupo", memberIds: ["a"] })).toContain(
+      "Um grupo precisa de pelo menos 2 pessoas.",
+    );
+    expect(validateGoalDraft({ ...ok, endsOn: "2026-09-01" })).toContain(
+      "A data de fim precisa ser depois do início.",
+    );
   });
 });
 
 describe("formatação", () => {
-  const g = (metric: Goal["metric"], measure: Goal["measure"] = "automatica", unit: string | null = null) => ({ metric, measure, unit });
+  const g = (
+    metric: Goal["metric"],
+    measure: Goal["measure"] = "automatica",
+    unit: string | null = null,
+  ) => ({ metric, measure, unit });
   it("formata por tipo de indicador", () => {
     expect(formatGoalValue(62000, g("receita_fechada"))).toBe("R$ 62.000");
     expect(formatGoalValue(12, g("vendas_fechadas"))).toBe("12");
