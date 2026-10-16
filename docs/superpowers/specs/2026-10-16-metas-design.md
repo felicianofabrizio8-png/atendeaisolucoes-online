@@ -65,9 +65,9 @@ Contados no período da meta e, quando o alcance é pessoa/grupo, filtrados pelo
 | Leads novos | leads com `created_at` no período | `leads.assigned_to` |
 | Taxa de conversão | vendas fechadas ÷ leads novos no período | `leads.assigned_to` |
 | Orçamentos criados | `quotes.created_at` no período | `assigned_to` do lead do orçamento |
-| Orçamentos enviados | orçamentos que saíram de `rascunho` (enviado, visualizado, aceito, recusado ou expirado), contados pela data de envio quando registrada e, na falta dela, pela de criação | `assigned_to` do lead do orçamento |
-| Conversas respondidas | conversas com `responded_at` no período | `assigned_to` do lead da conversa |
-| Tempo médio de 1ª resposta | média de `first_response_minutes` no período (menor é melhor) | `assigned_to` do lead |
+| Orçamentos enviados | orçamentos que saíram de `rascunho` (enviado, visualizado, aceito, recusado ou expirado), contados por `quotes.sent_at` quando registrada e, na falta dela, por `created_at` | `assigned_to` do lead do orçamento |
+| Conversas respondidas | conversas com ao menos uma mensagem `agent` enviada no período | `assigned_to` do lead da conversa |
+| Tempo médio de 1ª resposta | para conversas cuja primeira mensagem `lead` cai no período: minutos até a primeira mensagem `agent` seguinte; média (menor é melhor; conversas sem resposta ficam fora da média) | `assigned_to` do lead |
 | Compromissos concluídos | `visits` com `status = 'concluida'` no período | `visits.owner_id` *(exige a migração da Agenda; sem ela, o indicador não aparece no formulário)* |
 
 Leads, orçamentos ou conversas sem responsável contam só em metas de alcance **empresa**.
