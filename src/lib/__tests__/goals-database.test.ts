@@ -367,3 +367,31 @@ describe.sequential("metas: sugestões e recorrência", () => {
     ]);
   });
 });
+
+describe.sequential("metas: isolamento entre empresas e contribuições", () => {
+  it("gestor de outra empresa não lança na meta manual desta empresa", async () => {
+    await db.exec("SELECT set_config('lume.goals_now','2026-10-20T12:00:00-03:00',false)");
+    await asUser(admin);
+    const manual = await value<string>(goal({ name: "'Treinos'", measure: "'manual'", metric: "NULL", unit: "'treinos'", target: "5" }));
+    await root();
+    const period = await value<string>(`SELECT id AS v FROM goal_periods WHERE goal_id='${manual}'`);
+    await asUser(outsider);
+    expect(await fails(`INSERT INTO goal_entries(company_id,goal_id,period_id,amount) VALUES('${outsiderCompany}','${manual}','${period}',50)`)).toBe(true);
+    await root();
+    expect(await value<number>(`SELECT count(*)::int AS v FROM goal_entries WHERE goal_id='${manual}'`)).toBe(0);
+  });
+
+  it("funcionário recebe só a própria contribuição; gestor recebe o ranking", async () => {
+    await db.exec("SELECT set_config('lume.goals_now','2026-10-31T12:00:00-03:00',false)");
+    await asUser(admin);
+    const receita = await value<string>(goal({ name: "'Receita ranking'", metric: "'receita_fechada'", target: "5000" }));
+    const contributions = async () =>
+      (await db.query<{ contributions: Array<{ userId: string; value: number }> }>(
+        `SELECT contributions FROM public.goals_progress(ARRAY['${receita}']::uuid[])`,
+      )).rows[0].contributions;
+    await asUser(empB);
+    expect(await contributions()).toEqual([{ userId: empB, value: 500 }]);
+    await asUser(lead);
+    expect((await contributions()).map((c) => c.userId)).toEqual([empA, empB]);
+  });
+});

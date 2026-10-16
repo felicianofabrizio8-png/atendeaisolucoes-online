@@ -214,7 +214,7 @@ CREATE POLICY goal_entries_read ON public.goal_entries FOR SELECT TO authenticat
 DROP POLICY IF EXISTS goal_entries_insert ON public.goal_entries;
 CREATE POLICY goal_entries_insert ON public.goal_entries FOR INSERT TO authenticated WITH CHECK (
   company_id = public.current_company_id() AND user_id = auth.uid()
-  AND EXISTS (SELECT 1 FROM public.goals g WHERE g.id = goal_id AND g.measure = 'manual' AND g.company_id = company_id)
+  AND EXISTS (SELECT 1 FROM public.goals g WHERE g.id = goal_entries.goal_id AND g.measure = 'manual' AND g.company_id = goal_entries.company_id)
   AND (public.goals_can_manage(company_id)
        OR EXISTS (SELECT 1 FROM public.goal_members m WHERE m.goal_id = goal_entries.goal_id AND m.user_id = auth.uid())));
 DROP POLICY IF EXISTS goal_entries_delete ON public.goal_entries;
@@ -306,7 +306,7 @@ BEGIN
   IF NOT FOUND THEN RETURN NULL; END IF;
   IF g.measure = 'manual' THEN
     SELECT sum(e.amount) INTO v FROM public.goal_entries e
-    WHERE e.goal_id = g.id AND e.created_at >= _from AND e.created_at < _to
+    WHERE e.goal_id = g.id AND e.company_id = g.company_id AND e.created_at >= _from AND e.created_at < _to
       AND (_users IS NULL OR e.user_id = ANY (_users));
     RETURN v;
   END IF;
@@ -338,16 +338,15 @@ BEGIN
              ELSE coalesce(public.goals_value(g.id, public.goals_day_start(ws), public.goals_day_start(least(we, today) + 1), users), 0) END);
       w := w + 7;
     END LOOP;
-    IF manager OR g.scope = 'empresa' THEN
-      SELECT coalesce(jsonb_agg(jsonb_build_object('userId', s.user_id, 'value', s.v) ORDER BY s.v DESC), '[]'::jsonb) INTO contributions
-      FROM (
-        SELECT u.user_id, public.goals_value(g.id, public.goals_day_start(p.starts_on), public.goals_day_start(least(p.ends_on, today) + 1), ARRAY[u.user_id]) AS v
-        FROM (SELECT m.user_id FROM public.goal_members m WHERE m.goal_id = g.id AND g.scope <> 'empresa'
-              UNION SELECT a.user_id FROM public.company_member_access a WHERE a.company_id = g.company_id AND g.scope = 'empresa') u
-      ) s WHERE s.v IS NOT NULL AND s.v <> 0;
-    ELSE
-      contributions := '[]'::jsonb;
-    END IF;
+    -- Ranking por pessoa só para quem gerencia metas (e para a rotina, _check
+    -- = false). Os demais recebem apenas a própria contribuição.
+    SELECT coalesce(jsonb_agg(jsonb_build_object('userId', s.user_id, 'value', s.v) ORDER BY s.v DESC), '[]'::jsonb) INTO contributions
+    FROM (
+      SELECT u.user_id, public.goals_value(g.id, public.goals_day_start(p.starts_on), public.goals_day_start(least(p.ends_on, today) + 1), ARRAY[u.user_id]) AS v
+      FROM (SELECT m.user_id FROM public.goal_members m WHERE m.goal_id = g.id AND g.scope <> 'empresa'
+            UNION SELECT a.user_id FROM public.company_member_access a WHERE a.company_id = g.company_id AND g.scope = 'empresa') u
+      WHERE manager OR u.user_id = auth.uid()
+    ) s WHERE s.v IS NOT NULL AND s.v <> 0;
     RETURN NEXT;
   END LOOP;
 END; $$;
@@ -379,6 +378,9 @@ BEGIN
     IF NEW.user_id IS DISTINCT FROM auth.uid() THEN
       RAISE EXCEPTION 'O lançamento é sempre de quem lança.' USING ERRCODE = '42501';
     END IF;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.goals g WHERE g.id = NEW.goal_id AND g.company_id = NEW.company_id) THEN
+    RAISE EXCEPTION 'Meta de outra empresa.' USING ERRCODE = '42501';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.goal_periods p
