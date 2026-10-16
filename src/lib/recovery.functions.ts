@@ -3,6 +3,7 @@
 // Não altera nada do fluxo do Inbox; apenas lê dados existentes.
 
 import { createServerFn } from "@tanstack/react-start";
+import { fetchLeadVisits } from "@/lib/agenda/lead-visits";
 import { requireTeamPermission } from "@/lib/team/middleware";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,10 +101,8 @@ export const getRecoveryDashboard = createServerFn({ method: "GET" })
         .from("quotes")
         .select("lead_id")
         .in("lead_id", leadIds),
-      supabase
-        .from("visits")
-        .select("lead_id")
-        .in("lead_id", leadIds),
+      // Agenda pessoal: visitas de colegas para o lead também contam.
+      fetchLeadVisits(supabase as never, companyId, leadIds).then((data) => ({ data })),
       // Últimas mensagens INBOUND por conversa (role=lead)
       supabase
         .from("messages")

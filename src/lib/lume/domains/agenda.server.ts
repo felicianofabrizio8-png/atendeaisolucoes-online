@@ -21,7 +21,15 @@ import type { LumeContext, LumeDomain, LumeTool, LumeUndo } from "../types";
 const MAX_LIST = 60;
 const MAX_BULK = 25;
 
-type Row = AgendaEvent & { company_id?: string };
+type Row = AgendaEvent & {
+  company_id?: string;
+  agenda_event_tags?: Array<{ tag_id: string }>;
+  agenda_event_participants?: Array<{ user_id: string; name: string; role: string }>;
+};
+
+/** Com hierarquia, lê também alcance, dona, tags e participantes (para desfazer por inteiro). */
+const HIERARCHY_COLUMNS =
+  "owner_id,scope,everyone,agenda_event_tags(tag_id),agenda_event_participants(user_id,name,role)";
 
 async function companyTypes(ctx: LumeContext): Promise<AgendaEventType[]> {
   if (!ctx.extended) return [];
@@ -58,7 +66,11 @@ async function loadEvents(ctx: LumeContext, ids: string[]): Promise<Row[]> {
   if (!ids.length) return [];
   const { data, error } = await ctx.client
     .from("visits")
-    .select(`${selectColumns(ctx)},company_id`)
+    .select(
+      hasHierarchy(ctx)
+        ? `${selectColumns(ctx)},company_id,${HIERARCHY_COLUMNS}`
+        : `${selectColumns(ctx)},company_id`,
+    )
     .eq("company_id", ctx.companyId)
     .in("id", ids);
   if (error) throw new Error("Não consegui ler a agenda.");
@@ -154,6 +166,12 @@ type EventArgs = Partial<Record<keyof typeof EVENT_FIELDS, unknown>>;
 const EVERYONE = new Set(["todos", "equipe", "toda a equipe"]);
 
 /** Migração de hierarquia aplicada? Sem a informação, segue a estrutura nova da Agenda. */
+/** Alcance é obrigatório no banco: desfazer nunca grava alcance vazio. */
+function undoChanges(changes: Record<string, unknown>) {
+  const { scope, ...rest } = changes;
+  return scope == null ? rest : { ...rest, scope };
+}
+
 function hasHierarchy(ctx: LumeContext) {
   return ctx.extended && ctx.hierarchy !== false;
 }
@@ -604,10 +622,18 @@ const updateEvent: LumeTool<{ id: string } & EventArgs> = {
     if (problems.length) return { output: { erro: problems.join(" ") } };
     if (!Object.keys(columns).length) return { output: { erro: "Nada para alterar." } };
     const previous: Record<string, unknown> = {};
-    for (const key of Object.keys(columns))
-      previous[key] = (current as unknown as Record<string, unknown>)[key] ?? null;
-    const { error } = await ctx.client.from("visits").update(columns).eq("id", current.id);
+    const before = current as unknown as Record<string, unknown>;
+    // Só guarda o que foi lido: coluna não lida viraria nulo ao desfazer.
+    for (const key of Object.keys(columns)) if (key in before) previous[key] = before[key] ?? null;
+    const { data: updated, error } = await ctx.client
+      .from("visits")
+      .update(columns)
+      .eq("id", current.id)
+      .select("id");
     if (error) return { output: { erro: "O banco recusou a alteração." } };
+    // Nenhuma linha afetada: o banco não deixou (compromisso de outra pessoa ou da equipe).
+    if (!(updated as unknown[] | null)?.length)
+      return { output: { erro: "Você não tem permissão para alterar este compromisso." } };
     let clash: Row[] = [];
     if (columns.scheduled_at || columns.technician || columns.salesperson) {
       const merged = { ...current, ...columns } as Row;
@@ -656,18 +682,26 @@ const deleteEvents: LumeTool<{ ids: string[] }> = {
   async execute(args, ctx) {
     const rows = await loadEvents(ctx, args.ids.slice(0, MAX_BULK));
     if (!rows.length) return { output: { erro: "Nenhum compromisso encontrado com esses ids." } };
-    const { error } = await ctx.client
+    const { data: deletedRows, error } = await ctx.client
       .from("visits")
       .delete()
       .in(
         "id",
         rows.map((row) => row.id),
-      );
+      )
+      .select("id");
     if (error) return { output: { erro: "O banco recusou a exclusão." } };
+    const deletedIds = new Set(((deletedRows ?? []) as Array<{ id: string }>).map((row) => row.id));
+    const deleted = rows.filter((row) => deletedIds.has(row.id));
+    if (!deleted.length)
+      return { output: { erro: "Você não tem permissão para excluir esses compromissos." } };
     return {
-      output: { excluidos: rows.length },
-      undo: { op: "restore_events", rows: rows as unknown as Array<Record<string, unknown>> },
-      touched: rows.map((row) => row.id),
+      output: {
+        excluidos: deleted.length,
+        ...(deleted.length < rows.length ? { sem_permissao: rows.length - deleted.length } : {}),
+      },
+      undo: { op: "restore_events", rows: deleted as unknown as Array<Record<string, unknown>> },
+      touched: deleted.map((row) => row.id),
     };
   },
 };
@@ -921,16 +955,47 @@ Regras da agenda:
         .in("id", undo.ids);
       if (error) throw new Error("Não foi possível desfazer.");
     } else if (undo.op === "restore_events") {
+      const tagRows: Array<Record<string, unknown>> = [];
+      const peopleRows: Array<Record<string, unknown>> = [];
       const rows = undo.rows.map((row) => {
-        const { created_at: _c, updated_at: _u, created_by: _cb, updated_by: _ub, ...rest } = row;
+        const {
+          created_at: _c,
+          updated_at: _u,
+          created_by: _cb,
+          updated_by: _ub,
+          agenda_event_tags: tags,
+          agenda_event_participants: people,
+          ...rest
+        } = row;
+        for (const tag of (tags ?? []) as Array<{ tag_id: string }>)
+          tagRows.push({ company_id: ctx.companyId, event_id: row.id, tag_id: tag.tag_id });
+        for (const person of (people ?? []) as Array<{ user_id: string; name: string; role: string }>)
+          peopleRows.push({
+            company_id: ctx.companyId,
+            event_id: row.id,
+            user_id: person.user_id,
+            name: person.name,
+            role: person.role,
+          });
         return { ...rest, company_id: ctx.companyId };
       });
       const { error } = await ctx.client.from("visits").insert(rows);
       if (error) throw new Error("Não foi possível restaurar os compromissos.");
+      // A exclusão apagou tags e participantes junto (cascata): devolve os dois.
+      if (tagRows.length) {
+        const { error: tagError } = await ctx.client.from("agenda_event_tags").insert(tagRows);
+        if (tagError) throw new Error("Compromissos restaurados, mas sem as tags.");
+      }
+      if (peopleRows.length) {
+        const { error: peopleError } = await ctx.client
+          .from("agenda_event_participants")
+          .insert(peopleRows);
+        if (peopleError) throw new Error("Compromissos restaurados, mas sem os participantes.");
+      }
     } else if (undo.op === "update_event") {
       const { error } = await ctx.client
         .from("visits")
-        .update(undo.changes)
+        .update(undoChanges(undo.changes))
         .eq("company_id", ctx.companyId)
         .eq("id", undo.id);
       if (error) throw new Error("Não foi possível desfazer a alteração.");

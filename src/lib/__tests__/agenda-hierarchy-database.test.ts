@@ -331,4 +331,137 @@ describe.sequential("equipe: convite por link", () => {
   });
 });
 
+// Correções da revisão final.
+describe.sequential("revisão final: vazamentos e contas presas", () => {
+  it("histórico de compromisso pessoal não aparece para colega; gestor vê", async () => {
+    await asUser(empA);
+    const secret = await value<string>(insertEvent("Consulta médica"));
+    await db.query(`UPDATE visits SET title='Consulta médica 2' WHERE id='${secret}'`);
+    await asUser(empB);
+    expect(
+      await value<number>(`SELECT count(*)::int AS v FROM agenda_event_history WHERE event_id='${secret}'`),
+    ).toBe(0);
+    await asUser(manager);
+    expect(
+      await value<number>(`SELECT count(*)::int AS v FROM agenda_event_history WHERE event_id='${secret}'`),
+    ).toBeGreaterThan(0);
+  });
+
+  it("recuperação enxerga a visita de um colega para o mesmo lead", async () => {
+    await root();
+    // A atendia o lead e agendou a visita; depois o lead passou para B.
+    const lead = await value<string>(
+      `INSERT INTO leads(company_id,name,channel,assigned_to) VALUES('${company}','Lead visita','whatsapp','${empA}') RETURNING id AS v`,
+    );
+    await asUser(empA);
+    await db.query(
+      `INSERT INTO visits(company_id,title,scheduled_at,lead_id) VALUES('${company}','Visita lead',now(),'${lead}')`,
+    );
+    await root();
+    await db.query(`UPDATE leads SET assigned_to='${empB}' WHERE id='${lead}'`);
+    await asUser(empB);
+    expect(await value<number>(`SELECT count(*)::int AS v FROM visits WHERE lead_id='${lead}'`)).toBe(0);
+    const rows = await value<Array<{ lead_id: string; status: string }>>(
+      `SELECT COALESCE(jsonb_agg(to_jsonb(r)),'[]'::jsonb) AS v FROM public.agenda_lead_visits(ARRAY['${lead}']::uuid[]) r`,
+    );
+    expect(rows.map((row) => row.lead_id)).toEqual([lead]);
+    await asUser(outsider);
+    const other = await value<unknown[]>(
+      `SELECT COALESCE(jsonb_agg(to_jsonb(r)),'[]'::jsonb) AS v FROM public.agenda_lead_visits(ARRAY['${lead}']::uuid[]) r`,
+    );
+    expect(other).toEqual([]);
+  });
+
+  it("recusado na aprovação volta para uma equipe própria, com acesso", async () => {
+    await asUser(admin);
+    const link = await value<{ token: string }>(
+      `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], true, null, null, 'Aprovação') AS v`,
+    );
+    const person = "00000000-0000-4000-8000-0000000000c1";
+    await root();
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'rec@x.test')`, [person]);
+    await asUser(person);
+    await db.query(`SELECT team_join_via_link('${link.token}')`);
+    await asUser(admin);
+    await db.query(`SELECT team_reject_member('${person}')`);
+    await root();
+    const own = await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${person}'`);
+    expect(own).not.toBe(company);
+    expect(await value<string>(`SELECT role::text AS v FROM user_roles WHERE user_id='${person}'`)).toBe("admin");
+    await asUser(person);
+    expect(await value<string>(`SELECT public.current_company_id()::text AS v`)).toBe(own);
+  });
+
+  it("quem aguarda aprovação pode cancelar o pedido e volta para equipe própria", async () => {
+    await asUser(admin);
+    const link = await value<{ token: string }>(
+      `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], true, null, null, 'Cancelar') AS v`,
+    );
+    const person = "00000000-0000-4000-8000-0000000000c2";
+    await root();
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'cancel@x.test')`, [person]);
+    await asUser(person);
+    await db.query(`SELECT team_join_via_link('${link.token}')`);
+    await db.query(`SELECT team_cancel_join_request()`);
+    expect(await value<unknown>(`SELECT team_my_pending_join() AS v`)).toBeNull();
+    const own = await value<string>(`SELECT public.current_company_id()::text AS v`);
+    expect(own).not.toBe(company);
+    expect(own).toBeTruthy();
+  });
+
+  it("ao trocar de equipe, links e convites da equipe antiga são revogados", async () => {
+    const owner = "00000000-0000-4000-8000-0000000000c3";
+    await root();
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'dono2@x.test')`, [owner]);
+    await asUser(owner);
+    const oldLink = await value<{ token: string }>(
+      `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], false, null, null, 'Antigo') AS v`,
+    );
+    await db.query(`SELECT team_create_invite('alguem@x.test','atendente')`);
+    await asUser(admin);
+    const link = await value<{ token: string }>(
+      `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], false, null, null, 'Novo') AS v`,
+    );
+    await asUser(owner);
+    await db.query(`SELECT team_join_via_link('${link.token}')`);
+    await root();
+    expect(
+      await value<string | null>(
+        `SELECT revoked_at::text AS v FROM company_invite_links WHERE token='${oldLink.token}'`,
+      ),
+    ).not.toBeNull();
+    expect(
+      await value<number>(
+        `SELECT count(*)::int AS v FROM company_invites WHERE email='alguem@x.test' AND cancelled_at IS NULL`,
+      ),
+    ).toBe(0);
+  });
+
+  it("equipe atual com canal conectado (integração) conta como equipe com dados", async () => {
+    const person = "00000000-0000-4000-8000-0000000000c4";
+    await root();
+    await db.query(`INSERT INTO auth.users(id,email) VALUES($1,'conv@x.test')`, [person]);
+    const own = await value<string>(`SELECT company_id::text AS v FROM profiles WHERE id='${person}'`);
+    await db.exec(
+      `CREATE TABLE IF NOT EXISTS public.integrations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid)`,
+    );
+    await asUser(admin);
+    const link = await value<{ token: string }>(
+      `SELECT team_create_invite_link('atendente', ARRAY['agenda.manage'], false, null, null, 'Dados') AS v`,
+    );
+    await asUser(person);
+    expect(
+      (await value<Record<string, unknown>>(`SELECT team_invite_link_info('${link.token}') AS v`))
+        .currentTeamHasData,
+    ).toBe(false);
+    await root();
+    await db.query(`INSERT INTO public.integrations(company_id) VALUES($1)`, [own]);
+    await asUser(person);
+    expect(
+      (await value<Record<string, unknown>>(`SELECT team_invite_link_info('${link.token}') AS v`))
+        .currentTeamHasData,
+    ).toBe(true);
+  });
+});
+
 export { asAnon, root };

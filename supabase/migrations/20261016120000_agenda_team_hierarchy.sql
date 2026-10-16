@@ -270,7 +270,7 @@ END; $$;
 -- Logado: também a equipe atual, se já é membro e se pode trocar.
 CREATE OR REPLACE FUNCTION public.team_invite_link_info(_token text)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_link public.company_invite_links; v_name text; v_me public.profiles;
+DECLARE v_link public.company_invite_links; v_name text; v_me public.profiles; v_has_data boolean;
 BEGIN
   SELECT * INTO v_link FROM public.company_invite_links WHERE token = _token;
   IF NOT public.team_link_usable(v_link) THEN
@@ -281,6 +281,14 @@ BEGIN
     RETURN jsonb_build_object('valid', true, 'company', v_name, 'requiresApproval', v_link.requires_approval);
   END IF;
   SELECT * INTO v_me FROM public.profiles WHERE id = auth.uid();
+  -- Equipe com dados: leads/conversas, compromissos, orçamentos ou um canal conectado.
+  v_has_data := EXISTS (SELECT 1 FROM public.leads WHERE company_id = v_me.company_id)
+    OR EXISTS (SELECT 1 FROM public.visits WHERE company_id = v_me.company_id)
+    OR EXISTS (SELECT 1 FROM public.quotes WHERE company_id = v_me.company_id);
+  IF NOT v_has_data AND to_regclass('public.integrations') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.integrations WHERE company_id = $1)'
+      INTO v_has_data USING v_me.company_id;
+  END IF;
   RETURN jsonb_build_object(
     'valid', true,
     'company', v_name,
@@ -288,9 +296,7 @@ BEGIN
     'currentTeam', (SELECT name FROM public.companies WHERE id = v_me.company_id),
     'alreadyMember', v_me.company_id = v_link.company_id,
     'canSwitch', NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.company_id = v_me.company_id AND p.id <> v_me.id),
-    'currentTeamHasData', EXISTS (SELECT 1 FROM public.leads WHERE company_id = v_me.company_id)
-      OR EXISTS (SELECT 1 FROM public.visits WHERE company_id = v_me.company_id)
-      OR EXISTS (SELECT 1 FROM public.quotes WHERE company_id = v_me.company_id)
+    'currentTeamHasData', COALESCE(v_has_data, false)
   );
 END; $$;
 GRANT EXECUTE ON FUNCTION public.team_invite_link_info(text) TO anon, authenticated;
@@ -325,6 +331,11 @@ BEGIN
     RAISE EXCEPTION 'Sua conta faz parte de uma equipe com outras pessoas. Use outro e-mail para entrar nesta equipe.';
   END IF;
   PERFORM set_config('lume.team_move', 'on', true);
+  -- A equipe antiga fica sem ninguém: fecha os convites dela para ninguém entrar sem admin.
+  UPDATE public.company_invite_links SET revoked_at = now()
+  WHERE company_id = v_me.company_id AND revoked_at IS NULL;
+  UPDATE public.company_invites SET cancelled_at = now()
+  WHERE company_id = v_me.company_id AND accepted_at IS NULL AND cancelled_at IS NULL;
   DELETE FROM public.user_roles WHERE user_id = v_uid AND company_id = v_me.company_id;
   DELETE FROM public.company_member_access WHERE user_id = v_uid AND company_id = v_me.company_id;
   UPDATE public.profiles SET company_id = v_link.company_id WHERE id = v_uid;
@@ -358,13 +369,48 @@ BEGIN
   WHERE user_id = _user AND company_id = v_company AND approval_pending;
 END; $$;
 
+-- Devolve uma conta (que aguardava aprovação) para uma equipe própria, como admin.
+-- Uso interno: recusa do admin ou desistência da própria pessoa. Ninguém fica preso.
+CREATE OR REPLACE FUNCTION public.team_send_home(_user uuid)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_old uuid; v_company uuid;
+BEGIN
+  SELECT company_id INTO v_old FROM public.profiles WHERE id = _user;
+  INSERT INTO public.companies(name) VALUES ('Minha Empresa') RETURNING id INTO v_company;
+  INSERT INTO public.company_settings(company_id) VALUES (v_company);
+  PERFORM set_config('lume.team_move', 'on', true);
+  DELETE FROM public.user_roles WHERE user_id = _user AND company_id = v_old;
+  DELETE FROM public.company_member_access WHERE user_id = _user AND company_id = v_old;
+  UPDATE public.profiles SET company_id = v_company WHERE id = _user;
+  INSERT INTO public.user_roles(company_id, user_id, role) VALUES (v_company, _user, 'admin');
+  INSERT INTO public.company_member_access(company_id, user_id) VALUES (v_company, _user);
+  PERFORM set_config('lume.team_move', 'off', true);
+  RETURN v_company;
+END; $$;
+REVOKE ALL ON FUNCTION public.team_send_home(uuid) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.team_reject_member(_user uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_company uuid := public.current_company_id();
 BEGIN
   IF NOT public.has_role(auth.uid(), v_company, 'admin') THEN RAISE EXCEPTION 'Acesso negado' USING ERRCODE = '42501'; END IF;
-  UPDATE public.company_member_access SET active = false, approval_pending = false
-  WHERE user_id = _user AND company_id = v_company AND approval_pending;
+  IF EXISTS (SELECT 1 FROM public.company_member_access
+             WHERE user_id = _user AND company_id = v_company AND approval_pending) THEN
+    PERFORM public.team_send_home(_user);
+  END IF;
+END; $$;
+
+-- Quem aguarda aprovação pode desistir e voltar para uma equipe própria.
+CREATE OR REPLACE FUNCTION public.team_cancel_join_request()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Entre na sua conta' USING ERRCODE = '42501'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.company_member_access a JOIN public.profiles p
+                   ON p.id = a.user_id AND p.company_id = a.company_id
+                 WHERE a.user_id = auth.uid() AND a.approval_pending) THEN
+    RAISE EXCEPTION 'Não há pedido aguardando aprovação';
+  END IF;
+  PERFORM public.team_send_home(auth.uid());
 END; $$;
 
 CREATE OR REPLACE FUNCTION public.team_rename_company(_name text)
@@ -398,4 +444,27 @@ GRANT EXECUTE ON FUNCTION
   public.team_create_invite_link(public.app_role, text[], boolean, integer, integer, text),
   public.team_list_invite_links(), public.team_revoke_invite_link(uuid), public.team_join_via_link(text),
   public.team_my_pending_join(), public.team_approve_member(uuid), public.team_reject_member(uuid),
-  public.team_rename_company(text) TO authenticated;
+  public.team_cancel_join_request(), public.team_rename_company(text) TO authenticated;
+
+-- ---------- 5. Histórico e recuperação respeitam a agenda pessoal ----------
+-- O histórico só aparece para quem vê o compromisso; de compromisso excluído, só a gestão.
+DROP POLICY IF EXISTS agenda_history_scope ON public.agenda_event_history;
+CREATE POLICY agenda_history_scope ON public.agenda_event_history AS RESTRICTIVE FOR SELECT TO authenticated
+  USING (public.agenda_can_see_event(event_id) OR public.agenda_is_manager(company_id));
+
+-- Recuperação de leads: precisa saber se o lead já tem visita, mesmo agendada por um
+-- colega (a agenda pessoal dele é invisível para os outros). Devolve só lead, data e status.
+CREATE OR REPLACE FUNCTION public.agenda_lead_visits(_leads uuid[])
+RETURNS TABLE (lead_id uuid, scheduled_at timestamptz, status text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_company uuid := public.current_company_id();
+BEGIN
+  IF v_company IS NULL THEN RETURN; END IF;
+  RETURN QUERY
+    SELECT v.lead_id, v.scheduled_at, v.status::text
+    FROM public.visits v
+    WHERE v.company_id = v_company AND v.lead_id = ANY (_leads)
+      AND public.team_can_read_lead(v.lead_id);
+END; $$;
+REVOKE ALL ON FUNCTION public.agenda_lead_visits(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.agenda_lead_visits(uuid[]) TO authenticated;

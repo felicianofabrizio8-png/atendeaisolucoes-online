@@ -181,30 +181,73 @@ export function buildEventRow(
   return row;
 }
 
-/** Troca as tags e os participantes do compromisso pelos do formulário. */
+/**
+ * Grava só o que mudou nas tags e nos participantes do compromisso.
+ * - Tags: só mexe nas que a pessoa pode usar (da empresa ou dela); tag pessoal de outra
+ *   pessoa ligada ao compromisso fica como está.
+ * - Participantes: só em compromisso da equipe, e só os de papel "participante" com conta;
+ *   respostas (aceito/recusado) dos que continuam são preservadas.
+ * Erro do banco vira exceção, para a tela avisar.
+ */
 export async function saveEventRelations(
   eventId: string,
   form: EventForm,
   companyId: string,
   members: Array<{ id: string; name: string }>,
+  options: {
+    previous: { tagIds: string[]; participantIds: string[] };
+    editableTagIds: ReadonlySet<string>;
+  },
 ) {
   const { supabase } = await import("@/integrations/supabase/client");
-  const tags = supabase.from("agenda_event_tags" as never);
-  await tags.delete().eq("event_id", eventId);
-  if (form.tagIds.length)
-    await tags.insert(
-      form.tagIds.map((tag_id) => ({ company_id: companyId, event_id: eventId, tag_id })) as never,
+  const check = (result: { error: unknown }) => {
+    if (result.error) throw new Error("Não foi possível gravar tags ou participantes.");
+  };
+  const { previous, editableTagIds } = options;
+
+  const removedTags = previous.tagIds.filter(
+    (id) => editableTagIds.has(id) && !form.tagIds.includes(id),
+  );
+  const addedTags = form.tagIds.filter((id) => editableTagIds.has(id) && !previous.tagIds.includes(id));
+  if (removedTags.length)
+    check(
+      await supabase
+        .from("agenda_event_tags" as never)
+        .delete()
+        .eq("event_id", eventId)
+        .in("tag_id", removedTags),
     );
-  const people = supabase.from("agenda_event_participants" as never);
-  await people.delete().eq("event_id", eventId);
-  if (form.scope === "equipe" && form.participantIds.length)
-    await people.insert(
-      form.participantIds.map((user_id) => ({
-        company_id: companyId,
-        event_id: eventId,
-        user_id,
-        name: members.find((member) => member.id === user_id)?.name ?? "Membro",
-        role: "participante",
-      })) as never,
+  if (addedTags.length)
+    check(
+      await supabase
+        .from("agenda_event_tags" as never)
+        .insert(
+          addedTags.map((tag_id) => ({ company_id: companyId, event_id: eventId, tag_id })) as never,
+        ),
+    );
+
+  if (form.scope !== "equipe") return;
+  const removedPeople = previous.participantIds.filter((id) => !form.participantIds.includes(id));
+  const addedPeople = form.participantIds.filter((id) => !previous.participantIds.includes(id));
+  if (removedPeople.length)
+    check(
+      await supabase
+        .from("agenda_event_participants" as never)
+        .delete()
+        .eq("event_id", eventId)
+        .eq("role", "participante")
+        .in("user_id", removedPeople),
+    );
+  if (addedPeople.length)
+    check(
+      await supabase.from("agenda_event_participants" as never).insert(
+        addedPeople.map((user_id) => ({
+          company_id: companyId,
+          event_id: eventId,
+          user_id,
+          name: members.find((member) => member.id === user_id)?.name ?? "Membro",
+          role: "participante",
+        })) as never,
+      ),
     );
 }

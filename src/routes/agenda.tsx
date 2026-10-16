@@ -73,6 +73,7 @@ import {
   daysOf,
   EMPTY_FILTERS,
   findConflicts,
+  canEditEvent,
   matchesScope,
   peopleOf,
   pulseOf,
@@ -413,6 +414,7 @@ function AgendaPage() {
               startHour={preferences.dayStartHour}
               onCreateAt={(at) => openCreate(at)}
               onMove={(event, at) => void move(event, at)}
+              canEdit={(event) => !hierarchy || canEditEvent(event, me, manager)}
             />
           ) : view === "mes" ? (
             <MonthView

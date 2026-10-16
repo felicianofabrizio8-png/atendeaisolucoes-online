@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   pending: null as unknown,
   info: {} as Record<string, unknown>,
   join: vi.fn(),
+  cancel: vi.fn(),
   saved: null as string | null,
   user: { id: "u1" } as { id: string } | null,
   signOut: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("@/lib/team/invite-link", () => ({
   myPendingJoin: async () => api.pending,
   linkInfo: async () => api.info,
   joinViaLink: api.join,
+  cancelJoinRequest: api.cancel,
   readPendingInvite: () => api.saved,
   clearPendingInvite: () => {
     api.saved = null;
@@ -103,6 +105,16 @@ describe("convite pelo link", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /sair/i }));
     expect(api.signOut).toHaveBeenCalled();
+  });
+
+  it("aguardando aprovação: pode cancelar o pedido e voltar para a própria equipe", async () => {
+    api.saved = null;
+    api.pending = { state: "waiting", company: "Clínica Sol" };
+    api.cancel.mockResolvedValue(undefined);
+    render(<PendingInviteGate />);
+    await userEvent.click(await screen.findByRole("button", { name: /cancelar pedido/i }));
+    await waitFor(() => expect(api.cancel).toHaveBeenCalled());
+    await waitFor(() => expect(window.location.reload).toHaveBeenCalled());
   });
 
   it("sem login: a página do convite pede para criar conta ou entrar, sem criar equipe", async () => {

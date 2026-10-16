@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import {
+  cancelJoinRequest,
   clearPendingInvite,
   joinViaLink,
   linkInfo,
@@ -82,14 +83,40 @@ export function PendingInviteGate() {
         title="Aguardando aprovação"
         description={`Seu pedido para entrar na equipe ${view.company} foi enviado.`}
         footer={
-          <button type="button" className="lq-secondary ml-auto" onClick={() => void signOut()}>
-            Sair
-          </button>
+          <>
+            <button
+              type="button"
+              className="lq-secondary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await cancelJoinRequest();
+                  window.location.reload();
+                } catch (cause) {
+                  setError(cause instanceof Error ? cause.message : "Não foi possível cancelar.");
+                  setBusy(false);
+                }
+              }}
+            >
+              Cancelar pedido
+            </button>
+            <button type="button" className="lq-secondary ml-auto" onClick={() => void signOut()}>
+              Sair
+            </button>
+          </>
         }
       >
         <p className="text-sm leading-relaxed text-white/70">
-          Avisaremos quando o administrador liberar seu acesso. Você pode fechar esta página.
+          Assim que o administrador liberar, recarregue a página para entrar. Se desistir, cancele o
+          pedido e você volta para a sua própria equipe.
         </p>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-[#ff9a9a]">
+            {error}
+          </p>
+        )}
       </LumePopup>
     );
   }

@@ -265,7 +265,13 @@ export function EventFormModal({
     const id = (data as { id: string }).id;
     if (hierarchy) {
       try {
-        await saveEventRelations(id, form, companyId, members);
+        await saveEventRelations(id, form, companyId, members, {
+          previous: { tagIds: event?.tag_ids ?? [], participantIds: event?.participant_ids ?? [] },
+          // Só as tags que esta pessoa pode usar: da empresa ou dela.
+          editableTagIds: new Set(
+            tags.filter((tag) => tag.owner_id === null || tag.owner_id === me).map((tag) => tag.id),
+          ),
+        });
       } catch {
         toast.error("Compromisso salvo, mas as tags ou participantes não foram gravados.");
       }

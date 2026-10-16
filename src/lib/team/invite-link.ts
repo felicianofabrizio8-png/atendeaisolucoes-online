@@ -68,3 +68,8 @@ export async function joinViaLink(token: string) {
   );
   return result.status;
 }
+
+/** Desiste do pedido aguardando aprovação: a conta volta para uma equipe própria. */
+export async function cancelJoinRequest() {
+  await teamRpc("team_cancel_join_request");
+}

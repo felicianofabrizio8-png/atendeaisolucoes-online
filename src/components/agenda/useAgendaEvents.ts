@@ -120,11 +120,13 @@ export function useAgendaEvents(
       setEvents((list) =>
         list.map((event) => (event.id === id ? { ...event, ...changes } : event)),
       );
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from("visits")
         .update(changes as never)
-        .eq("id", id);
-      if (updateError) {
+        .eq("id", id)
+        .select("id");
+      // Sem linha afetada = o banco não deixou (agenda de outra pessoa): não é sucesso.
+      if (updateError || !(updated as unknown[] | null)?.length) {
         setEvents(previous);
         toast.error("Não foi possível salvar a alteração.");
         return false;
@@ -158,8 +160,12 @@ export function useAgendaEvents(
     async (id: string) => {
       const previous = events;
       setEvents((list) => list.filter((event) => event.id !== id));
-      const { error: deleteError } = await supabase.from("visits").delete().eq("id", id);
-      if (deleteError) {
+      const { data: deleted, error: deleteError } = await supabase
+        .from("visits")
+        .delete()
+        .eq("id", id)
+        .select("id");
+      if (deleteError || !(deleted as unknown[] | null)?.length) {
         setEvents(previous);
         toast.error("Não foi possível excluir.");
         return false;
