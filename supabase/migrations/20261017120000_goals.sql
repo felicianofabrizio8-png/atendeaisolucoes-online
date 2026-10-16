@@ -236,3 +236,166 @@ GRANT SELECT ON public.goal_periods, public.goal_snapshots, public.goal_insights
 GRANT ALL ON public.goal_stages, public.goals, public.goal_members, public.goal_periods, public.goal_entries,
   public.goal_snapshots, public.goal_insights TO service_role;
 GRANT EXECUTE ON FUNCTION public.goals_can_manage(uuid), public.goals_can_see(uuid) TO authenticated;
+
+-- ---------- 5. Indicadores e progresso ----------
+-- "Agora" das metas: o relógio do banco, ou uma data fixa em testes
+-- (SELECT set_config('lume.goals_now', '2026-10-31T12:00:00-03:00', false)).
+CREATE OR REPLACE FUNCTION public.goals_now()
+RETURNS timestamptz LANGUAGE sql STABLE AS $$
+  SELECT coalesce(nullif(current_setting('lume.goals_now', true), '')::timestamptz, now());
+$$;
+
+-- Cálculo bruto: lê leads/orçamentos/mensagens/agenda ignorando RLS, então
+-- NÃO pode ser chamado pela API. Só as RPCs abaixo (que conferem acesso) usam.
+-- _users NULL = toda a empresa (inclui registros sem responsável).
+CREATE OR REPLACE FUNCTION public.goals_metric_raw(_company uuid, _metric text, _from timestamptz, _to timestamptz, _users uuid[])
+RETURNS numeric LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE v numeric; n numeric; d numeric;
+BEGIN
+  IF _metric = 'receita_fechada' THEN
+    SELECT sum(l.closed_value) INTO v FROM leads l
+    WHERE l.company_id = _company AND l.status = 'fechado' AND l.closed_at >= _from AND l.closed_at < _to
+      AND (_users IS NULL OR l.assigned_to = ANY (_users));
+  ELSIF _metric = 'vendas_fechadas' THEN
+    SELECT count(*) INTO v FROM leads l
+    WHERE l.company_id = _company AND l.status = 'fechado' AND l.closed_at >= _from AND l.closed_at < _to
+      AND (_users IS NULL OR l.assigned_to = ANY (_users));
+  ELSIF _metric = 'leads_novos' THEN
+    SELECT count(*) INTO v FROM leads l
+    WHERE l.company_id = _company AND l.created_at >= _from AND l.created_at < _to
+      AND (_users IS NULL OR l.assigned_to = ANY (_users));
+  ELSIF _metric = 'taxa_conversao' THEN
+    n := public.goals_metric_raw(_company, 'vendas_fechadas', _from, _to, _users);
+    d := public.goals_metric_raw(_company, 'leads_novos', _from, _to, _users);
+    v := CASE WHEN d > 0 THEN round(n * 100.0 / d, 1) END;
+  ELSIF _metric = 'orcamentos_criados' THEN
+    SELECT count(*) INTO v FROM quotes q LEFT JOIN leads l ON l.id = q.lead_id
+    WHERE q.company_id = _company AND q.created_at >= _from AND q.created_at < _to
+      AND (_users IS NULL OR l.assigned_to = ANY (_users));
+  ELSIF _metric = 'orcamentos_enviados' THEN
+    SELECT count(*) INTO v FROM quotes q LEFT JOIN leads l ON l.id = q.lead_id
+    WHERE q.company_id = _company AND q.status <> 'rascunho'
+      AND coalesce(q.sent_at, q.created_at) >= _from AND coalesce(q.sent_at, q.created_at) < _to
+      AND (_users IS NULL OR l.assigned_to = ANY (_users));
+  ELSIF _metric = 'conversas_respondidas' THEN
+    SELECT count(DISTINCT c.id) INTO v FROM conversations c JOIN leads l ON l.id = c.lead_id
+    WHERE c.company_id = _company AND (_users IS NULL OR l.assigned_to = ANY (_users))
+      AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.role = 'agent' AND m.at >= _from AND m.at < _to);
+  ELSIF _metric = 'tempo_primeira_resposta' THEN
+    SELECT round(avg(extract(epoch FROM (fa.at - fl.at)) / 60)::numeric, 1) INTO v
+    FROM conversations c JOIN leads l ON l.id = c.lead_id
+    CROSS JOIN LATERAL (SELECT min(m.at) AS at FROM messages m WHERE m.conversation_id = c.id AND m.role = 'lead') fl
+    CROSS JOIN LATERAL (SELECT min(m.at) AS at FROM messages m WHERE m.conversation_id = c.id AND m.role = 'agent' AND m.at >= fl.at) fa
+    WHERE c.company_id = _company AND fl.at >= _from AND fl.at < _to AND fa.at IS NOT NULL
+      AND (_users IS NULL OR l.assigned_to = ANY (_users));
+  ELSIF _metric = 'compromissos_concluidos' THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'visits' AND column_name = 'owner_id') THEN
+      EXECUTE 'SELECT count(*) FROM public.visits WHERE company_id = $1 AND status = ''concluida''
+               AND scheduled_at >= $2 AND scheduled_at < $3 AND ($4 IS NULL OR owner_id = ANY ($4))'
+        INTO v USING _company, _from, _to, _users;
+    END IF;
+  END IF;
+  RETURN v;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.goals_value(_goal uuid, _from timestamptz, _to timestamptz, _users uuid[])
+RETURNS numeric LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE g public.goals; v numeric;
+BEGIN
+  SELECT * INTO g FROM public.goals WHERE id = _goal;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  IF g.measure = 'manual' THEN
+    SELECT sum(e.amount) INTO v FROM public.goal_entries e
+    WHERE e.goal_id = g.id AND e.created_at >= _from AND e.created_at < _to
+      AND (_users IS NULL OR e.user_id = ANY (_users));
+    RETURN v;
+  END IF;
+  RETURN public.goals_metric_raw(g.company_id, g.metric, _from, _to, _users);
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.goals_progress_for(_company uuid, _check boolean, _goal_ids uuid[])
+RETURNS TABLE (goal_id uuid, period_id uuid, period_start date, period_end date, value numeric, weeks jsonb, contributions jsonb)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  g public.goals; p public.goal_periods; users uuid[]; w date; ws date; we date;
+  today date := (public.goals_now() AT TIME ZONE 'America/Sao_Paulo')::date;
+  manager boolean := CASE WHEN _check THEN public.goals_can_manage(_company) ELSE true END;
+BEGIN
+  FOR g IN SELECT * FROM public.goals x WHERE x.company_id = _company AND x.archived_at IS NULL
+                AND (_goal_ids IS NULL OR x.id = ANY (_goal_ids)) ORDER BY x.created_at LOOP
+    CONTINUE WHEN _check AND NOT public.goals_can_see(g.id);
+    SELECT * INTO p FROM public.goal_periods gp WHERE gp.goal_id = g.id AND gp.closed_at IS NULL ORDER BY gp.starts_on DESC LIMIT 1;
+    CONTINUE WHEN NOT FOUND;
+    users := CASE WHEN g.scope = 'empresa' THEN NULL ELSE (SELECT array_agg(m.user_id) FROM public.goal_members m WHERE m.goal_id = g.id) END;
+    goal_id := g.id; period_id := p.id; period_start := p.starts_on; period_end := p.ends_on;
+    value := public.goals_value(g.id, public.goals_day_start(p.starts_on), public.goals_day_start(least(p.ends_on, today) + 1), users);
+    weeks := '[]'::jsonb;
+    w := date_trunc('week', p.starts_on)::date;
+    WHILE w <= p.ends_on LOOP
+      ws := greatest(w, p.starts_on); we := least(w + 6, p.ends_on);
+      weeks := weeks || jsonb_build_object('startsOn', ws, 'endsOn', we, 'actual',
+        CASE WHEN ws > today THEN NULL
+             ELSE coalesce(public.goals_value(g.id, public.goals_day_start(ws), public.goals_day_start(least(we, today) + 1), users), 0) END);
+      w := w + 7;
+    END LOOP;
+    IF manager OR g.scope = 'empresa' THEN
+      SELECT coalesce(jsonb_agg(jsonb_build_object('userId', s.user_id, 'value', s.v) ORDER BY s.v DESC), '[]'::jsonb) INTO contributions
+      FROM (
+        SELECT u.user_id, public.goals_value(g.id, public.goals_day_start(p.starts_on), public.goals_day_start(least(p.ends_on, today) + 1), ARRAY[u.user_id]) AS v
+        FROM (SELECT m.user_id FROM public.goal_members m WHERE m.goal_id = g.id AND g.scope <> 'empresa'
+              UNION SELECT a.user_id FROM public.company_member_access a WHERE a.company_id = g.company_id AND g.scope = 'empresa') u
+      ) s WHERE s.v IS NOT NULL AND s.v <> 0;
+    ELSE
+      contributions := '[]'::jsonb;
+    END IF;
+    RETURN NEXT;
+  END LOOP;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.goals_progress(_goal_ids uuid[] DEFAULT NULL)
+RETURNS TABLE (goal_id uuid, period_id uuid, period_start date, period_end date, value numeric, weeks jsonb, contributions jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT * FROM public.goals_progress_for(public.current_company_id(), true, _goal_ids);
+$$;
+
+REVOKE ALL ON FUNCTION public.goals_metric_raw(uuid, text, timestamptz, timestamptz, uuid[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.goals_value(uuid, timestamptz, timestamptz, uuid[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.goals_progress_for(uuid, boolean, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.goals_metric_raw(uuid, text, timestamptz, timestamptz, uuid[]),
+  public.goals_value(uuid, timestamptz, timestamptz, uuid[]),
+  public.goals_progress_for(uuid, boolean, uuid[]) TO service_role;
+REVOKE ALL ON FUNCTION public.goals_progress(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.goals_progress(uuid[]) TO authenticated;
+
+-- ---------- 5b. Integridade dos lançamentos manuais ----------
+-- O lançamento vale para "agora" e para quem lança: nada de retroagir a data
+-- para cair em outro período, nem lançar em nome de outra pessoa (o gestor
+-- também lança como ele mesmo). Período precisa ser da mesma meta e aberto.
+CREATE OR REPLACE FUNCTION public.goals_entry_guard()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN -- pedido de uma pessoa (a rotina usa a chave de serviço, sem usuário)
+    NEW.created_at := public.goals_now();
+    IF NEW.user_id IS DISTINCT FROM auth.uid() THEN
+      RAISE EXCEPTION 'O lançamento é sempre de quem lança.' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.goal_periods p
+    WHERE p.id = NEW.period_id AND p.goal_id = NEW.goal_id AND p.closed_at IS NULL
+      AND (NEW.created_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN p.starts_on AND p.ends_on) THEN
+    RAISE EXCEPTION 'Período inválido ou fechado para este lançamento.';
+  END IF;
+  RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS goals_entry_guard ON public.goal_entries;
+CREATE TRIGGER goals_entry_guard BEFORE INSERT ON public.goal_entries
+  FOR EACH ROW EXECUTE FUNCTION public.goals_entry_guard();
+
+-- Lançamento não é editado: corrige-se apagando (período aberto) e lançando de novo.
+REVOKE UPDATE ON public.goal_entries FROM authenticated;
+DROP POLICY IF EXISTS goal_entries_delete ON public.goal_entries;
+CREATE POLICY goal_entries_delete ON public.goal_entries FOR DELETE TO authenticated USING (
+  public.goals_can_manage(company_id)
+  OR (user_id = auth.uid() AND EXISTS (
+    SELECT 1 FROM public.goal_periods p WHERE p.id = period_id AND p.closed_at IS NULL)));
