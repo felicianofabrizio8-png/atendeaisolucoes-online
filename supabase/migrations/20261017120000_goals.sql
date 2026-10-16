@@ -399,3 +399,70 @@ CREATE POLICY goal_entries_delete ON public.goal_entries FOR DELETE TO authentic
   public.goals_can_manage(company_id)
   OR (user_id = auth.uid() AND EXISTS (
     SELECT 1 FROM public.goal_periods p WHERE p.id = period_id AND p.closed_at IS NULL)));
+
+-- ---------- 6. Sugestões da Lume e rolagem de períodos ----------
+CREATE OR REPLACE FUNCTION public.goals_apply_insight(_insight uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE i public.goal_insights; g public.goals; kind text; target_goal uuid;
+BEGIN
+  SELECT * INTO i FROM public.goal_insights WHERE id = _insight FOR UPDATE;
+  IF NOT FOUND OR NOT public.goals_can_manage(i.company_id) THEN RAISE EXCEPTION 'Sem permissão.' USING ERRCODE = '42501'; END IF;
+  IF i.state <> 'pendente' OR i.kind <> 'sugestao' OR i.action IS NULL THEN RAISE EXCEPTION 'Sugestão já decidida ou sem ação.'; END IF;
+  kind := i.action ->> 'type';
+  target_goal := (i.action ->> 'goalId')::uuid;
+  SELECT * INTO g FROM public.goals WHERE id = target_goal AND company_id = i.company_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Meta da sugestão não existe mais.'; END IF;
+  IF kind = 'ajustar_alvo' THEN
+    UPDATE public.goals SET target = (i.action ->> 'target')::numeric WHERE id = g.id;
+  ELSIF kind = 'ajustar_prazo' THEN
+    IF g.recurrence IS NOT NULL THEN RAISE EXCEPTION 'Metas recorrentes não têm prazo final.'; END IF;
+    UPDATE public.goals SET ends_on = (i.action ->> 'endsOn')::date WHERE id = g.id;
+    UPDATE public.goal_periods SET ends_on = (i.action ->> 'endsOn')::date WHERE goal_id = g.id AND closed_at IS NULL;
+  ELSIF kind = 'mover_etapa' THEN
+    IF NOT EXISTS (SELECT 1 FROM public.goal_stages s WHERE s.id = (i.action ->> 'stageId')::uuid AND s.company_id = i.company_id) THEN
+      RAISE EXCEPTION 'Etapa não existe.'; END IF;
+    UPDATE public.goals SET stage_id = (i.action ->> 'stageId')::uuid WHERE id = g.id;
+  ELSE
+    RAISE EXCEPTION 'Ação desconhecida: %', kind;
+  END IF;
+  UPDATE public.goal_insights SET state = 'aplicada', decided_by = auth.uid(), decided_at = now() WHERE id = i.id;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.goals_dismiss_insight(_insight uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE i public.goal_insights;
+BEGIN
+  SELECT * INTO i FROM public.goal_insights WHERE id = _insight FOR UPDATE;
+  IF NOT FOUND OR NOT public.goals_can_manage(i.company_id) THEN RAISE EXCEPTION 'Sem permissão.' USING ERRCODE = '42501'; END IF;
+  IF i.state <> 'pendente' THEN RAISE EXCEPTION 'Sugestão já decidida.'; END IF;
+  UPDATE public.goal_insights SET state = 'dispensada', decided_by = auth.uid(), decided_at = now() WHERE id = i.id;
+END; $$;
+
+CREATE OR REPLACE FUNCTION public.goals_roll_periods(_today date)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE p record; v numeric; users uuid[]; closed integer := 0;
+BEGIN
+  FOR p IN SELECT gp.*, g.target, g.lower_is_better, g.recurrence, g.scope, g.starts_on AS goal_start, g.ends_on AS goal_end, g.archived_at
+           FROM public.goal_periods gp JOIN public.goals g ON g.id = gp.goal_id
+           WHERE gp.closed_at IS NULL AND gp.ends_on < _today FOR UPDATE OF gp LOOP
+    users := CASE WHEN p.scope = 'empresa' THEN NULL ELSE (SELECT array_agg(m.user_id) FROM public.goal_members m WHERE m.goal_id = p.goal_id) END;
+    v := public.goals_value(p.goal_id, public.goals_day_start(p.starts_on), public.goals_day_start(p.ends_on + 1), users);
+    UPDATE public.goal_periods SET final_value = v, closed_at = now(),
+      final_status = CASE
+        WHEN v IS NOT NULL AND ((NOT p.lower_is_better AND v >= p.target) OR (p.lower_is_better AND v <= p.target)) THEN 'concluida'
+        ELSE 'encerrada' END
+      WHERE id = p.id;
+    closed := closed + 1;
+    IF p.recurrence IS NOT NULL AND p.archived_at IS NULL THEN
+      INSERT INTO public.goal_periods (goal_id, starts_on, ends_on)
+      SELECT p.goal_id, b.starts_on, b.ends_on FROM public.goals_period_bounds(p.recurrence, p.goal_start, NULL, p.ends_on + 1) b
+      ON CONFLICT (goal_id, starts_on) DO NOTHING;
+    END IF;
+  END LOOP;
+  RETURN closed;
+END; $$;
+
+REVOKE ALL ON FUNCTION public.goals_roll_periods(date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.goals_roll_periods(date) TO service_role;
+REVOKE ALL ON FUNCTION public.goals_apply_insight(uuid), public.goals_dismiss_insight(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.goals_apply_insight(uuid), public.goals_dismiss_insight(uuid) TO authenticated;

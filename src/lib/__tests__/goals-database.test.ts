@@ -314,3 +314,56 @@ describe.sequential("metas: integridade dos lançamentos manuais", () => {
     await db.query(`UPDATE goal_periods SET closed_at=NULL WHERE id='${period}'`);
   });
 });
+
+describe.sequential("metas: sugestões e recorrência", () => {
+  it("gestor aplica ajuste de alvo; funcionário não aplica", async () => {
+    await asUser(admin);
+    const id = await value<string>(goal({ name: "'Ajustável'" }));
+    await root();
+    const insight = await value<string>(`INSERT INTO goal_insights(company_id,kind,goal_id,body,action)
+      VALUES('${company}','sugestao','${id}','Reduzir alvo','{"type":"ajustar_alvo","goalId":"${id}","target":8}') RETURNING id AS v`);
+    await asUser(empA);
+    expect(await fails(`SELECT public.goals_apply_insight('${insight}')`)).toBe(true);
+    await asUser(lead);
+    await db.query(`SELECT public.goals_apply_insight('${insight}')`);
+    await root();
+    expect(await value<number>(`SELECT target::int AS v FROM goals WHERE id='${id}'`)).toBe(8);
+    expect(await value<string>(`SELECT state AS v FROM goal_insights WHERE id='${insight}'`)).toBe("aplicada");
+    await asUser(lead);
+    expect(await fails(`SELECT public.goals_apply_insight('${insight}')`)).toBe(true); // já decidida
+  });
+
+  it("recusa ação inválida e dispensa sem alterar a meta", async () => {
+    await asUser(admin);
+    const id = await value<string>(goal({ name: "'Prazo'" }));
+    await root();
+    const bad = await value<string>(`INSERT INTO goal_insights(company_id,kind,goal_id,body,action)
+      VALUES('${company}','sugestao','${id}','x','{"type":"apagar_tudo","goalId":"${id}"}') RETURNING id AS v`);
+    const ok = await value<string>(`INSERT INTO goal_insights(company_id,kind,goal_id,body,action)
+      VALUES('${company}','sugestao','${id}','y','{"type":"ajustar_prazo","goalId":"${id}","endsOn":"2026-11-15"}') RETURNING id AS v`);
+    await asUser(admin);
+    expect(await fails(`SELECT public.goals_apply_insight('${bad}')`)).toBe(true);
+    await db.query(`SELECT public.goals_dismiss_insight('${ok}')`);
+    await root();
+    expect(await value<string>(`SELECT ends_on::text AS v FROM goals WHERE id='${id}'`)).toBe("2026-10-31");
+    expect(await value<string>(`SELECT state AS v FROM goal_insights WHERE id='${ok}'`)).toBe("dispensada");
+  });
+
+  it("fecha o período vencido e abre o próximo da recorrente, sem duplicar", async () => {
+    await asUser(admin);
+    const weekly = await value<string>(goal({ name: "'Semanal'", ends_on: "NULL", recurrence: "'semanal'", starts_on: "'2026-10-05'" }));
+    await root();
+    expect(await fails(`SET ROLE authenticated; SELECT public.goals_roll_periods('2026-10-13')`)).toBe(true);
+    await root();
+    await db.query(`SELECT public.goals_roll_periods('2026-10-13')`);
+    await db.query(`SELECT public.goals_roll_periods('2026-10-13')`); // de novo no mesmo dia
+    const rows = (await db.query<{ starts_on: string; closed: boolean; final_status: string | null }>(
+      `SELECT starts_on::text, closed_at IS NOT NULL AS closed, final_status FROM goal_periods WHERE goal_id='${weekly}' ORDER BY starts_on`,
+    )).rows;
+    // As duas vendas do describe anterior caem em 05–11/10; alvo 10 → não bateu.
+    expect(rows).toEqual([
+      { starts_on: "2026-10-05", closed: true, final_status: "encerrada" },
+      { starts_on: "2026-10-12", closed: false, final_status: null },
+    ]);
+  });
+});
