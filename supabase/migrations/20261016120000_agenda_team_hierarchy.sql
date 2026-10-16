@@ -9,7 +9,7 @@ ALTER TABLE public.company_member_access DROP CONSTRAINT IF EXISTS company_membe
 ALTER TABLE public.company_member_access ADD CONSTRAINT company_member_access_permissions_check
   CHECK (permissions <@ ARRAY['dashboard.view','conversations.read','conversations.reply','conversations.view_all',
     'conversations.assign','quotes.manage','agenda.manage','agenda.team','products.view','products.manage',
-    'reports.view','campaigns.manage','ai.manage','settings.manage']::text[]);
+    'reports.view','campaigns.manage','ai.manage','settings.manage','goals.view','goals.manage']::text[]);
 
 -- ---------- 2. Dono, alcance e toda a equipe ----------
 ALTER TABLE public.visits
@@ -214,7 +214,7 @@ CREATE TABLE IF NOT EXISTS public.company_invite_links (
   revoked_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   CHECK (permissions <@ ARRAY['dashboard.view','conversations.read','conversations.reply','conversations.view_all',
-    'conversations.assign','quotes.manage','agenda.manage','agenda.team','products.view','products.manage','reports.view']::text[])
+    'conversations.assign','quotes.manage','agenda.manage','agenda.team','products.view','products.manage','reports.view','goals.view','goals.manage']::text[])
 );
 ALTER TABLE public.company_invite_links ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.company_invite_links FROM anon, authenticated;
