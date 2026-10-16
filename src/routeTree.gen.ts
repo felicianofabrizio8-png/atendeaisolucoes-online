@@ -84,6 +84,7 @@ import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiLumeStatusRouteImport } from './routes/api.lume.status'
 import { Route as ApiLumeChatRouteImport } from './routes/api.lume.chat'
 import { Route as ApiLumeActionRouteImport } from './routes/api.lume.action'
+import { Route as ApiGoalsAskRouteImport } from './routes/api.goals.ask'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
 import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
@@ -545,6 +546,11 @@ const ApiLumeActionRoute = ApiLumeActionRouteImport.update({
   path: '/api/lume/action',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGoalsAskRoute = ApiGoalsAskRouteImport.update({
+  id: '/api/goals/ask',
+  path: '/api/goals/ask',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
   id: '/api/executive/snapshot',
   path: '/api/executive/snapshot',
@@ -854,6 +860,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/goals/ask': typeof ApiGoalsAskRoute
   '/api/lume/action': typeof ApiLumeActionRoute
   '/api/lume/chat': typeof ApiLumeChatRoute
   '/api/lume/status': typeof ApiLumeStatusRoute
@@ -976,6 +983,7 @@ export interface FileRoutesByTo {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/goals/ask': typeof ApiGoalsAskRoute
   '/api/lume/action': typeof ApiLumeActionRoute
   '/api/lume/chat': typeof ApiLumeChatRoute
   '/api/lume/status': typeof ApiLumeStatusRoute
@@ -1100,6 +1108,7 @@ export interface FileRoutesById {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/goals/ask': typeof ApiGoalsAskRoute
   '/api/lume/action': typeof ApiLumeActionRoute
   '/api/lume/chat': typeof ApiLumeChatRoute
   '/api/lume/status': typeof ApiLumeStatusRoute
@@ -1225,6 +1234,7 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/goals/ask'
     | '/api/lume/action'
     | '/api/lume/chat'
     | '/api/lume/status'
@@ -1347,6 +1357,7 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/goals/ask'
     | '/api/lume/action'
     | '/api/lume/chat'
     | '/api/lume/status'
@@ -1470,6 +1481,7 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/goals/ask'
     | '/api/lume/action'
     | '/api/lume/chat'
     | '/api/lume/status'
@@ -1589,6 +1601,7 @@ export interface RootRouteChildren {
   ApiExecutiveNarrativeRoute: typeof ApiExecutiveNarrativeRoute
   ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
+  ApiGoalsAskRoute: typeof ApiGoalsAskRoute
   ApiLumeActionRoute: typeof ApiLumeActionRoute
   ApiLumeChatRoute: typeof ApiLumeChatRoute
   ApiLumeStatusRoute: typeof ApiLumeStatusRoute
@@ -2180,6 +2193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLumeActionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/goals/ask': {
+      id: '/api/goals/ask'
+      path: '/api/goals/ask'
+      fullPath: '/api/goals/ask'
+      preLoaderRoute: typeof ApiGoalsAskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/executive/snapshot': {
       id: '/api/executive/snapshot'
       path: '/api/executive/snapshot'
@@ -2588,6 +2608,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExecutiveNarrativeRoute: ApiExecutiveNarrativeRoute,
   ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
+  ApiGoalsAskRoute: ApiGoalsAskRoute,
   ApiLumeActionRoute: ApiLumeActionRoute,
   ApiLumeChatRoute: ApiLumeChatRoute,
   ApiLumeStatusRoute: ApiLumeStatusRoute,
