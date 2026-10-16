@@ -142,7 +142,8 @@ export interface GoalProgressRaw {
   contributions: Array<{ userId: string; value: number }>;
 }
 
-export interface GoalProgress extends GoalProgressRaw {
+export interface GoalProgress extends Omit<GoalProgressRaw, "weeks"> {
+  weeks: GoalWeek[];
   expected: number;
   status: GoalStatus;
   /** 0–100, sobre o alvo (invertido para "menor é melhor"). */
