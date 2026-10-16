@@ -50,7 +50,7 @@ export function MobileSections({
     const top = bar.getBoundingClientRect().top;
     const scrollerTop = scroller ? scroller.getBoundingClientRect().top : 0;
     if (top <= scrollerTop + 1 && scroller) {
-      scroller.scrollTo({ top: scroller.scrollTop + (top - scrollerTop) - 1, behavior: "auto" });
+      scroller.scrollTo?.({ top: scroller.scrollTop + (top - scrollerTop) - 1, behavior: "auto" });
     }
   };
 
@@ -110,8 +110,9 @@ export function SegmentedTabs({
     // Mantém a aba ativa visível quando há mais abas do que largura.
     const left = el.offsetLeft - 16;
     const right = el.offsetLeft + el.offsetWidth + 16 - list.clientWidth;
-    if (left < list.scrollLeft) list.scrollTo({ left, behavior: "smooth" });
-    else if (right > list.scrollLeft) list.scrollTo({ left: right, behavior: "smooth" });
+    // scrollTo opcional: navegadores antigos (e o jsdom) não têm em elementos.
+    if (left < list.scrollLeft) list.scrollTo?.({ left, behavior: "smooth" });
+    else if (right > list.scrollLeft) list.scrollTo?.({ left: right, behavior: "smooth" });
   };
 
   useIsoLayoutEffect(measure, [value, tabs.length]);

@@ -1,9 +1,16 @@
 // src/lib/goals/useGoals.ts
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useTeamDirectory, type TeamMember } from "@/components/agenda/useTeamDirectory";
 import { goalsApi, type GoalInsight, type GoalStage } from "./api";
 import { buildProgress, todayInSaoPaulo, type Goal, type GoalProgress } from "./model";
+
+type AgendaProbe = {
+  from: (t: string) => {
+    select: (c: string) => { limit: (n: number) => Promise<{ error: unknown }> };
+  };
+};
 
 export function useGoals() {
   const { company } = useAuth();
@@ -11,6 +18,8 @@ export function useGoals() {
   const [ready, setReady] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Indicador "compromissos concluídos" só existe com a migração da Agenda.
+  const [agendaReady, setAgendaReady] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [rawProgress, setRawProgress] = useState<Awaited<ReturnType<typeof goalsApi.progress>>>([]);
   const [stages, setStages] = useState<GoalStage[]>([]);
@@ -25,6 +34,11 @@ export function useGoals() {
       const ok = await goalsApi.schemaReady();
       setReady(ok);
       if (!ok) return;
+      const agenda = await (supabase as unknown as AgendaProbe)
+        .from("agenda_tags")
+        .select("id")
+        .limit(1);
+      setAgendaReady(!agenda.error);
       const [g, p, s, i] = await Promise.all([
         goalsApi.list(companyId),
         goalsApi.progress(),
@@ -59,6 +73,7 @@ export function useGoals() {
   return {
     companyId,
     ready,
+    agendaReady,
     loading,
     error,
     goals,

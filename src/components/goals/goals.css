@@ -257,3 +257,85 @@
   background: var(--foreground);
   color: var(--background);
 }
+
+/* ---------- Painel ---------- */
+.lume-goals .gl-title {
+  font-size: clamp(30px, 6vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  text-transform: capitalize;
+}
+.lume-goals .gl-panel {
+  border-radius: 26px;
+  border: 1px solid var(--border);
+  padding: 20px;
+  background: linear-gradient(145deg, #19171f, #121214);
+}
+.lume-goals .gl-panel-title {
+  margin-bottom: 12px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.gl-stat {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+  background: #121214;
+}
+.gl-stat[data-tone="ok"] { background: radial-gradient(120% 100% at 100% 0%, rgb(124 58 237 / 0.25), transparent 60%), #121214; }
+.gl-stat[data-tone="warn"] { background: radial-gradient(120% 100% at 100% 0%, rgb(245 158 11 / 0.18), transparent 60%), #121214; }
+.gl-stat[data-tone="bad"] { background: radial-gradient(120% 100% at 100% 0%, rgb(248 113 113 / 0.18), transparent 60%), #121214; }
+.gl-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.gl-stat-value {
+  margin-top: 6px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.gl-ring {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  height: 46px;
+  width: 46px;
+  margin-top: -23px;
+  border-radius: 999px;
+  -webkit-mask: radial-gradient(circle, transparent 15px, #000 16px);
+  mask: radial-gradient(circle, transparent 15px, #000 16px);
+  animation: gl-spin 14s linear infinite;
+}
+@keyframes gl-spin { to { transform: rotate(360deg); } }
+.gl-rank {
+  display: inline-flex;
+  height: 26px;
+  width: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(124 58 237 / 0.25);
+  font-size: 12px;
+  font-weight: 700;
+}
+.gl-empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border-radius: 26px;
+  border: 1px dashed var(--border);
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gl-ring { animation: none; }
+}
