@@ -1,4 +1,15 @@
 /* Login e criar conta: moldura do Orçamentos (lq-black lq-panel) com a entrada do Marketing IA. */
+
+/* `.lq-panel` (quotes.css, sem camada) define position: relative e
+   overflow: hidden, que vencem os utilitários `fixed` e `overflow-y-auto`
+   do Tailwind. Sem isto o modal abria no fim da página — fora da tela — e
+   o formulário de cadastro não rolava em celulares baixos. */
+.auth-dialog-content.lq-panel {
+  position: fixed;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .auth-dialog-overlay[data-state="open"] {
   animation: auth-lume-fade 220ms ease-out both;
 }
@@ -25,6 +36,37 @@
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
+}
+/* Campos: os mesmos do formulário de Orçamentos. Lá eles moram sob `.lq-form`,
+   que este modal não tem — sem esta cópia os inputs saíam sem borda/fundo e
+   colados no rótulo. */
+.auth-lume .quote-form-input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid var(--lq-field-edge, rgb(255 255 255 / 0.08));
+  border-radius: 14px;
+  background: var(--lq-field, rgb(255 255 255 / 0.04));
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+.auth-lume .quote-form-input::placeholder {
+  color: var(--lq-faint, rgb(255 255 255 / 0.35));
+}
+.auth-lume .quote-form-input:hover {
+  border-color: var(--lq-field-hover, rgb(255 255 255 / 0.16));
+}
+.auth-lume .quote-form-input:focus,
+.auth-lume .quote-form-input:focus-visible {
+  border-color: rgb(255 255 255 / 0.4);
+  box-shadow: 0 0 0 4px rgb(181 148 255 / 0.14);
+  outline: none;
 }
 .auth-lume .auth-lume-field {
   margin-top: 6px;
