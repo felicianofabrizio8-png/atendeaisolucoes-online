@@ -27,17 +27,19 @@ import {
   STATUS_KEYS,
   STATUS_LABEL,
   TYPE_HUE,
-  TYPE_KEYS,
   TYPE_LABEL,
   type AgendaEvent,
   type AgendaEventType,
-  type AppointmentType,
+  type AgendaTag,
 } from "./agenda-model";
+import { TagPicker } from "./TagPicker";
+import type { TeamMember } from "./useTeamDirectory";
 import {
   buildEventRow,
   emptyForm,
   formFromEvent,
   formTimes,
+  saveEventRelations,
   validateForm,
   type EventForm,
 } from "./event-form";
@@ -90,6 +92,12 @@ export function EventFormModal({
   initialAt,
   types,
   extended,
+  hierarchy = false,
+  manager = false,
+  me = "",
+  members = [],
+  tags = [],
+  onCreateTag = async () => null,
   onClose,
   onSaved,
 }: {
@@ -98,6 +106,18 @@ export function EventFormModal({
   initialAt: Date | null;
   types: AgendaEventType[];
   extended: boolean;
+  /** Migração de hierarquia aplicada: alcance, dono, participantes e tags. */
+  hierarchy?: boolean;
+  /** Admin ou "Gerenciar agenda da equipe". */
+  manager?: boolean;
+  me?: string;
+  members?: TeamMember[];
+  tags?: AgendaTag[];
+  onCreateTag?: (input: {
+    name: string;
+    hue: number;
+    personal: boolean;
+  }) => Promise<AgendaTag | null>;
   onClose: () => void;
   onSaved: (id: string) => void;
 }) {
@@ -183,17 +203,6 @@ export function EventFormModal({
     if (next.requires_customer) setWithCustomer(true);
   }
 
-  function chooseLegacy(key: AppointmentType) {
-    setForm((current) => ({
-      ...current,
-      legacyType: key,
-      title:
-        !current.title.trim() || current.title === TYPE_LABEL[current.legacyType].label
-          ? TYPE_LABEL[key].label
-          : current.title,
-    }));
-  }
-
   function setDuration(minutes: number) {
     const start = new Date(`${form.date}T${form.start}:00`);
     if (Number.isNaN(start.getTime())) return;
@@ -222,7 +231,7 @@ export function EventFormModal({
     const problem = validateForm(form, type);
     if (problem) return toast.error(problem);
     setSaving(true);
-    const row = buildEventRow(form, { companyId, extended });
+    const row = buildEventRow(form, { companyId, extended, hierarchy });
     const table = supabase.from("visits");
     const { data, error } = event
       ? await table
@@ -240,7 +249,21 @@ export function EventFormModal({
       return toast.error("Não foi possível salvar o compromisso.");
     }
     toast.success(event ? "Compromisso atualizado" : "Compromisso agendado");
-    onSaved((data as { id: string }).id);
+    const id = (data as { id: string }).id;
+    if (hierarchy) {
+      try {
+        await saveEventRelations(id, form, companyId, members, {
+          previous: { tagIds: event?.tag_ids ?? [], participantIds: event?.participant_ids ?? [] },
+          // Só as tags que esta pessoa pode usar: da empresa ou dela.
+          editableTagIds: new Set(
+            tags.filter((tag) => tag.owner_id === null || tag.owner_id === me).map((tag) => tag.id),
+          ),
+        });
+      } catch {
+        toast.error("Compromisso salvo, mas as tags ou participantes não foram gravados.");
+      }
+    }
+    onSaved(id);
   }
 
   const steps = [
@@ -394,15 +417,31 @@ export function EventFormModal({
           >
             {step === 1 && (
               <>
-                <section className="lq-section">
-                  <SectionTitle icon={<Tag />}>Tipo</SectionTitle>
-                  <div
-                    className="lq-chips lq-chips-lg"
-                    role="radiogroup"
-                    aria-label="Tipo de compromisso"
-                  >
-                    {activeTypes.length
-                      ? activeTypes.map((item) => (
+                {hierarchy ? (
+                  <section className="lq-section">
+                    <SectionTitle icon={<Tag />}>Tags</SectionTitle>
+                    <TagPicker
+                      tags={tags}
+                      selected={form.tagIds}
+                      me={me}
+                      manager={manager}
+                      onChange={(ids) => set("tagIds", ids)}
+                      onCreate={onCreateTag}
+                    />
+                  </section>
+                ) : (
+                  <section className="lq-section">
+                    <SectionTitle icon={<Tag />}>Tag</SectionTitle>
+                    {/* Multiempresa: nada de tipos fixos de instalação. A empresa
+                        cria as próprias tags em Personalizar; sem nenhuma, o
+                        compromisso segue sem tag. */}
+                    {activeTypes.length ? (
+                      <div
+                        className="lq-chips lq-chips-lg"
+                        role="radiogroup"
+                        aria-label="Tag do compromisso"
+                      >
+                        {activeTypes.map((item) => (
                           <button
                             type="button"
                             key={item.id}
@@ -413,21 +452,17 @@ export function EventFormModal({
                             <TypeDot hue={item.hue} />
                             {item.name}
                           </button>
-                        ))
-                      : TYPE_KEYS.map((key) => (
-                          <button
-                            type="button"
-                            key={key}
-                            role="radio"
-                            aria-checked={form.legacyType === key}
-                            onClick={() => chooseLegacy(key)}
-                          >
-                            <TypeDot hue={TYPE_HUE[key]} />
-                            {TYPE_LABEL[key].label}
-                          </button>
                         ))}
-                  </div>
-                </section>
+                      </div>
+                    ) : (
+                      <p className="lq-hint">
+                        {extended
+                          ? "Sua empresa ainda não tem tags. Crie as suas em Personalizar → Tags."
+                          : "As tags da empresa ficam disponíveis depois de publicar a atualização da agenda."}
+                      </p>
+                    )}
+                  </section>
+                )}
                 <section className="lq-section">
                   <SectionTitle icon={<CalendarClock />}>Quando</SectionTitle>
                   <div className="lq-fields">
@@ -582,27 +617,117 @@ export function EventFormModal({
                     <p className="lq-hint">Sem cliente: reunião, tarefa, treinamento, folga…</p>
                   )}
                 </section>
-                <section className="lq-section">
-                  <SectionTitle icon={<Users />}>Equipe</SectionTitle>
-                  <div className="lq-fields">
-                    <FormField label="Responsável">
-                      <input
-                        value={form.salesperson}
-                        placeholder="Quem conduz"
-                        onChange={(e) => set("salesperson", e.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                    <FormField label="Executor / técnico">
-                      <input
-                        value={form.technician}
-                        placeholder="Quem executa"
-                        onChange={(e) => set("technician", e.target.value)}
-                        className={inputClass}
-                      />
-                    </FormField>
-                  </div>
-                </section>
+                {hierarchy ? (
+                  <section className="lq-section">
+                    <SectionTitle icon={<Users />}>Agenda</SectionTitle>
+                    {manager ? (
+                      <>
+                        <div
+                          className="lq-chips lq-chips-lg"
+                          role="radiogroup"
+                          aria-label="Alcance"
+                        >
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={form.scope === "pessoal"}
+                            onClick={() =>
+                              setForm((current) => ({
+                                ...current,
+                                scope: "pessoal",
+                                everyone: false,
+                              }))
+                            }
+                          >
+                            Pessoal
+                          </button>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={form.scope === "equipe"}
+                            onClick={() => set("scope", "equipe")}
+                          >
+                            Equipe
+                          </button>
+                        </div>
+                        <div className="lq-fields mt-4">
+                          <FormField label="Dono" className="lq-span-2">
+                            <select
+                              value={form.ownerId ?? me}
+                              onChange={(e) => set("ownerId", e.target.value || null)}
+                              className={inputClass}
+                            >
+                              {members.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.name}
+                                  {member.id === me ? " (você)" : ""}
+                                </option>
+                              ))}
+                            </select>
+                          </FormField>
+                        </div>
+                        {form.scope === "equipe" && (
+                          <div className="mt-4 space-y-3">
+                            <div className="lq-chips">
+                              <button
+                                type="button"
+                                aria-pressed={form.everyone}
+                                onClick={() => set("everyone", !form.everyone)}
+                              >
+                                Toda a equipe
+                              </button>
+                            </div>
+                            <div className="lq-chips" role="group" aria-label="Participantes">
+                              {members
+                                .filter((member) => member.id !== (form.ownerId ?? me))
+                                .map((member) => (
+                                  <button
+                                    type="button"
+                                    key={member.id}
+                                    aria-pressed={form.participantIds.includes(member.id)}
+                                    onClick={() =>
+                                      set(
+                                        "participantIds",
+                                        form.participantIds.includes(member.id)
+                                          ? form.participantIds.filter((id) => id !== member.id)
+                                          : [...form.participantIds, member.id],
+                                      )
+                                    }
+                                  >
+                                    {member.name}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="lq-hint">
+                        Este compromisso fica na sua agenda. Compromissos da equipe são criados pela
+                        gestão da agenda.
+                      </p>
+                    )}
+                  </section>
+                ) : (
+                  <section className="lq-section">
+                    <SectionTitle icon={<Users />}>Responsável</SectionTitle>
+                    <div className="lq-fields">
+                      <FormField label="Quem cuida deste compromisso" className="lq-span-2">
+                        <input
+                          value={form.salesperson}
+                          placeholder="Nome da pessoa"
+                          onChange={(e) => set("salesperson", e.target.value)}
+                          className={inputClass}
+                        />
+                      </FormField>
+                    </div>
+                    {/* Nem toda empresa tem técnico: o campo saiu. Registros antigos
+                        continuam guardados e aparecem só como informação. */}
+                    {form.technician.trim() && (
+                      <p className="lq-hint mt-3">Técnico (registro antigo): {form.technician}</p>
+                    )}
+                  </section>
+                )}
               </>
             )}
 
@@ -691,16 +816,38 @@ export function EventFormModal({
                 </section>
                 <div className="lq-total" aria-live="polite">
                   <dl>
-                    <dt>Tipo</dt>
-                    <dd>{typeName}</dd>
+                    {hierarchy ? (
+                      <>
+                        <dt>Agenda</dt>
+                        <dd>
+                          {form.scope === "equipe"
+                            ? form.everyone
+                              ? "Toda a equipe"
+                              : `Equipe · ${form.participantIds.length} participantes`
+                            : "Pessoal"}
+                        </dd>
+                        <dt>Tags</dt>
+                        <dd>
+                          {tags
+                            .filter((tag) => form.tagIds.includes(tag.id))
+                            .map((tag) => tag.name)
+                            .join(", ") || "Sem tags"}
+                        </dd>
+                      </>
+                    ) : (
+                      <>
+                        <dt>Tag</dt>
+                        <dd>{activeTypes.length ? typeName : "Sem tag"}</dd>
+                      </>
+                    )}
                     <dt>Cliente</dt>
                     <dd>{form.customerName.trim() || "Interno"}</dd>
-                    <dt>Equipe</dt>
-                    <dd>
-                      {[form.salesperson, form.technician]
-                        .filter((name) => name.trim())
-                        .join(" · ") || "A definir"}
-                    </dd>
+                    {!hierarchy && (
+                      <>
+                        <dt>Responsável</dt>
+                        <dd>{form.salesperson.trim() || "A definir"}</dd>
+                      </>
+                    )}
                   </dl>
                   <div className="lq-total-final">
                     <span className="first-letter:uppercase">{whenLabel}</span>

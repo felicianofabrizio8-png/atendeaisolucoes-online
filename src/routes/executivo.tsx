@@ -1,5 +1,6 @@
 // Dashboard Executivo — consumidor READ-ONLY de /api/executive/snapshot.
 import { createFileRoute } from "@tanstack/react-router";
+import { MobileSection, MobileSections, type MobileSectionTab } from "@/components/layout/MobileSections";
 import { useState } from "react";
 import { AlertCircle, Lock } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -19,6 +20,14 @@ export const Route = createFileRoute("/executivo")({
   component: ExecutivePage,
 });
 
+
+const EXEC_TABS: MobileSectionTab[] = [
+  { id: "resumo", label: "Resumo" },
+  { id: "vendas", label: "Vendas" },
+  { id: "clientes", label: "Clientes" },
+  { id: "equipe", label: "Equipe" },
+];
+
 function ExecutivePage() {
   const { user, profile } = useAuth();
   const [period, setPeriod] = useState<SnapshotPeriod>("30d");
@@ -36,7 +45,7 @@ function ExecutivePage() {
         Dashboard Executivo
       </h1>
       <div
-        className="mx-auto max-w-7xl p-4 md:p-6 space-y-6 animate-in fade-in duration-500"
+        className="mx-auto max-w-7xl p-4 md:p-6 flex flex-col gap-6 animate-in fade-in duration-500"
         aria-live="polite"
         aria-busy={query.isFetching}
       >
@@ -79,24 +88,32 @@ function ExecutivePage() {
             </div>
           </div>
         ) : query.data ? (
-          <>
+          <MobileSections tabs={EXEC_TABS} label="Seções do executivo" className="-mb-2">
+            <MobileSection id="resumo">
             <ExecutiveNarrative
               period={period}
               snapshotGeneratedAt={query.data.generatedAt}
             />
             <ExecutiveKpis metrics={query.data.metrics} dataQuality={query.data.dataQuality} />
+            </MobileSection>
+            <MobileSection id="vendas">
             <ExecutiveSalesAgent period={period} />
             <ExecutiveInsights
               insights={query.data.insights}
               generatedAt={query.data.generatedAt}
             />
+            </MobileSection>
+            <MobileSection id="clientes">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <ExecutiveClients bundle={query.data} />
               <ExecutiveCampaigns campaigns={query.data.metrics.campaigns} />
             </div>
+            </MobileSection>
+            <MobileSection id="equipe">
             <ExecutiveCoach bundle={query.data} />
             <ExecutiveSystemHealth dataQuality={query.data.dataQuality} />
-          </>
+            </MobileSection>
+          </MobileSections>
         ) : null}
       </div>
     </main>

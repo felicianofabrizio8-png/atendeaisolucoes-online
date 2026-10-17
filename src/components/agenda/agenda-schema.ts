@@ -7,18 +7,26 @@ import { supabase } from "@/integrations/supabase/client";
  */
 export interface AgendaSchema {
   extended: boolean;
+  /** Migração 20261016120000: dono, alcance e tags. */
+  hierarchy: boolean;
 }
 
 let cached: Promise<AgendaSchema> | null = null;
 
 export function detectAgendaSchema(): Promise<AgendaSchema> {
   cached ??= (async () => {
-    const { error } = await supabase
-      .from("agenda_event_types" as never)
-      .select("id")
-      .limit(1);
-    return { extended: !error };
-  })().catch(() => ({ extended: false }));
+    const [types, tags] = await Promise.all([
+      supabase
+        .from("agenda_event_types" as never)
+        .select("id")
+        .limit(1),
+      supabase
+        .from("agenda_tags" as never)
+        .select("id")
+        .limit(1),
+    ]);
+    return { extended: !types.error, hierarchy: !tags.error };
+  })().catch(() => ({ extended: false, hierarchy: false }));
   return cached;
 }
 

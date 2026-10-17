@@ -4,6 +4,7 @@
 // foi alterada — só a apresentação dos dados já existentes.
 
 import { createFileRoute } from "@tanstack/react-router";
+import { MobileSection, MobileSections, type MobileSectionTab } from "@/components/layout/MobileSections";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -36,6 +37,14 @@ export const Route = createFileRoute("/saude")({
 });
 
 // ─────────────────── utils ───────────────────
+
+
+const HEALTH_TABS: MobileSectionTab[] = [
+  { id: "alertas", label: "Alertas" },
+  { id: "integracoes", label: "Integrações" },
+  { id: "atividade", label: "Atividade" },
+  { id: "tecnico", label: "Técnico" },
+];
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "—";
@@ -425,12 +434,12 @@ function HealthPage() {
   const audit = showAllAudit ? data.recentAudit : data.recentAudit.slice(0, 8);
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-full overflow-x-hidden">
+    <div className="p-4 md:p-6 flex flex-col gap-6 max-w-full">
       {/* ── HEADER EXECUTIVO ── */}
       <section
         aria-labelledby="health-hero"
         className={cn(
-          "relative overflow-hidden rounded-3xl border border-border p-6 md:p-8",
+          "relative overflow-hidden rounded-3xl border border-border p-5 md:p-8",
           "bg-gradient-to-br from-card via-card to-background",
         )}
       >
@@ -438,7 +447,7 @@ function HealthPage() {
           aria-hidden="true"
           className={cn("absolute -top-24 -right-24 h-72 w-72 rounded-full blur-3xl opacity-30", t.bg)}
         />
-        <div className="relative flex flex-col lg:flex-row lg:items-center gap-6 lg:justify-between">
+        <div className="relative flex flex-col lg:flex-row lg:items-center gap-4 md:gap-6 lg:justify-between">
           <div className="flex items-start gap-5 min-w-0">
             {/* Ring de Health Score */}
             <div className="relative h-24 w-24 shrink-0" aria-label={`Health score ${healthScore} de 100`}>
@@ -466,7 +475,8 @@ function HealthPage() {
               <p className="text-sm text-muted-foreground mt-1">{status.sub}</p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          {/* No celular, os selos ficam numa faixa só que desliza. */}
+          <div className="flex items-center gap-2 max-md:-mx-5 max-md:overflow-x-auto max-md:px-5 max-md:scrollbar-none md:flex-wrap [&>*]:shrink-0">
             <Badge variant="outline" className="text-[11px]">
               {activeIntegrations}/{totalIntegrations} integrações ativas
             </Badge>
@@ -505,7 +515,7 @@ function HealthPage() {
         </div>
 
         {/* estatísticas rápidas */}
-        <div className="relative mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="relative mt-5 md:mt-6 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
           <Stat
             label="WhatsApp"
             value={data.whatsapp.connected ? "Online" : "Offline"}
@@ -537,6 +547,8 @@ function HealthPage() {
         </div>
       </section>
 
+      <MobileSections tabs={HEALTH_TABS} label="Seções da saúde" className="-mb-2">
+      <MobileSection id="alertas">
       {/* ── ALERTAS ATIVOS ── */}
       <section aria-labelledby="alerts-title">
         <div className="flex items-center justify-between mb-3">
@@ -607,6 +619,9 @@ function HealthPage() {
         )}
       </section>
 
+      </MobileSection>
+
+      <MobileSection id="integracoes">
       {/* ── INTEGRAÇÕES ── */}
       <section aria-labelledby="integr-title">
         <div className="flex items-center justify-between mb-3">
@@ -627,6 +642,9 @@ function HealthPage() {
         )}
       </section>
 
+      </MobileSection>
+
+      <MobileSection id="atividade">
       {/* ── GRÁFICO + TIMELINE ── */}
       <section className="grid grid-cols-1 lg:grid-cols-5 gap-3">
         <Card className="p-5 lg:col-span-3">
@@ -683,6 +701,9 @@ function HealthPage() {
         </Card>
       </section>
 
+      </MobileSection>
+
+      <MobileSection id="tecnico">
       {/* ── DETALHES TÉCNICOS ── */}
       <details className="group rounded-2xl border border-border bg-card/50 open:bg-card">
         <summary className="cursor-pointer list-none p-4 flex items-center justify-between text-sm font-medium">
@@ -732,6 +753,8 @@ function HealthPage() {
           )}
         </div>
       </details>
+      </MobileSection>
+      </MobileSections>
     </div>
   );
 }

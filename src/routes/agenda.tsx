@@ -55,6 +55,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { AgendaHero } from "@/components/agenda/AgendaHero";
 import { AgendaToolbar } from "@/components/agenda/AgendaToolbar";
+import { AgendaMobile } from "@/components/agenda/AgendaMobile";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MonthView, TeamView, TimeGridView, TimelineView } from "@/components/agenda/AgendaViews";
 import { useAgendaEvents } from "@/components/agenda/useAgendaEvents";
 import { EventDrawer } from "@/components/agenda/EventDrawer";
@@ -63,11 +65,18 @@ import { EventFormModal } from "@/components/agenda/EventFormModal";
 import { useEventTypes } from "@/components/agenda/useEventTypes";
 import { AgendaCustomize } from "@/components/agenda/AgendaCustomize";
 import { LumeDock } from "@/components/lume/LumeDock";
+import { AgendaTagsSection } from "@/components/agenda/AgendaTagsSection";
+import { useAgendaTags } from "@/components/agenda/useAgendaTags";
+import { useTeamDirectory } from "@/components/agenda/useTeamDirectory";
+import { useTeamAccess } from "@/hooks/useTeamAccess";
+import { canManageTeamAgenda } from "@/lib/team/permissions";
 import {
   applyFilters,
   daysOf,
   EMPTY_FILTERS,
   findConflicts,
+  canEditEvent,
+  matchesScope,
   peopleOf,
   pulseOf,
   shiftFocus,
@@ -77,6 +86,7 @@ import {
   type AgendaFilters,
   type AgendaPreferences,
   type AgendaView,
+  type ScopeFilter,
 } from "@/components/agenda/agenda-model";
 import "@/components/agenda/agenda.css";
 
@@ -186,17 +196,18 @@ const TYPE_META: Record<
   },
 };
 
-
 function onlyDigits(s: string): string {
   return s.replace(/\D+/g, "");
 }
 
-
-
-/// ---------- Página ----------
+// ---------- Página ----------
 function AgendaPage() {
-  const { company } = useAuth();
+  const { company, user } = useAuth();
+  const me = user?.id ?? "";
+  const teamAccess = useTeamAccess();
+  const manager = canManageTeamAgenda(teamAccess.access);
   const companyId = company?.id;
+  const isMobile = useIsMobile();
 
   const [view, setView] = useState<AgendaView>(() => readPreference("view", "semana"));
   const [focus, setFocus] = useState(() => new Date());
@@ -208,6 +219,14 @@ function AgendaPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [customizing, setCustomizing] = useState(false);
   const [lumeSignal, setLumeSignal] = useState(0);
+  // De quem é a agenda exibida (gestor escolhe; funcionário vê a sua).
+  const [scope, setScope] = useState<ScopeFilter>(() => {
+    try {
+      return JSON.parse(readPreference("scope", JSON.stringify({ kind: "minha" }))) as ScopeFilter;
+    } catch {
+      return { kind: "minha" };
+    }
+  });
   // Link de aviso da Lume (/agenda?evento=…) abre o compromisso direto.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("evento");
@@ -222,8 +241,42 @@ function AgendaPage() {
   });
 
   const range = useMemo(() => viewRange(view, focus), [view, focus]);
-  const { events, loading, error, extended, reload, setStatus, reschedule, remove, duplicate } =
-    useAgendaEvents(companyId, range);
+  const {
+    events: allEvents,
+    loading,
+    error,
+    extended,
+    hierarchy,
+    reload,
+    setStatus,
+    reschedule,
+    remove,
+    duplicate,
+  } = useAgendaEvents(companyId, range);
+  const agendaTags = useAgendaTags(companyId, hierarchy);
+  const members = useTeamDirectory(hierarchy);
+  const tagById = useMemo(
+    () => new Map(agendaTags.tags.map((tag) => [tag.id, tag])),
+    [agendaTags.tags],
+  );
+  // Com hierarquia, só os compromissos do escopo escolhido (o banco já esconde os alheios).
+  const effectiveScope: ScopeFilter = manager ? scope : { kind: "minha" };
+  const events = useMemo(
+    () =>
+      hierarchy && me
+        ? allEvents.filter((event) => matchesScope(event, effectiveScope, me))
+        : allEvents,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- escopo comparado por valor
+    [allEvents, hierarchy, me, JSON.stringify(effectiveScope)],
+  );
+  // Funcionário não tem a visão Pessoas (agenda de todos): volta para a semana.
+  useEffect(() => {
+    if (hierarchy && !manager && view === "equipe") setView("semana");
+  }, [hierarchy, manager, view]);
+  function changeScope(next: ScopeFilter) {
+    setScope(next);
+    writePreference("scope", JSON.stringify(next));
+  }
   const selected = useMemo(
     () => events.find((event) => event.id === selectedId) ?? null,
     [events, selectedId],
@@ -243,10 +296,14 @@ function AgendaPage() {
           return at >= range.from && at <= range.to;
         })
         .map((event) => {
+          // Cor: a primeira tag (hierarquia) ou o tipo da empresa.
+          const tag =
+            hierarchy && event.tag_ids?.length ? tagById.get(event.tag_ids[0]) : undefined;
+          if (tag) return { ...event, type_hue: tag.hue, type_name: tag.name };
           const type = event.event_type_id ? typeById.get(event.event_type_id) : undefined;
           return type ? { ...event, type_hue: type.hue, type_name: type.name } : event;
         }),
-    [events, filters, range, typeById],
+    [events, filters, range, typeById, tagById, hierarchy],
   );
   const conflicts = useMemo(() => findConflicts(inRange), [inRange]);
   const days = useMemo(() => {
@@ -296,6 +353,61 @@ function AgendaPage() {
     });
   }
 
+  // A visão escolhida (grade, mês, linha, pessoas ou lista). O layout do
+  // celular reaproveita as mesmas visões para Dia, Lista, Pessoas e Linha.
+  const renderView = () => (
+    <>
+      {view === "dia" || view === "semana" ? (
+        <TimeGridView
+          days={days}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+          startHour={preferences.dayStartHour}
+          onCreateAt={(at) => openCreate(at)}
+          onMove={(event, at) => void move(event, at)}
+          canEdit={(event) => !hierarchy || canEditEvent(event, me, manager)}
+        />
+      ) : view === "mes" ? (
+        <MonthView
+          days={days}
+          focus={focus}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+          onOpenDay={(day) => {
+            setFocus(day);
+            changeView("dia");
+          }}
+        />
+      ) : view === "linha" ? (
+        <TimelineView
+          days={days}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+        />
+      ) : view === "equipe" ? (
+        <TeamView
+          days={days}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+          members={hierarchy ? members : undefined}
+        />
+      ) : (
+        <ListView
+          events={inRange}
+          loading={loading}
+          onEdit={openEdit}
+          onDelete={(event) => void handleDelete(event)}
+          onStatus={(event, status) => void setStatus(event.id, status)}
+          onSend={setSendTarget}
+        />
+      )}
+    </>
+  );
+
   if (!companyId) {
     return (
       <div className="lume-agenda flex-1 p-6 text-sm text-[var(--ag-muted)]">
@@ -306,90 +418,98 @@ function AgendaPage() {
 
   return (
     <div className="lume-agenda flex-1">
-      <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <AgendaHero
-          pulse={pulse}
-          onCreate={() => openCreate()}
-          onAskLume={() => setLumeSignal((n) => n + 1)}
-        />
-
-        <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
-          <AgendaToolbar
+      {isMobile ? (
+        <div className="px-3 pb-6 pt-3">
+          {error && (
+            <div className="ag-panel mb-3 flex items-center justify-between gap-3 p-4 text-sm">
+              <span>{error}</span>
+              <button type="button" className="ag-btn" onClick={() => void reload()}>
+                Tentar novamente
+              </button>
+            </div>
+          )}
+          <AgendaMobile
             view={view}
             focus={focus}
+            events={inRange}
+            conflicts={conflicts}
+            pulse={pulse}
+            loading={loading}
             filters={filters}
             people={people}
-            onView={changeView}
-            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
-            onToday={() => setFocus(new Date())}
-            onFilters={setFilters}
-            onCustomize={() => setCustomizing(true)}
             customTypes={eventTypes.types.filter((type) => type.active)}
+            tags={hierarchy ? agendaTags.tags : undefined}
+            manager={hierarchy && manager}
+            scope={effectiveScope}
+            members={members}
+            hideTeamView={hierarchy && !manager}
+            onView={changeView}
+            onFocus={setFocus}
+            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
+            onFilters={setFilters}
+            onScope={changeScope}
+            onOpen={(event) => setSelectedId(event.id)}
+            onCreate={(at) => openCreate(at)}
+            onAskLume={() => setLumeSignal((n) => n + 1)}
+            onCustomize={() => setCustomizing(true)}
+            renderView={renderView}
           />
-          {conflicts.size > 0 && (
-            <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
-              <Bell className="h-3.5 w-3.5" />
-              {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com borda
-              tracejada.
-            </p>
-          )}
-        </section>
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+          <AgendaHero
+            pulse={pulse}
+            onCreate={() => openCreate()}
+            onAskLume={() => setLumeSignal((n) => n + 1)}
+          />
 
-        {error && (
-          <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
-            <span>{error}</span>
-            <button type="button" className="ag-btn" onClick={() => void reload()}>
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        <section className="ag-panel overflow-hidden" aria-busy={loading}>
-          {view === "dia" || view === "semana" ? (
-            <TimeGridView
-              days={days}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-              startHour={preferences.dayStartHour}
-              onCreateAt={(at) => openCreate(at)}
-              onMove={(event, at) => void move(event, at)}
-            />
-          ) : view === "mes" ? (
-            <MonthView
-              days={days}
+          <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
+            <AgendaToolbar
+              view={view}
               focus={focus}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-              onOpenDay={(day) => {
-                setFocus(day);
-                changeView("dia");
-              }}
+              filters={filters}
+              people={people}
+              onView={changeView}
+              onNavigate={(direction) =>
+                setFocus((current) => shiftFocus(view, current, direction))
+              }
+              onToday={() => setFocus(new Date())}
+              onFilters={setFilters}
+              onCustomize={() => setCustomizing(true)}
+              customTypes={eventTypes.types.filter((type) => type.active)}
+              tags={hierarchy ? agendaTags.tags : undefined}
+              manager={hierarchy && manager}
+              scope={effectiveScope}
+              members={members}
+              onScope={changeScope}
+              hideTeamView={hierarchy && !manager}
             />
-          ) : view === "linha" ? (
-            <TimelineView days={days} events={inRange} conflicts={conflicts} onOpen={(event) => setSelectedId(event.id)} />
-          ) : view === "equipe" ? (
-            <TeamView
-              days={days}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-            />
-          ) : (
-            <ListView
-              events={inRange}
-              loading={loading}
-              onEdit={openEdit}
-              onDelete={(event) => void handleDelete(event)}
-              onStatus={(event, status) => void setStatus(event.id, status)}
-              onSend={setSendTarget}
-            />
+            {conflicts.size > 0 && (
+              <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
+                <Bell className="h-3.5 w-3.5" />
+                {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com
+                borda tracejada.
+              </p>
+            )}
+          </section>
+
+          {error && (
+            <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
+              <span>{error}</span>
+              <button type="button" className="ag-btn" onClick={() => void reload()}>
+                Tentar novamente
+              </button>
+            </div>
           )}
-        </section>
-      </div>
+
+          <section className="ag-panel overflow-hidden" aria-busy={loading}>
+            {renderView()}
+          </section>
+        </div>
+      )}
 
       <LumeDock
+        mobileLauncher={false}
         page="Agenda"
         greeting="O que vamos organizar?"
         openSignal={lumeSignal}
@@ -416,12 +536,29 @@ function AgendaPage() {
         onToggle={(id, active) => void eventTypes.setActive(id, active)}
         onRemove={(id) => void eventTypes.remove(id)}
         onSeed={() => void eventTypes.seedStarters()}
+        tagsSlot={
+          hierarchy ? (
+            <AgendaTagsSection
+              tags={agendaTags.tags}
+              me={me}
+              manager={manager}
+              onCreate={agendaTags.create}
+              onUpdate={(id, changes) => void agendaTags.update(id, changes)}
+              onRemove={(id) => void agendaTags.remove(id)}
+            />
+          ) : undefined
+        }
       />
 
       <EventDrawer
         event={selected}
         type={(selected?.event_type_id && typeById.get(selected.event_type_id)) || null}
         extended={extended}
+        hierarchy={hierarchy}
+        manager={manager}
+        me={me}
+        members={members}
+        tags={agendaTags.tags}
         onClose={() => setSelectedId(null)}
         onStatus={(status) => selected && void setStatus(selected.id, status)}
         onEdit={() => selected && openEdit(selected)}
@@ -441,6 +578,12 @@ function AgendaPage() {
           initialAt={createAt}
           types={eventTypes.types}
           extended={extended}
+          hierarchy={hierarchy}
+          manager={manager}
+          me={me}
+          members={members}
+          tags={agendaTags.tags}
+          onCreateTag={agendaTags.create}
           onClose={() => setOpenForm(false)}
           onSaved={(id) => {
             setOpenForm(false);
@@ -450,9 +593,7 @@ function AgendaPage() {
         />
       )}
 
-      {sendTarget && (
-        <SendTechnicianModal visit={sendTarget} onClose={() => setSendTarget(null)} />
-      )}
+      {sendTarget && <SendTechnicianModal visit={sendTarget} onClose={() => setSendTarget(null)} />}
     </div>
   );
 }
@@ -537,16 +678,17 @@ function VisitCard({
   onStatusChange,
   onSend,
 }: {
-  visit: Visit;
+  visit: Visit & { type_name?: string; type_hue?: number };
   onEdit: () => void;
   onDelete: () => void;
   onStatusChange: (s: VisitStatus) => void;
   onSend: () => void;
 }) {
   const time = format(new Date(visit.scheduled_at), "HH:mm");
-  const meta = TYPE_META[visit.appointment_type];
-  const Icon = meta.icon;
-  const isStore = visit.appointment_type === "loja";
+  // Multiempresa: a etiqueta é a tag/tipo criado pela empresa. Os tipos fixos
+  // antigos (visita técnica, instalação…) não aparecem mais na tela.
+  const tagName = visit.type_name;
+  const tagColor = visit.type_hue !== undefined ? `oklch(0.7 0.11 ${visit.type_hue})` : undefined;
 
   const conversation = useMemo(() => {
     if (!visit.lead_id) return undefined;
@@ -556,27 +698,27 @@ function VisitCard({
   const phoneDigits = onlyDigits(visit.customer_phone ?? "");
   const waUrl = phoneDigits
     ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(
-        `Olá ${visit.customer_name ?? ""}! Confirmando seu compromisso (${meta.label}) em ${format(new Date(visit.scheduled_at), "dd/MM 'às' HH:mm")}.`,
+        `Olá ${visit.customer_name ?? ""}! Confirmando seu compromisso${tagName ? ` (${tagName})` : ""} em ${format(new Date(visit.scheduled_at), "dd/MM 'às' HH:mm")}.`,
       )}`
     : null;
 
   return (
-    <Card className={cn("border-l-4", meta.class.replace(/bg-[^\s]+/g, "").trim() || "border-l-border")}>
+    <Card className="border-l-4" style={{ borderLeftColor: tagColor ?? "var(--border)" }}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className={cn("gap-1 border", meta.class)}>
-                <Icon className="h-3 w-3" />
-                {meta.short}
-              </Badge>
-              {isStore && (
-                <Badge variant="outline" className="gap-1 border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300">
-                  <Store className="h-3 w-3" />
-                  Na loja
+            {tagName && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className="gap-1.5 border">
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: tagColor ?? "currentColor" }}
+                  />
+                  {tagName}
                 </Badge>
-              )}
-            </div>
+              </div>
+            )}
             <CardTitle className="text-base mt-1.5 truncate">{visit.title}</CardTitle>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <Clock className="h-3 w-3" />
@@ -595,24 +737,19 @@ function VisitCard({
         {visit.customer_phone && (
           <Row icon={<Phone className="h-3.5 w-3.5" />} text={visit.customer_phone} />
         )}
-        {visit.city && (
-          <Row icon={<Building2 className="h-3.5 w-3.5" />} text={visit.city} />
-        )}
-        {visit.address && !isStore && (
-          <Row icon={<MapPin className="h-3.5 w-3.5" />} text={visit.address} />
-        )}
-        {visit.product && (
-          <Row icon={<Package className="h-3.5 w-3.5" />} text={visit.product} />
-        )}
+        {visit.city && <Row icon={<Building2 className="h-3.5 w-3.5" />} text={visit.city} />}
+        {visit.address && <Row icon={<MapPin className="h-3.5 w-3.5" />} text={visit.address} />}
+        {visit.product && <Row icon={<Package className="h-3.5 w-3.5" />} text={visit.product} />}
         {visit.salesperson && (
-          <Row icon={<User className="h-3.5 w-3.5" />} text={`Vendedor: ${visit.salesperson}`} />
+          <Row icon={<User className="h-3.5 w-3.5" />} text={`Responsável: ${visit.salesperson}`} />
         )}
         {visit.technician && (
-          <Row icon={<UserCog className="h-3.5 w-3.5" />} text={`Técnico: ${visit.technician}`} />
+          <Row
+            icon={<UserCog className="h-3.5 w-3.5" />}
+            text={`Técnico (registro antigo): ${visit.technician}`}
+          />
         )}
-        {visit.notes && (
-          <Row icon={<StickyNote className="h-3.5 w-3.5" />} text={visit.notes} />
-        )}
+        {visit.notes && <Row icon={<StickyNote className="h-3.5 w-3.5" />} text={visit.notes} />}
 
         <div className="pt-2 flex flex-wrap items-center gap-2">
           <Select value={visit.status} onValueChange={(v) => onStatusChange(v as VisitStatus)}>
@@ -628,12 +765,7 @@ function VisitCard({
             </SelectContent>
           </Select>
           {waUrl && (
-            <Button
-              size="sm"
-              variant="outline"
-              asChild
-              title="Abrir WhatsApp com o cliente"
-            >
+            <Button size="sm" variant="outline" asChild title="Abrir WhatsApp com o cliente">
               <a href={waUrl} target="_blank" rel="noopener noreferrer">
                 <MessageCircle className="h-3.5 w-3.5" />
                 WhatsApp
@@ -642,16 +774,14 @@ function VisitCard({
           )}
           {conversation && (
             <Button size="sm" variant="outline" asChild title="Abrir conversa no inbox">
-              <Link
-                to="/inbox/$conversationId"
-                params={{ conversationId: conversation.id }}
-              >
+              <Link to="/inbox/$conversationId" params={{ conversationId: conversation.id }}>
                 <MessagesSquare className="h-3.5 w-3.5" />
                 Abrir conversa
               </Link>
             </Button>
           )}
-          {!isStore && (
+          {/* Só quem tem técnico registrado — nem toda empresa faz instalação. */}
+          {visit.technician && (
             <Button size="sm" onClick={onSend}>
               <Send className="h-3.5 w-3.5" />
               Enviar ao técnico
@@ -668,7 +798,6 @@ function VisitCard({
     </Card>
   );
 }
-
 
 function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
@@ -704,19 +833,16 @@ function buildTechMessage(v: Visit): string {
   return lines.join("\n");
 }
 
-
-function SendTechnicianModal({
-  visit,
-  onClose,
-}: {
-  visit: Visit;
-  onClose: () => void;
-}) {
+function SendTechnicianModal({ visit, onClose }: { visit: Visit; onClose: () => void }) {
   const leads = useLeads();
   // técnicos = leads do canal whatsapp marcados com tag "tecnico" — fallback: todos com telefone
   const technicians = useMemo(() => {
     const withTag = leads.filter(
-      (l) => l.phone && l.tags?.some((t) => t.toLowerCase().includes("tecnico") || t.toLowerCase().includes("técnico")),
+      (l) =>
+        l.phone &&
+        l.tags?.some(
+          (t) => t.toLowerCase().includes("tecnico") || t.toLowerCase().includes("técnico"),
+        ),
     );
     return withTag.length > 0 ? withTag : leads.filter((l) => l.phone);
   }, [leads]);
@@ -731,8 +857,7 @@ function SendTechnicianModal({
 
   async function handleSend() {
     const tech = technicians.find((t) => t.id === techId);
-    const phone =
-      mode === "contact" ? tech?.phone ?? "" : manualPhone;
+    const phone = mode === "contact" ? (tech?.phone ?? "") : manualPhone;
     const digits = onlyDigits(phone);
     if (!digits) {
       toast.error("Informe um número válido");

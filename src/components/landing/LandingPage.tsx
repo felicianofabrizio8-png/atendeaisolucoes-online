@@ -1,5 +1,13 @@
-import { useState } from "react";
-import { ArrowRight, Check, ChevronRight, Menu, MessageCircle, X } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
+import {
+  ArrowRight,
+  Check,
+  ChevronRight,
+  LayoutGrid,
+  MessageCircle,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
 import FUIHeroWithBorders from "@/components/ui/herowith-logos";
 import FUIBentoGridDark from "@/components/ui/bento";
 import { AuthDialog } from "@/components/auth/AuthDialog";
@@ -7,19 +15,34 @@ import { LumeLogo } from "@/components/brand/LumeLogo";
 import "./landing.css";
 
 const navigation = [
-  { label: "Vantagens", href: "#vantagens" },
-  { label: "Como funciona", href: "#como-funciona" },
-  { label: "Plataforma", href: "#plataforma" },
+  { label: "Vantagens", href: "#vantagens", hint: "Por que vender com a Lume", icon: Sparkles },
+  { label: "Como funciona", href: "#como-funciona", hint: "Do primeiro contato à venda", icon: Workflow },
+  { label: "Plataforma", href: "#plataforma", hint: "Tudo o que você controla num só lugar", icon: LayoutGrid },
 ];
 
 function LandingHeader({ onOpenAuth }: { onOpenAuth: (mode: "signin" | "signup") => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Menu aberto: Esc fecha e a página atrás não rola.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   return (
     <header className="absolute inset-x-0 top-0 z-30">
       <nav
         aria-label="Navegação principal"
-        className="mx-auto flex h-[76px] max-w-7xl items-center justify-between gap-6 px-5 sm:px-8 lg:grid lg:grid-cols-[1fr_auto_1fr]"
+        className="relative z-50 mx-auto flex h-[76px] max-w-7xl items-center justify-between gap-6 px-5 sm:px-8 lg:grid lg:grid-cols-[1fr_auto_1fr]"
       >
         <a
           href="#inicio"
@@ -64,48 +87,97 @@ function LandingHeader({ onOpenAuth }: { onOpenAuth: (mode: "signin" | "signup")
           aria-expanded={menuOpen}
           aria-controls="landing-mobile-menu"
           onClick={() => setMenuOpen((open) => !open)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 text-white sm:hidden"
+          data-open={menuOpen || undefined}
+          className="landing-burger relative z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-white backdrop-blur sm:hidden"
         >
-          {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {/* Três traços que viram um X: o mesmo botão abre e fecha. */}
+          <span aria-hidden className="landing-burger-lines">
+            <i />
+            <i />
+            <i />
+          </span>
         </button>
       </nav>
 
-      {menuOpen && (
-        <div id="landing-mobile-menu" className="bg-[#0d0814] px-5 pb-5 pt-3 sm:hidden">
-          {navigation.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              onClick={() => setMenuOpen(false)}
-              className="block rounded-xl px-3 py-3 text-sm font-medium text-white/80 hover:bg-white/10"
-            >
-              {item.label}
-            </a>
-          ))}
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                onOpenAuth("signin");
-              }}
-              className="rounded-full border border-white/20 px-4 py-3 text-center text-sm font-semibold text-white"
-            >
-              Entrar
-            </button>
+      {/* Menu mobile: painel de vidro que desce sob o topo, sobre a página
+          escurecida. Fica montado para animar também ao fechar. */}
+      <div
+        className="landing-menu sm:hidden"
+        data-state={menuOpen ? "open" : "closed"}
+        aria-hidden={!menuOpen}
+      >
+        <div className="landing-menu-backdrop" onClick={() => setMenuOpen(false)} />
+        <div
+          id="landing-mobile-menu"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+          className="landing-menu-panel"
+          inert={!menuOpen}
+        >
+          <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">
+            Navegue
+          </p>
+          <ul className="mt-2 space-y-1">
+            {navigation.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <li
+                  key={item.href}
+                  className="landing-menu-item"
+                  style={{ "--i": index } as CSSProperties}
+                >
+                  <a
+                    href={item.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="group flex items-center gap-3.5 rounded-2xl px-2 py-2.5 transition-colors active:bg-white/[0.06]"
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-gradient-to-br from-violet-500/25 to-fuchsia-500/10 text-violet-200">
+                      <Icon className="h-[18px] w-[18px]" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] font-semibold text-white">{item.label}</span>
+                      <span className="block truncate text-[12.5px] text-white/50">{item.hint}</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-white/30" aria-hidden />
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div
+            className="landing-menu-item mt-4 border-t border-white/10 pt-4"
+            style={{ "--i": navigation.length } as CSSProperties}
+          >
             <button
               type="button"
               onClick={() => {
                 setMenuOpen(false);
                 onOpenAuth("signup");
               }}
-              className="rounded-full bg-white px-4 py-3 text-center text-sm font-semibold text-[#14101a]"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white text-[15px] font-semibold text-[#14101a] shadow-[0_10px_30px_-12px_rgba(167,139,250,0.7)] transition active:scale-[0.98]"
             >
-              Criar conta
+              Criar minha conta
+              <ArrowRight className="h-4 w-4" aria-hidden />
             </button>
+            <p className="mt-3 text-center text-[13px] text-white/55">
+              Já tem conta?{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenAuth("signin");
+                }}
+                style={{ minHeight: 0 }}
+                className="font-semibold text-white underline-offset-4 hover:underline"
+              >
+                Entrar
+              </button>
+            </p>
           </div>
         </div>
-      )}
+      </div>
     </header>
   );
 }

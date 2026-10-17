@@ -27,8 +27,11 @@
   outline-offset: 2px;
 }
 @media (max-width: 767px) {
+  .lume-launcher[data-mobile="off"] {
+    display: none;
+  }
   .lume-launcher {
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(var(--mobile-dock-space, 88px) + 4px);
   }
 }
 
@@ -54,14 +57,50 @@
 :root:not(.light) .lume-window {
   background: #000;
 }
+/* Celular: folha que sobe de baixo, por cima da barra inferior. Só o
+   essencial — orbe pequena ao lado da saudação, sugestões numa faixa e o
+   campo de mensagem colado embaixo. */
+.lume-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: rgb(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  animation: lume-fade-in 200ms ease both;
+}
+@keyframes lume-fade-in {
+  from {
+    opacity: 0;
+  }
+}
 @media (max-width: 767px) {
   .lume-window {
-    left: 8px;
-    right: 8px;
+    left: 0;
+    right: 0;
+    bottom: 0;
     width: auto;
-    bottom: calc(124px + env(safe-area-inset-bottom));
-    height: min(600px, calc(100dvh - 170px));
-    padding: 18px;
+    height: auto;
+    max-height: min(560px, 82dvh);
+    min-height: 300px;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    border-radius: 28px 28px 0 0;
+    border-bottom: 0;
+    animation: lume-sheet-in 340ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+  .lume-window::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: -4px auto 10px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--foreground) 22%, transparent);
+  }
+}
+@keyframes lume-sheet-in {
+  from {
+    transform: translate3d(0, 100%, 0);
   }
 }
 @keyframes lume-window-in {
@@ -139,7 +178,10 @@
   border-color: color-mix(in oklch, var(--destructive) 50%, var(--border));
 }
 .lume-action-status {
-  font: 10px ui-monospace, Menlo, monospace;
+  font:
+    10px ui-monospace,
+    Menlo,
+    monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -266,5 +308,49 @@
   }
   .lume-rec-dot {
     transition: none;
+  }
+}
+
+/* Ajustes do celular — no fim do arquivo para vencer as regras-base acima. */
+@media (max-width: 767px) {
+  .lume-window .lume-window-head {
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 0;
+  }
+  .lume-window .lume-log {
+    padding: 4px 2px 12px;
+  }
+  .lume-window .lume-welcome {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 4px 14px;
+    padding-top: 4px;
+    text-align: left;
+  }
+  .lume-window .lume-welcome h4 {
+    font-size: 17px;
+    line-height: 1.25;
+  }
+  .lume-window .lume-suggest-row {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .lume-window .lume-suggest-row::-webkit-scrollbar {
+    display: none;
+  }
+  .lume-window .lume-suggest-row .lume-chip {
+    min-height: 36px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+  .lume-window .lume-setup {
+    margin-top: 12px;
   }
 }

@@ -65,6 +65,12 @@ export interface AgendaEvent {
   /** Calculado na tela: cor do tipo da empresa, quando o evento tem um. */
   type_hue?: number;
   type_name?: string;
+  // Hierarquia (migração 20261016120000): dono, alcance, toda a equipe, tags e participantes.
+  owner_id?: string | null;
+  scope?: EventScope;
+  everyone?: boolean;
+  tag_ids?: string[];
+  participant_ids?: string[];
 }
 
 export type EventSource = "tela" | "lume" | "atendimento" | "google" | "sistema";
@@ -81,6 +87,38 @@ export const AGENDA_SELECT =
   "id,title,address,scheduled_at,status,notes,customer_name,customer_phone,product,lead_id,quote_id,appointment_type,city,salesperson,technician,created_at,updated_at";
 
 export const AGENDA_SELECT_EXTENDED = `${AGENDA_SELECT},created_by,updated_by,ends_at,all_day,event_type_id,recurrence_rule,custom_fields,source`;
+
+export const AGENDA_SELECT_HIERARCHY = `${AGENDA_SELECT_EXTENDED},owner_id,scope,everyone,agenda_event_tags(tag_id),agenda_event_participants(user_id)`;
+
+export type EventScope = "pessoal" | "equipe";
+
+/** Tag da empresa (owner_id vazio) ou pessoal (só a dona vê). */
+export interface AgendaTag {
+  id: string;
+  name: string;
+  hue: number;
+  owner_id: string | null;
+}
+
+export type ScopeFilter =
+  | { kind: "minha" }
+  | { kind: "equipe" }
+  | { kind: "pessoa"; userId: string };
+
+/** Minha agenda: os meus, os de equipe em que participo e os de toda a equipe. */
+export function matchesScope(event: AgendaEvent, filter: ScopeFilter, me: string): boolean {
+  const involves = (user: string) =>
+    event.owner_id === user || (event.participant_ids ?? []).includes(user);
+  if (filter.kind === "equipe") return true;
+  if (filter.kind === "pessoa") return involves(filter.userId);
+  return involves(me) || (event.scope === "equipe" && !!event.everyone);
+}
+
+/** Sem a migração de hierarquia (scope ausente), todos editam, como antes. */
+export function canEditEvent(event: AgendaEvent, me: string, manager: boolean): boolean {
+  if (!event.scope) return true;
+  return manager || (event.scope === "pessoal" && event.owner_id === me);
+}
 
 /** Tipo de evento criado pela empresa (genérico: serve para qualquer ramo). */
 export interface AgendaEventType {
@@ -247,7 +285,7 @@ export const VIEW_LABEL: Record<AgendaView, string> = {
   semana: "Semana",
   mes: "Mês",
   linha: "Linha do tempo",
-  equipe: "Equipe",
+  equipe: "Pessoas",
   lista: "Lista",
 };
 
@@ -397,6 +435,8 @@ export interface AgendaFilters {
   types: AppointmentType[];
   /** Tipos criados pela empresa. */
   typeIds: string[];
+  /** Tags (hierarquia): o compromisso precisa ter ao menos uma delas. */
+  tagIds: string[];
   statuses: VisitStatus[];
   person: string | null;
 }
@@ -405,6 +445,7 @@ export const EMPTY_FILTERS: AgendaFilters = {
   search: "",
   types: [],
   typeIds: [],
+  tagIds: [],
   statuses: [],
   person: null,
 };
@@ -424,6 +465,8 @@ export function applyFilters<T extends AgendaEvent>(
   return events.filter((event) => {
     if (filters.types.length && !filters.types.includes(event.appointment_type)) return false;
     if (filters.typeIds.length && !filters.typeIds.includes(event.event_type_id ?? ""))
+      return false;
+    if (filters.tagIds.length && !(event.tag_ids ?? []).some((id) => filters.tagIds.includes(id)))
       return false;
     if (filters.statuses.length && !filters.statuses.includes(event.status)) return false;
     if (
@@ -524,3 +567,43 @@ export function teamLoad<T extends AgendaEvent>(
 }
 
 export const UNASSIGNED = "Sem responsável";
+
+export const WHOLE_TEAM = "Equipe toda";
+
+/** Visão Pessoas com hierarquia: cada membro vê os compromissos de que é dono ou participante. */
+export function teamLoadByMember<T extends AgendaEvent>(
+  events: readonly T[],
+  days: readonly Date[],
+  members: ReadonlyArray<{ id: string; name: string }>,
+): TeamRow<T>[] {
+  const nameOf = new Map(members.map((member) => [member.id, member.name]));
+  const rows = new Map<string, TeamRow<T>>();
+  const row = (person: string) => {
+    let current = rows.get(person);
+    if (!current) {
+      current = { person, minutes: 0, byDay: days.map(() => []) };
+      rows.set(person, current);
+    }
+    return current;
+  };
+  for (const event of events) {
+    const index = days.findIndex((day) => isSameDay(day, eventStart(event)));
+    if (index < 0) continue;
+    const ids = [
+      ...new Set([event.owner_id, ...(event.participant_ids ?? [])].filter(Boolean)),
+    ] as string[];
+    const people = ids.map((id) => nameOf.get(id) ?? "Membro da equipe");
+    for (const person of people.length ? people : [WHOLE_TEAM]) {
+      const target = row(person);
+      target.byDay[index].push(event);
+      if (event.status !== "cancelada") target.minutes += eventDurationMin(event);
+    }
+  }
+  return [...rows.values()].sort((a, b) =>
+    a.person === WHOLE_TEAM
+      ? 1
+      : b.person === WHOLE_TEAM
+        ? -1
+        : b.minutes - a.minutes || a.person.localeCompare(b.person, "pt-BR"),
+  );
+}

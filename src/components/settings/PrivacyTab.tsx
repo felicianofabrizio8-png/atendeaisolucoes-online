@@ -4,7 +4,10 @@ import { SettingsTabHeader } from "./settings-ui";
 export function PrivacyTab() {
   return (
     <>
-      <SettingsTabHeader title="Privacidade" description="Dados, consentimento e segurança da conta" />
+      <SettingsTabHeader
+        title="Privacidade"
+        description="Dados, consentimento e segurança da conta"
+      />
       <div className="rounded-lg border border-dashed border-border p-10 flex flex-col items-center gap-2 text-center">
         <ShieldCheck className="h-8 w-8 text-muted-foreground" />
         <p className="text-sm font-medium">Em breve</p>

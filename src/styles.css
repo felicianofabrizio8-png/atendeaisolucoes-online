@@ -68,7 +68,8 @@
 /* Dark is the default theme — applied on :root */
 :root {
   --radius: 0.5rem;
-  --app-font-family: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --app-font-family:
+    "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 
   /* Surfaces — deep neutral gray (sem matiz) */
   --background: oklch(0.18 0 0);
@@ -447,6 +448,366 @@
 @utility safe-x {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+}
+
+/* ==========================================================================
+   Navegação inferior mobile (MobileBottomNav) — cápsula flutuante
+
+   A barra é uma cápsula preta solta das bordas; a bolha é sólida (sem
+   gradiente/textura) e cobre ícone + nome do destino ativo, que ficam
+   escuros sobre ela. Só `transform` e `opacity` animam — nada que force
+   layout. A curva tem um leve overshoot: a bolha chega rápido, passa um fio
+   do ponto e assenta.
+
+   --mobile-dock-space é o espaço que o conteúdo reserva embaixo para não
+   ficar atrás da cápsula (altura 64 + margem 12 + folga 12).
+   ========================================================================== */
+:root {
+  --dock-spring: cubic-bezier(0.32, 1.28, 0.5, 1);
+  --dock-duration: 380ms;
+  --mobile-dock-height: 64px;
+  --mobile-dock-gap: 12px;
+  --mobile-dock-space: calc(88px + env(safe-area-inset-bottom));
+}
+.mobile-dock {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--mobile-dock-gap) + env(safe-area-inset-bottom));
+  z-index: 40;
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:root[data-mobile-nav="hidden"] .mobile-dock {
+  transform: translate3d(0, calc(100% + 40px), 0);
+  pointer-events: none;
+}
+@media (max-width: 767px) {
+  :root[data-mobile-nav="hidden"] .app-content {
+    padding-bottom: 0;
+  }
+}
+.mobile-dock-bar {
+  position: relative;
+  display: grid;
+  height: var(--mobile-dock-height);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(10 9 13 / 0.92);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  -webkit-backdrop-filter: saturate(160%) blur(20px);
+  backdrop-filter: saturate(160%) blur(20px);
+  box-shadow:
+    0 18px 40px -12px rgb(0 0 0 / 0.65),
+    0 2px 8px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+.mobile-dock-track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  pointer-events: none;
+  transition: transform var(--dock-duration) var(--dock-spring);
+  will-change: transform;
+}
+.mobile-dock-bubble {
+  position: absolute;
+  inset: 6px 2px;
+  border-radius: 999px;
+  background: #ecebf1;
+  box-shadow: 0 4px 14px -4px rgb(181 148 255 / 0.55);
+  animation: dock-stretch var(--dock-duration) var(--dock-spring);
+}
+@keyframes dock-stretch {
+  0% {
+    transform: scale(1, 1);
+  }
+  40% {
+    transform: scale(1.18, 0.9);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+.mobile-dock-item {
+  position: relative;
+  display: flex;
+  height: 100%;
+  min-height: var(--mobile-dock-height);
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: rgb(255 255 255 / 0.55);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: color 220ms ease;
+}
+.mobile-dock-item[data-active] {
+  color: #120f18;
+}
+.mobile-dock-icon {
+  position: relative;
+  display: inline-flex;
+  transition: transform var(--dock-duration) var(--dock-spring);
+}
+.mobile-dock-item:active .mobile-dock-icon {
+  transform: scale(0.88);
+}
+.mobile-dock-item[data-active] .mobile-dock-icon {
+  transform: scale(1.04);
+}
+.mobile-dock-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px;
+  /* 320px (iPhone SE 1ª geração) até celulares grandes, sem cortar "Marketing". */
+  font-size: clamp(9.5px, 2.75vw, 11px);
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+.mobile-dock-item[data-active] .mobile-dock-label {
+  font-weight: 700;
+}
+.mobile-dock-badge {
+  position: absolute;
+  right: -12px;
+  top: -7px;
+  min-width: 18px;
+  border-radius: 999px;
+  padding: 0 4px;
+  background: var(--status-urgent);
+  color: var(--status-urgent-foreground);
+  text-align: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 16px;
+  box-shadow: 0 0 0 2px rgb(10 9 13);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-dock-track,
+  .mobile-dock-icon {
+    transition-duration: 1ms;
+  }
+  .mobile-dock-bubble {
+    animation: none;
+  }
+}
+
+/* Menu em grade (folha inferior do AppShell). Os blocos entram em cascata
+   curta (--i), só com opacity/transform. */
+.launcher-tile {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border-radius: 18px;
+  padding: 10px 2px 8px;
+  color: color-mix(in oklab, var(--sidebar-foreground) 80%, transparent);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+.mobile-launcher[data-state="open"] .launcher-tile {
+  animation: launcher-in 340ms var(--dock-spring) backwards;
+  animation-delay: calc(min(var(--i, 0), 14) * 18ms + 60ms);
+}
+.launcher-tile:active {
+  transform: scale(0.94);
+}
+.launcher-tile-icon {
+  position: relative;
+  display: inline-flex;
+  height: 50px;
+  width: 50px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  border: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.launcher-tile[data-active] .launcher-tile-icon {
+  background: linear-gradient(145deg, #7951d7, #4f3aa8);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 20px -10px #7951d7;
+}
+.launcher-tile[data-active] {
+  color: var(--sidebar-foreground);
+}
+.launcher-tile-label {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+@keyframes launcher-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-launcher[data-state="open"] .launcher-tile {
+    animation: none;
+  }
+}
+
+/* ==========================================================================
+   Primitivas de layout mobile
+
+   `.m-rail` — abaixo de md, os filhos viram um carrossel horizontal com
+   snap e uma "espiada" do próximo card (o usuário vê que há mais). Acima
+   de md a classe não faz nada: o grid original do componente continua
+   valendo. Use junto com as classes de grid de sempre.
+
+   `.m-rail-sm` — mesmo comportamento, mas só abaixo de sm (640px), para
+   grids que já ficam bons em 2–3 colunas no tablet.
+   ========================================================================== */
+@media (max-width: 767px) {
+  .m-rail {
+    display: flex !important;
+    gap: var(--m-rail-gap, 12px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--m-rail-gutter, 16px);
+    margin-inline: calc(-1 * var(--m-rail-gutter, 16px));
+    padding-inline: var(--m-rail-gutter, 16px);
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .m-rail::-webkit-scrollbar {
+    display: none;
+  }
+  .m-rail > * {
+    flex: 0 0 var(--m-rail-item, 84%);
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+  /* Chips/contadores compactos: largura pelo conteúdo. */
+  .m-rail-auto > * {
+    flex: 0 0 auto;
+  }
+}
+@media (max-width: 639px) {
+  .m-rail-sm {
+    display: flex !important;
+    gap: var(--m-rail-gap, 12px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--m-rail-gutter, 16px);
+    margin-inline: calc(-1 * var(--m-rail-gutter, 16px));
+    padding-inline: var(--m-rail-gutter, 16px);
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .m-rail-sm::-webkit-scrollbar {
+    display: none;
+  }
+  .m-rail-sm > * {
+    flex: 0 0 var(--m-rail-item, 84%);
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+}
+
+.m-rail-arrow {
+  display: inline-flex;
+  height: 36px;
+  width: 36px;
+  min-height: 36px !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+  transition:
+    opacity 200ms ease,
+    transform 160ms ease;
+}
+.m-rail-arrow:active {
+  transform: scale(0.92);
+}
+.m-rail-arrow:disabled {
+  opacity: 0.3;
+}
+.m-rail-dot {
+  height: 6px;
+  width: 6px;
+  min-height: 6px !important;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 25%, transparent);
+  transition:
+    width 300ms var(--dock-spring),
+    background-color 200ms ease;
+}
+.m-rail-dot[data-active] {
+  width: 22px;
+  background: var(--foreground);
+}
+.segmented-pill {
+  transition:
+    transform 320ms var(--dock-spring),
+    width 320ms var(--dock-spring);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .segmented-pill {
+    transition-duration: 1ms;
+  }
+}
+
+/* Seções por aba no mobile (MobileSections). No desktop o wrapper some do
+   layout (`display: contents`) e os filhos participam do grid do pai como
+   antes; no mobile só a aba ativa aparece. */
+.m-section {
+  display: contents;
+}
+@media (max-width: 767px) {
+  .m-section[data-active="false"] {
+    display: none;
+  }
+  /* Linha de grid cujas seções estão todas escondidas não deixa buraco. */
+  .m-row:not(:has(> .m-section[data-active="true"])) {
+    display: none;
+  }
+  .m-section[data-active="true"] > * {
+    animation: m-section-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+@keyframes m-section-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .m-section[data-active="true"] > * {
+    animation: none;
+  }
 }
 
 /* ==========================================================================
@@ -999,5 +1360,210 @@ iframe[src*="lovable.dev/badge"] {
   /* Sem animação o traço precisa nascer visível, senão o arco some. */
   .viz-stroke {
     stroke-dashoffset: 0 !important;
+  }
+}
+
+/* ==========================================================================
+   Configurações no celular (SettingsMobile) — pilha de telas
+   A lista fica embaixo; a seção aberta entra deslizando da direita e a
+   lista recua um pouco (como no iOS). Só transform/opacity animam.
+   ========================================================================== */
+.settings-mobile {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+.settings-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  transition:
+    transform 380ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 280ms ease;
+  will-change: transform;
+}
+.settings-screen[data-state="active"] {
+  transform: none;
+}
+.settings-screen[data-state="behind"] {
+  transform: translate3d(-28%, 0, 0);
+  opacity: 0.4;
+}
+.settings-screen[data-state="ahead"] {
+  transform: translate3d(100%, 0, 0);
+}
+.settings-detail {
+  box-shadow: -20px 0 40px -20px rgb(0 0 0 / 0.6);
+}
+.settings-topbar {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) 1fr minmax(84px, auto);
+  align-items: center;
+  height: calc(56px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 8px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  flex-shrink: 0;
+}
+.settings-topbar > :last-child {
+  justify-self: end;
+}
+.settings-topbar-title {
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 650;
+}
+.settings-icon-btn {
+  display: inline-flex;
+  height: 40px;
+  width: 40px;
+  min-height: 40px !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.settings-icon-btn:active {
+  background: var(--accent);
+}
+.settings-back {
+  display: inline-flex;
+  min-height: 40px !important;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+.settings-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+}
+.settings-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  border-radius: 22px;
+  padding: 16px;
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgb(121 81 215 / 0.22), transparent 60%),
+    color-mix(in oklab, var(--foreground) 4%, var(--card));
+  border: 1px solid var(--border);
+}
+.settings-avatar {
+  display: inline-flex;
+  height: 52px;
+  width: 52px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #7951d7, #4f3aa8);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+}
+.settings-search {
+  display: flex;
+  height: 44px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  padding: 0 12px;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+.settings-search input {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  outline: none;
+  font-size: 16px;
+}
+.settings-clear {
+  display: inline-flex;
+  height: 24px;
+  width: 24px;
+  min-height: 24px !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 15%, transparent);
+}
+.settings-group {
+  margin-bottom: 18px;
+}
+.settings-group-title {
+  margin: 0 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
+.settings-list {
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--foreground) 3%, var(--card));
+}
+.settings-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+.settings-row {
+  display: flex;
+  width: 100%;
+  min-height: 60px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease;
+}
+.settings-row:active {
+  background: var(--accent);
+}
+.settings-row-icon {
+  display: inline-flex;
+  height: 34px;
+  width: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: #fff;
+}
+
+/* Conteúdo das seções: nada passa da largura da tela. Inputs dentro de flex
+   têm min-width automático (~20 caracteres) e empurravam botões para fora. */
+.settings-body .settings-tab-header h2 {
+  display: none;
+}
+.settings-body .settings-tab-header {
+  margin-bottom: 16px;
+}
+.settings-body input:not([type="checkbox"]):not([type="radio"]),
+.settings-body select,
+.settings-body textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.settings-body :where(code, pre, .font-mono) {
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-screen {
+    transition-duration: 1ms;
   }
 }

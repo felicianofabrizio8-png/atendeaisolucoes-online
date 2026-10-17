@@ -1,83 +1,135 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { LayoutDashboard, MessageSquare, Megaphone, BarChart3, Menu } from "lucide-react";
-import { useTeamAccess } from "@/hooks/useTeamAccess";
-import { cn } from "@/lib/utils";
+import { LayoutDashboard, MessagesSquare, Megaphone, Calendar, LayoutGrid } from "lucide-react";
+import { useEffect, useState } from "react";
+
+/**
+ * Esconde a navegação inferior enquanto `active` for true — para telas em
+ * que o rodapé pertence a outra coisa (o composer de um chat aberto). A barra
+ * desce animada e o conteúdo recupera o espaço. Contador por referência: duas
+ * telas pedindo ao mesmo tempo não se atropelam.
+ */
+let hideRequests = 0;
+export function useHideMobileNav(active: boolean) {
+  useEffect(() => {
+    if (!active || typeof document === "undefined") return;
+    hideRequests += 1;
+    document.documentElement.dataset.mobileNav = "hidden";
+    return () => {
+      hideRequests -= 1;
+      if (hideRequests === 0) delete document.documentElement.dataset.mobileNav;
+    };
+  }, [active]);
+}
 
 type BottomNavItem = {
-  to: "/" | "/inbox" | "/marketing" | "/relatorios";
+  to: "/" | "/atendimento" | "/marketing" | "/agenda";
   label: string;
   icon: typeof LayoutDashboard;
 };
 
 const ITEMS: BottomNavItem[] = [
   { to: "/", label: "Início", icon: LayoutDashboard },
-  { to: "/inbox", label: "Caixa", icon: MessageSquare },
+  { to: "/atendimento", label: "Chat", icon: MessagesSquare },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
-  { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { to: "/agenda", label: "Agenda", icon: Calendar },
 ];
 
 interface Props {
-  /** Não-lidas agregadas — exibidas sobre o ícone da Caixa. */
+  /** Não-lidas agregadas — exibidas sobre o ícone do Chat. */
   unreadTotal?: number;
-  /** Abre o menu completo (Sheet lateral). */
+  /** Abre o menu completo. */
   onOpenMenu: () => void;
+  /** Se o menu completo está aberto — a bolha vai para o botão Menu. */
+  menuOpen?: boolean;
+  /** Mesma regra de acesso da sidebar (inclui o modo demo). */
+  canOpen: (path: string) => boolean;
 }
 
-/**
- * Navegação inferior fixa — só existe no mobile (< md).
- * Coloca os 4 destinos mais usados no alcance do polegar e delega o resto
- * ao menu completo, reduzindo a navegação a 1 toque no uso com uma mão.
- */
-export function MobileBottomNav({ unreadTotal = 0, onOpenMenu }: Props) {
-  const location = useLocation();
-  const access = useTeamAccess();
+const isActive = (pathname: string, to: string) =>
+  to === "/" ? pathname === "/" : pathname.startsWith(to);
 
-  const isActive = (to: string) =>
-    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
+/**
+ * Navegação inferior flutuante — só existe no mobile (< md).
+ *
+ * Uma cápsula solta da borda, com uma bolha sólida que cobre ícone e nome do
+ * destino ativo. A bolha é UM elemento só, movido por `transform` (compositor,
+ * sem layout nem repaint). Ela não espera a rota carregar: o toque já define
+ * o destino (`pending`) e a bolha sai na hora; quando a URL muda, o estado
+ * real assume. A cada troca ela estica um pouco no meio do caminho (keyframe
+ * reiniciado pela `key`), o que dá a sensação de movimento líquido.
+ *
+ * Rotas que não estão na barra acendem o botão Menu: o usuário sempre sabe
+ * onde está, mesmo dentro de uma página do menu completo.
+ */
+export function MobileBottomNav({ unreadTotal = 0, onOpenMenu, menuOpen = false, canOpen }: Props) {
+  const location = useLocation();
+  const [pending, setPending] = useState<number | null>(null);
+
+  const items = ITEMS.filter((item) => canOpen(item.to));
+  const menuIndex = items.length;
+  const slots = items.length + 1;
+
+  // A URL mudou: a navegação chegou, o estado real assume.
+  useEffect(() => setPending(null), [location.pathname]);
+
+  const routeIndex = items.findIndex((item) => isActive(location.pathname, item.to));
+  const current = menuOpen ? menuIndex : (pending ?? (routeIndex === -1 ? menuIndex : routeIndex));
 
   return (
-    <nav
-      aria-label="Navegação principal"
-      data-testid="mobile-bottom-nav"
-      className="lg:hidden fixed inset-x-0 bottom-0 z-40 pb-[env(safe-area-inset-bottom)] border-t border-sidebar-border bg-sidebar/95 backdrop-blur"
-    >
-      <ul className="grid grid-flow-col auto-cols-fr">
-        {ITEMS.filter(item=>access.canOpen(item.to)).map((item) => {
+    <nav aria-label="Navegação principal" data-testid="mobile-bottom-nav" className="mobile-dock md:hidden">
+      <ul className="mobile-dock-bar" style={{ gridTemplateColumns: `repeat(${slots}, minmax(0, 1fr))` }}>
+        {/* Trilho da bolha: tem a largura de uma coluna e anda de coluna em
+            coluna. translateX em % é relativo à própria largura = 1 coluna. */}
+        <span
+          aria-hidden
+          className="mobile-dock-track"
+          style={{
+            width: `calc((100% - 12px) / ${slots})`,
+            transform: `translate3d(${current * 100}%, 0, 0)`,
+          }}
+        >
+          <span key={current} className="mobile-dock-bubble" />
+        </span>
+
+        {items.map((item, index) => {
           const Icon = item.icon;
-          const active = isActive(item.to);
-          const badge = item.to === "/inbox" ? unreadTotal : 0;
+          const active = index === current;
+          const badge = item.to === "/atendimento" ? unreadTotal : 0;
           return (
-            <li key={item.to}>
+            <li key={item.to} className="relative min-w-0">
               <Link
                 to={item.to}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative flex min-h-[60px] flex-col items-center justify-center gap-1.5 px-1 py-1.5 text-[10px] font-medium transition-colors",
-                  active
-                    ? "text-primary"
-                    : "text-sidebar-foreground/70 active:text-sidebar-accent-foreground",
-                )}
+                aria-current={isActive(location.pathname, item.to) ? "page" : undefined}
+                onPointerDown={() => setPending(index)}
+                onClick={() => setPending(index)}
+                data-active={active || undefined}
+                className="mobile-dock-item"
               >
-                <Icon className="h-5 w-5" aria-hidden="true" />
-                <span className="truncate max-w-full">{item.label}</span>
-                {badge > 0 ? (
-                  <span className="absolute top-1.5 right-[22%] rounded-full bg-[var(--status-urgent)] px-1 text-[9px] font-bold leading-4 text-[var(--status-urgent-foreground)]">
-                    {badge > 99 ? "99+" : badge}
-                  </span>
-                ) : null}
+                <span className="mobile-dock-icon">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                  {badge > 0 ? (
+                    <span className="mobile-dock-badge">{badge > 99 ? "99+" : badge}</span>
+                  ) : null}
+                </span>
+                <span className="mobile-dock-label">{item.label}</span>
               </Link>
             </li>
           );
         })}
-        <li>
+
+        <li className="relative min-w-0">
           <button
             type="button"
             onClick={onOpenMenu}
             aria-label="Abrir menu completo"
-            className="flex w-full min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-medium text-sidebar-foreground/70 active:text-sidebar-accent-foreground"
+            aria-expanded={menuOpen}
+            data-active={current === menuIndex || undefined}
+            className="mobile-dock-item w-full"
           >
-            <Menu className="h-5 w-5" aria-hidden="true" />
-            <span>Menu</span>
+            <span className="mobile-dock-icon">
+              <LayoutGrid className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span className="mobile-dock-label">Menu</span>
           </button>
         </li>
       </ul>

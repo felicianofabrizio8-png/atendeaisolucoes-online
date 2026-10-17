@@ -391,15 +391,20 @@ export function ChatThread({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-[17px] font-bold leading-tight">{lead.name}</h2>
-            <CustomerTierBadge history={history} size="sm" />
+            {/* No celular o selo desce para a linha de baixo: lado a lado com
+                o nome ele deixava só "What…" visível. */}
+            <CustomerTierBadge history={history} size="sm" className="max-sm:hidden" />
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {channelLabel}
-            {conversation.detectedCity
-              ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}`
-              : ""}
-            {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
-            {communicationClosed ? " · encerrada" : ""}
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
+            <CustomerTierBadge history={history} size="sm" className="shrink-0 sm:hidden" />
+            <span className="truncate">
+              {channelLabel}
+              {conversation.detectedCity
+                ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}`
+                : ""}
+              {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
+              {communicationClosed ? " · encerrada" : ""}
+            </span>
           </p>
         </div>
         {!simulated && (
@@ -475,7 +480,10 @@ export function ChatThread({
           </div>
         )}
 
-      <div ref={scrollerRef} className="at-messages min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5">
+      <div
+        ref={scrollerRef}
+        className="at-messages min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5"
+      >
         <MessagesContext.Provider value={messages}>
           <ReplyComposeContext.Provider value={replyCompose}>
             <div className="flex w-full min-w-0 flex-col gap-2">

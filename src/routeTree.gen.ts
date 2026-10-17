@@ -21,6 +21,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as MetasRouteImport } from './routes/metas'
 import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as InboxRouteImport } from './routes/inbox'
@@ -83,6 +84,7 @@ import { Route as ApiMetaConfigRouteImport } from './routes/api.meta.config'
 import { Route as ApiLumeStatusRouteImport } from './routes/api.lume.status'
 import { Route as ApiLumeChatRouteImport } from './routes/api.lume.chat'
 import { Route as ApiLumeActionRouteImport } from './routes/api.lume.action'
+import { Route as ApiGoalsAskRouteImport } from './routes/api.goals.ask'
 import { Route as ApiExecutiveSnapshotRouteImport } from './routes/api.executive.snapshot'
 import { Route as ApiExecutiveSalesIntelligenceRouteImport } from './routes/api.executive.sales-intelligence'
 import { Route as ApiExecutiveNarrativeRouteImport } from './routes/api.executive.narrative'
@@ -123,6 +125,7 @@ import { Route as ApiPublicRenderCompleteRouteImport } from './routes/api.public
 import { Route as ApiPublicRenderClaimRouteImport } from './routes/api.public.render.claim'
 import { Route as ApiPublicHooksRuntimeTickRouteImport } from './routes/api.public.hooks.runtime-tick'
 import { Route as ApiPublicHooksPublisherTickRouteImport } from './routes/api.public.hooks.publisher-tick'
+import { Route as ApiPublicHooksGoalsTickRouteImport } from './routes/api.public.hooks.goals-tick'
 import { Route as ApiPublicHooksFollowupTickRouteImport } from './routes/api.public.hooks.followup-tick'
 import { Route as ApiPublicHooksAgentTriggerRouteImport } from './routes/api.public.hooks.agent-trigger'
 import { Route as ApiExecutiveConversationIntelligenceJobRouteImport } from './routes/api.executive.conversation-intelligence.job'
@@ -191,6 +194,11 @@ const OrcamentosRoute = OrcamentosRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetasRoute = MetasRouteImport.update({
+  id: '/metas',
+  path: '/metas',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MarketingRoute = MarketingRouteImport.update({
@@ -539,6 +547,11 @@ const ApiLumeActionRoute = ApiLumeActionRouteImport.update({
   path: '/api/lume/action',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGoalsAskRoute = ApiGoalsAskRouteImport.update({
+  id: '/api/goals/ask',
+  path: '/api/goals/ask',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiExecutiveSnapshotRoute = ApiExecutiveSnapshotRouteImport.update({
   id: '/api/executive/snapshot',
   path: '/api/executive/snapshot',
@@ -749,6 +762,11 @@ const ApiPublicHooksPublisherTickRoute =
     path: '/api/public/hooks/publisher-tick',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksGoalsTickRoute = ApiPublicHooksGoalsTickRouteImport.update({
+  id: '/api/public/hooks/goals-tick',
+  path: '/api/public/hooks/goals-tick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksFollowupTickRoute =
   ApiPublicHooksFollowupTickRouteImport.update({
     id: '/api/public/hooks/followup-tick',
@@ -787,6 +805,7 @@ export interface FileRoutesByFullPath {
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
+  '/metas': typeof MetasRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -847,6 +866,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/goals/ask': typeof ApiGoalsAskRoute
   '/api/lume/action': typeof ApiLumeActionRoute
   '/api/lume/chat': typeof ApiLumeChatRoute
   '/api/lume/status': typeof ApiLumeStatusRoute
@@ -884,6 +904,7 @@ export interface FileRoutesByFullPath {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/goals-tick': typeof ApiPublicHooksGoalsTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
@@ -908,6 +929,7 @@ export interface FileRoutesByTo {
   '/ia': typeof IaRoute
   '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
+  '/metas': typeof MetasRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -968,6 +990,7 @@ export interface FileRoutesByTo {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/goals/ask': typeof ApiGoalsAskRoute
   '/api/lume/action': typeof ApiLumeActionRoute
   '/api/lume/chat': typeof ApiLumeChatRoute
   '/api/lume/status': typeof ApiLumeStatusRoute
@@ -1005,6 +1028,7 @@ export interface FileRoutesByTo {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/goals-tick': typeof ApiPublicHooksGoalsTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
@@ -1031,6 +1055,7 @@ export interface FileRoutesById {
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
+  '/metas': typeof MetasRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
   '/privacidade': typeof PrivacidadeRoute
@@ -1091,6 +1116,7 @@ export interface FileRoutesById {
   '/api/executive/narrative': typeof ApiExecutiveNarrativeRoute
   '/api/executive/sales-intelligence': typeof ApiExecutiveSalesIntelligenceRoute
   '/api/executive/snapshot': typeof ApiExecutiveSnapshotRoute
+  '/api/goals/ask': typeof ApiGoalsAskRoute
   '/api/lume/action': typeof ApiLumeActionRoute
   '/api/lume/chat': typeof ApiLumeChatRoute
   '/api/lume/status': typeof ApiLumeStatusRoute
@@ -1128,6 +1154,7 @@ export interface FileRoutesById {
   '/api/executive/conversation-intelligence/job': typeof ApiExecutiveConversationIntelligenceJobRoute
   '/api/public/hooks/agent-trigger': typeof ApiPublicHooksAgentTriggerRoute
   '/api/public/hooks/followup-tick': typeof ApiPublicHooksFollowupTickRoute
+  '/api/public/hooks/goals-tick': typeof ApiPublicHooksGoalsTickRoute
   '/api/public/hooks/publisher-tick': typeof ApiPublicHooksPublisherTickRoute
   '/api/public/hooks/runtime-tick': typeof ApiPublicHooksRuntimeTickRoute
   '/api/public/render/claim': typeof ApiPublicRenderClaimRoute
@@ -1155,6 +1182,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/login'
     | '/marketing'
+    | '/metas'
     | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
@@ -1215,6 +1243,7 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/goals/ask'
     | '/api/lume/action'
     | '/api/lume/chat'
     | '/api/lume/status'
@@ -1252,6 +1281,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/goals-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/render/claim'
@@ -1276,6 +1306,7 @@ export interface FileRouteTypes {
     | '/ia'
     | '/login'
     | '/marketing'
+    | '/metas'
     | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
@@ -1336,6 +1367,7 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/goals/ask'
     | '/api/lume/action'
     | '/api/lume/chat'
     | '/api/lume/status'
@@ -1373,6 +1405,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/goals-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/render/claim'
@@ -1398,6 +1431,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/login'
     | '/marketing'
+    | '/metas'
     | '/onboarding'
     | '/orcamentos'
     | '/privacidade'
@@ -1458,6 +1492,7 @@ export interface FileRouteTypes {
     | '/api/executive/narrative'
     | '/api/executive/sales-intelligence'
     | '/api/executive/snapshot'
+    | '/api/goals/ask'
     | '/api/lume/action'
     | '/api/lume/chat'
     | '/api/lume/status'
@@ -1495,6 +1530,7 @@ export interface FileRouteTypes {
     | '/api/executive/conversation-intelligence/job'
     | '/api/public/hooks/agent-trigger'
     | '/api/public/hooks/followup-tick'
+    | '/api/public/hooks/goals-tick'
     | '/api/public/hooks/publisher-tick'
     | '/api/public/hooks/runtime-tick'
     | '/api/public/render/claim'
@@ -1521,6 +1557,7 @@ export interface RootRouteChildren {
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
   MarketingRoute: typeof MarketingRoute
+  MetasRoute: typeof MetasRoute
   OnboardingRoute: typeof OnboardingRouteWithChildren
   OrcamentosRoute: typeof OrcamentosRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
@@ -1576,6 +1613,7 @@ export interface RootRouteChildren {
   ApiExecutiveNarrativeRoute: typeof ApiExecutiveNarrativeRoute
   ApiExecutiveSalesIntelligenceRoute: typeof ApiExecutiveSalesIntelligenceRoute
   ApiExecutiveSnapshotRoute: typeof ApiExecutiveSnapshotRoute
+  ApiGoalsAskRoute: typeof ApiGoalsAskRoute
   ApiLumeActionRoute: typeof ApiLumeActionRoute
   ApiLumeChatRoute: typeof ApiLumeChatRoute
   ApiLumeStatusRoute: typeof ApiLumeStatusRoute
@@ -1613,6 +1651,7 @@ export interface RootRouteChildren {
   ApiExecutiveConversationIntelligenceJobRoute: typeof ApiExecutiveConversationIntelligenceJobRoute
   ApiPublicHooksAgentTriggerRoute: typeof ApiPublicHooksAgentTriggerRoute
   ApiPublicHooksFollowupTickRoute: typeof ApiPublicHooksFollowupTickRoute
+  ApiPublicHooksGoalsTickRoute: typeof ApiPublicHooksGoalsTickRoute
   ApiPublicHooksPublisherTickRoute: typeof ApiPublicHooksPublisherTickRoute
   ApiPublicHooksRuntimeTickRoute: typeof ApiPublicHooksRuntimeTickRoute
   ApiPublicRenderClaimRoute: typeof ApiPublicRenderClaimRoute
@@ -1703,6 +1742,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metas': {
+      id: '/metas'
+      path: '/metas'
+      fullPath: '/metas'
+      preLoaderRoute: typeof MetasRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/marketing': {
@@ -2160,6 +2206,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiLumeActionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/goals/ask': {
+      id: '/api/goals/ask'
+      path: '/api/goals/ask'
+      fullPath: '/api/goals/ask'
+      preLoaderRoute: typeof ApiGoalsAskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/executive/snapshot': {
       id: '/api/executive/snapshot'
       path: '/api/executive/snapshot'
@@ -2440,6 +2493,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksPublisherTickRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/goals-tick': {
+      id: '/api/public/hooks/goals-tick'
+      path: '/api/public/hooks/goals-tick'
+      fullPath: '/api/public/hooks/goals-tick'
+      preLoaderRoute: typeof ApiPublicHooksGoalsTickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/followup-tick': {
       id: '/api/public/hooks/followup-tick'
       path: '/api/public/hooks/followup-tick'
@@ -2512,6 +2572,7 @@ const rootRouteChildren: RootRouteChildren = {
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
   MarketingRoute: MarketingRoute,
+  MetasRoute: MetasRoute,
   OnboardingRoute: OnboardingRouteWithChildren,
   OrcamentosRoute: OrcamentosRoute,
   PrivacidadeRoute: PrivacidadeRoute,
@@ -2567,6 +2628,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiExecutiveNarrativeRoute: ApiExecutiveNarrativeRoute,
   ApiExecutiveSalesIntelligenceRoute: ApiExecutiveSalesIntelligenceRoute,
   ApiExecutiveSnapshotRoute: ApiExecutiveSnapshotRoute,
+  ApiGoalsAskRoute: ApiGoalsAskRoute,
   ApiLumeActionRoute: ApiLumeActionRoute,
   ApiLumeChatRoute: ApiLumeChatRoute,
   ApiLumeStatusRoute: ApiLumeStatusRoute,
@@ -2606,6 +2668,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiExecutiveConversationIntelligenceJobRoute,
   ApiPublicHooksAgentTriggerRoute: ApiPublicHooksAgentTriggerRoute,
   ApiPublicHooksFollowupTickRoute: ApiPublicHooksFollowupTickRoute,
+  ApiPublicHooksGoalsTickRoute: ApiPublicHooksGoalsTickRoute,
   ApiPublicHooksPublisherTickRoute: ApiPublicHooksPublisherTickRoute,
   ApiPublicHooksRuntimeTickRoute: ApiPublicHooksRuntimeTickRoute,
   ApiPublicRenderClaimRoute: ApiPublicRenderClaimRoute,

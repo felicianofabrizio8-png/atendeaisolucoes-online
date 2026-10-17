@@ -7,12 +7,20 @@ function fakeClient(rows: Record<string, Array<Record<string, unknown>>> = {}) {
   const writes: Array<{ table: string; op: string; payload: unknown }> = [];
   const client = {
     writes,
+    failInsert: null as string | null,
+    /** Linhas que UPDATE/DELETE devolvem; [] simula o filtro silencioso do RLS. */
+    affected: null as unknown[] | null,
+    selects: [] as Array<{ table: string; columns: string }>,
     from(table: string) {
       const data = rows[table] ?? [];
       let op = "select";
       let payload: unknown = null;
       const builder: Record<string, unknown> = {};
-      for (const method of ["select", "eq", "neq", "in", "gte", "lte", "lt", "order", "limit"])
+      builder.select = (columns?: string) => {
+        if (op === "select") client.selects.push({ table, columns: columns ?? "" });
+        return builder;
+      };
+      for (const method of ["eq", "neq", "in", "gte", "lte", "lt", "order", "limit"])
         builder[method] = () => builder;
       for (const method of ["insert", "update", "delete"])
         builder[method] = (value?: unknown) => {
@@ -21,10 +29,16 @@ function fakeClient(rows: Record<string, Array<Record<string, unknown>>> = {}) {
           writes.push({ table, op, payload });
           return builder;
         };
-      builder.single = async () => ({ data: op === "insert" ? { id: "novo-1" } : data[0], error: null });
+      builder.single = async () =>
+        op === "insert" && table === "visits" && client.failInsert
+          ? { data: null, error: { message: client.failInsert } }
+          : { data: op === "insert" ? { id: "novo-1" } : data[0], error: null };
       builder.maybeSingle = async () => ({ data: data[0] ?? null, error: null });
       builder.then = (resolve: (value: unknown) => unknown) =>
-        Promise.resolve({ data: op === "select" ? data : [{ id: "n1" }], error: null }).then(resolve);
+        Promise.resolve({
+          data: op === "select" ? data : op !== "insert" && client.affected ? client.affected : [{ id: "n1" }],
+          error: null,
+        }).then(resolve);
       return builder;
     },
   };
@@ -156,4 +170,91 @@ describe("Lume na Agenda", () => {
       agendaDomain.undo({ op: "delete_rows", table: "leads", ids: ["x"] }, context(fakeClient())),
     ).rejects.toThrow();
   });
+
+it("cria de equipe com participantes e tags pelo nome", async () => {
+  const client = fakeClient({
+    agenda_tags: [{ id: "t1", name: "Comercial", owner_id: null }],
+    profiles: [{ id: "u2", display_name: "Bruno" }],
+  });
+  await tool("agenda_criar").execute(
+    { titulo: "Treino", inicio: "2026-10-16T09:00", alcance: "equipe", participantes: ["bruno"], tags: ["comercial"] } as never,
+    context(client),
+  );
+  const visit = client.writes.find((w) => w.table === "visits")!.payload as Record<string, unknown>;
+  expect(visit).toMatchObject({ scope: "equipe", everyone: false });
+  expect(client.writes.some((w) => w.table === "agenda_event_participants")).toBe(true);
+  expect(client.writes.some((w) => w.table === "agenda_event_tags")).toBe(true);
+});
+it("explica quando o banco recusa compromisso de equipe", async () => {
+  const client = fakeClient();
+  client.failInsert = "Só a gestão da agenda cria compromissos da equipe";
+  const result = await tool("agenda_criar").execute(
+    { titulo: "Geral", inicio: "2026-10-16T09:00", alcance: "equipe" } as never,
+    context(client),
+  );
+  expect((result.output as { erro: string }).erro).toMatch(/gestão da agenda/);
+});
+
+describe("Lume não confunde recusa silenciosa com sucesso", () => {
+  const visit = {
+    id: "e1",
+    company_id: "c1",
+    title: "Treino",
+    scheduled_at: "2026-10-16T12:00:00.000Z",
+    status: "agendada",
+    owner_id: "u9",
+    scope: "equipe",
+    everyone: false,
+    agenda_event_tags: [{ tag_id: "t1" }],
+    agenda_event_participants: [{ user_id: "u2", name: "Bruno", role: "participante" }],
+  };
+
+  it("alterar sem linha afetada avisa erro e não oferece desfazer", async () => {
+    const client = fakeClient({ visits: [visit] });
+    client.affected = [];
+    const result = await tool("agenda_alterar").execute({ id: "e1", status: "confirmada" } as never, context(client));
+    expect((result.output as { erro?: string }).erro).toBeTruthy();
+    expect(result.undo).toBeUndefined();
+  });
+
+  it("excluir sem linha afetada avisa erro e não oferece desfazer", async () => {
+    const client = fakeClient({ visits: [visit] });
+    client.affected = [];
+    const result = await tool("agenda_excluir").execute({ ids: ["e1"] } as never, context(client));
+    expect((result.output as { erro?: string }).erro).toBeTruthy();
+    expect(result.undo).toBeUndefined();
+  });
+
+  it("lê alcance, dona, tags e participantes quando há hierarquia", async () => {
+    const client = fakeClient({ visits: [visit] });
+    await tool("agenda_excluir").execute({ ids: ["e1"] } as never, context(client));
+    const read = client.selects.find((item) => item.table === "visits")!.columns;
+    for (const column of ["owner_id", "scope", "everyone", "agenda_event_tags", "agenda_event_participants"])
+      expect(read).toContain(column);
+  });
+
+  it("desfazer a exclusão devolve tags e participantes", async () => {
+    const client = fakeClient({ visits: [visit] });
+    client.affected = [{ id: "e1" }];
+    const result = await tool("agenda_excluir").execute({ ids: ["e1"] } as never, context(client));
+    client.writes.length = 0;
+    await agendaDomain.undo(result.undo!, context(client));
+    const restored = client.writes.find((w) => w.table === "visits")!.payload as Array<Record<string, unknown>>;
+    expect(restored[0]).not.toHaveProperty("agenda_event_tags");
+    expect(restored[0]).not.toHaveProperty("agenda_event_participants");
+    expect(restored[0]).toMatchObject({ scope: "equipe", owner_id: "u9" });
+    const tags = client.writes.find((w) => w.table === "agenda_event_tags")!.payload as Array<Record<string, unknown>>;
+    expect(tags).toEqual([{ company_id: "c1", event_id: "e1", tag_id: "t1" }]);
+    const people = client.writes.find((w) => w.table === "agenda_event_participants")!.payload as Array<Record<string, unknown>>;
+    expect(people).toEqual([{ company_id: "c1", event_id: "e1", user_id: "u2", name: "Bruno", role: "participante" }]);
+  });
+
+  it("desfazer a alteração nunca grava alcance vazio", async () => {
+    const client = fakeClient();
+    await agendaDomain.undo({ op: "update_event", id: "e1", changes: { scope: null, status: "agendada" } }, context(client));
+    const update = client.writes.find((w) => w.op === "update")!.payload as Record<string, unknown>;
+    expect(update).not.toHaveProperty("scope");
+    expect(update.status).toBe("agendada");
+  });
+});
 });

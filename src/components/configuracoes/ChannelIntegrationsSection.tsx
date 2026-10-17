@@ -4,16 +4,7 @@
 import type { ReactNode } from "react";
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  Check,
-  MessageCircle,
-  Plug,
-  Power,
-  PowerOff,
-  Copy,
-  Loader2,
-  Trash2,
-} from "lucide-react";
+import { Check, MessageCircle, Plug, Power, PowerOff, Copy, Loader2, Trash2 } from "lucide-react";
 import { sanitizeForLog, safeErrorMessage, summarizeHttp } from "@/lib/audit/sanitize";
 import {
   listIntegrations,
@@ -87,8 +78,8 @@ export function ChannelIntegrationsSection() {
         </Link>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Conecte o WhatsApp oficial da Meta (Cloud API) para receber mensagens
-        reais no inbox, automações de IA e follow-ups.
+        Conecte o WhatsApp oficial da Meta (Cloud API) para receber mensagens reais no inbox,
+        automações de IA e follow-ups.
       </p>
 
       {error && (
@@ -111,7 +102,6 @@ export function ChannelIntegrationsSection() {
       )}
 
       <WhatsAppUnmappedPanel />
-
 
       <div className="space-y-4">
         <div className="rounded-md bg-secondary/40 border border-border p-3 text-[11px] space-y-1">
@@ -148,23 +138,13 @@ export function ChannelIntegrationsSection() {
           </button>
         )}
 
-        <WhatsAppCloudDebugPanel
-          companyId={companyId}
-          onSaved={() => void reload()}
-        />
+        <WhatsAppCloudDebugPanel companyId={companyId} onSaved={() => void reload()} />
       </div>
     </section>
   );
 }
 
-
-function IntegrationItem({
-  item,
-  onChanged,
-}: {
-  item: Integration;
-  onChanged: () => void;
-}) {
+function IntegrationItem({ item, onChanged }: { item: Integration; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [showTest, setShowTest] = useState(false);
   const [showRenew, setShowRenew] = useState(false);
@@ -178,8 +158,7 @@ function IntegrationItem({
     }
   };
   const remove = async () => {
-    if (!confirm("Remover esta integração? As conversas existentes não serão apagadas."))
-      return;
+    if (!confirm("Remover esta integração? As conversas existentes não serão apagadas.")) return;
     setBusy(true);
     try {
       await deleteIntegration(item.id);
@@ -191,10 +170,12 @@ function IntegrationItem({
   const isWhatsApp = item.channel === "whatsapp";
   return (
     <li className="rounded-md border border-border bg-background">
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      {/* No celular as ações descem para uma linha própria, abaixo dos dados —
+          lado a lado elas espremiam o texto até uma palavra por linha. */}
+      <div className="flex flex-wrap items-start gap-3 px-3 py-2.5 sm:flex-nowrap sm:items-center">
         <div
           className={cn(
-            "h-8 w-8 rounded-md inline-flex items-center justify-center text-white",
+            "h-8 w-8 shrink-0 rounded-md inline-flex items-center justify-center text-white",
             item.channel === "whatsapp" && "bg-[#25D366]",
             item.channel === "instagram" && "bg-[#E1306C]",
             item.channel === "facebook" && "bg-[#1877F2]",
@@ -214,9 +195,7 @@ function IntegrationItem({
                   <>
                     <div>
                       Número:{" "}
-                      <span className="font-mono text-foreground">
-                        {displayPhone ?? "—"}
-                      </span>
+                      <span className="font-mono text-foreground">{displayPhone ?? "—"}</span>
                     </div>
                     <div>
                       phone_number_id:{" "}
@@ -236,9 +215,7 @@ function IntegrationItem({
                   </>
                 );
               })()}
-              {!item.hasAccessToken && (
-                <div className="text-[var(--status-urgent)]">sem token</div>
-              )}
+              {!item.hasAccessToken && <div className="text-[var(--status-urgent)]">sem token</div>}
               {item.lastError && (
                 <div className="text-[var(--status-urgent)]">erro: {item.lastError}</div>
               )}
@@ -260,51 +237,53 @@ function IntegrationItem({
           )}
         </div>
 
-        <span
-          className={cn(
-            "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
-            item.active
-              ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
-              : "bg-secondary text-muted-foreground",
+        <div className="flex w-full flex-wrap items-center gap-2 pl-11 sm:w-auto sm:flex-nowrap sm:pl-0 [&_button]:whitespace-nowrap">
+          <span
+            className={cn(
+              "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5",
+              item.active
+                ? "bg-[var(--status-won)]/15 text-[var(--status-won)]"
+                : "bg-secondary text-muted-foreground",
+            )}
+          >
+            {item.active ? "Ativa" : "Inativa"}
+          </span>
+          {isWhatsApp && item.hasAccessToken && (
+            <button
+              onClick={() => setShowRenew((v) => !v)}
+              className="text-[11px] font-semibold rounded-md bg-secondary text-foreground px-2 py-1 hover:bg-accent"
+              title="Renovar ou validar token"
+            >
+              Renovar token
+            </button>
           )}
-        >
-          {item.active ? "Ativa" : "Inativa"}
-        </span>
-        {isWhatsApp && item.hasAccessToken && (
+          {isWhatsApp && item.hasAccessToken && item.active && (
+            <button
+              onClick={() => setShowTest((v) => !v)}
+              className="text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
+              title="Enviar mensagem de teste"
+            >
+              Enviar teste
+            </button>
+          )}
           <button
-            onClick={() => setShowRenew((v) => !v)}
-            className="text-[11px] font-semibold rounded-md bg-secondary text-foreground px-2 py-1 hover:bg-accent"
-            title="Renovar ou validar token"
+            onClick={toggle}
+            disabled={busy}
+            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+            title={item.active ? "Desativar" : "Ativar"}
           >
-            Renovar token
+            {item.active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
           </button>
-        )}
-        {isWhatsApp && item.hasAccessToken && item.active && (
+          <MetaDisconnectButton integrationId={item.id} onDisconnected={onChanged} />
           <button
-            onClick={() => setShowTest((v) => !v)}
-            className="text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
-            title="Enviar mensagem de teste"
+            onClick={remove}
+            disabled={busy}
+            className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+            title="Remover"
           >
-            Enviar teste
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
-        )}
-        <button
-          onClick={toggle}
-          disabled={busy}
-          className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
-          title={item.active ? "Desativar" : "Ativar"}
-        >
-          {item.active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
-        </button>
-        <MetaDisconnectButton integrationId={item.id} onDisconnected={onChanged} />
-        <button
-          onClick={remove}
-          disabled={busy}
-          className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-          title="Remover"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        </div>
       </div>
       {isWhatsApp && showRenew && (
         <TokenRenewPanel
@@ -354,7 +333,8 @@ function TokenExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
   if (s.kind === "soon") {
     return (
       <div className="text-[11px] mt-0.5 text-[var(--status-urgent)]">
-        ⏰ Token expira em {Math.max(1, Math.round(s.hoursLeft))}h ({new Date(s.expires).toLocaleString("pt-BR")})
+        ⏰ Token expira em {Math.max(1, Math.round(s.hoursLeft))}h (
+        {new Date(s.expires).toLocaleString("pt-BR")})
       </div>
     );
   }
@@ -456,13 +436,16 @@ function TokenRenewPanel({
         </button>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Cole aqui um novo <strong>token temporário</strong> (válido por ~24h) ou
-        o <strong>token permanente</strong> de System User quando a Meta liberar.
-        O sistema valida contra a Graph API antes de salvar. O resto da
-        integração (webhook, envio, recebimento) continua igual.
+        Cole aqui um novo <strong>token temporário</strong> (válido por ~24h) ou o{" "}
+        <strong>token permanente</strong> de System User quando a Meta liberar. O sistema valida
+        contra a Graph API antes de salvar. O resto da integração (webhook, envio, recebimento)
+        continua igual.
         {currentExpiresAt && (
-          <> Token atual expira em{" "}
-            <span className="font-mono">{new Date(currentExpiresAt).toLocaleString("pt-BR")}</span>.</>
+          <>
+            {" "}
+            Token atual expira em{" "}
+            <span className="font-mono">{new Date(currentExpiresAt).toLocaleString("pt-BR")}</span>.
+          </>
         )}
       </p>
       <textarea
@@ -499,7 +482,11 @@ function TokenRenewPanel({
           disabled={busy || !newToken.trim()}
           className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Check className="h-3.5 w-3.5" />
+          )}
           Validar e salvar
         </button>
         <button
@@ -525,8 +512,6 @@ function TokenRenewPanel({
     </div>
   );
 }
-
-
 
 function WhatsAppTestPanel({
   integrationId,
@@ -591,7 +576,6 @@ function WhatsAppTestPanel({
         diagnostics: json.diagnostics,
       });
       if (json.ok) onSent();
-
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao enviar";
       console.error("[WhatsAppTestPanel] error", msg);
@@ -634,12 +618,15 @@ function WhatsAppTestPanel({
           disabled={sending || !to.trim()}
           className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
         >
-          {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+          {sending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <MessageCircle className="h-3.5 w-3.5" />
+          )}
           {sending ? "Enviando…" : "Enviar"}
         </button>
         <p className="text-[10px] text-muted-foreground">
-          Apenas dígitos. No modo sandbox da Meta o número precisa estar
-          adicionado como testador.
+          Apenas dígitos. No modo sandbox da Meta o número precisa estar adicionado como testador.
         </p>
       </div>
       {result && (
@@ -670,15 +657,13 @@ function WhatsAppTestPanel({
             </div>
           )}
           <pre className="text-[10px] leading-snug bg-background border border-border rounded p-2 overflow-auto max-h-64">
-{JSON.stringify(result.response ?? result.error ?? null, null, 2)}
+            {JSON.stringify(result.response ?? result.error ?? null, null, 2)}
           </pre>
         </div>
       )}
-
     </div>
   );
 }
-
 
 function randomToken(len = 24) {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -700,14 +685,11 @@ function WhatsAppCloudDebugPanel({
   const [toNumber, setToNumber] = useState("");
   const [testMessage, setTestMessage] = useState("Teste Lume ✅");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<
-    | null
-    | {
-        test_send?: { status?: number; ok?: boolean; body?: unknown };
-        phone_number?: { body?: { display_phone_number?: string; verified_name?: string } };
-        waba?: { body?: { id?: string; name?: string } };
-      }
-  >(null);
+  const [result, setResult] = useState<null | {
+    test_send?: { status?: number; ok?: boolean; body?: unknown };
+    phone_number?: { body?: { display_phone_number?: string; verified_name?: string } };
+    waba?: { body?: { id?: string; name?: string } };
+  }>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
@@ -747,18 +729,15 @@ function WhatsAppCloudDebugPanel({
   };
 
   const testStatus = result?.test_send?.status;
-  const canSave =
-    testStatus === 200 && !!token.trim() && !!phoneId.trim();
+  const canSave = testStatus === 200 && !!token.trim() && !!phoneId.trim();
 
   const saveConnection = async () => {
     setErr(null);
     setSavedMsg(null);
     setSaving(true);
     try {
-      const displayPhone =
-        result?.phone_number?.body?.display_phone_number ?? undefined;
-      const verifiedName =
-        result?.phone_number?.body?.verified_name ?? "WhatsApp Cloud";
+      const displayPhone = result?.phone_number?.body?.display_phone_number ?? undefined;
+      const verifiedName = result?.phone_number?.body?.verified_name ?? "WhatsApp Cloud";
       const rand = () =>
         Array.from(crypto.getRandomValues(new Uint8Array(24)))
           .map((b) => b.toString(16).padStart(2, "0"))
@@ -784,16 +763,14 @@ function WhatsAppCloudDebugPanel({
     }
   };
 
-
-
   return (
     <div className="rounded-md border border-dashed border-border p-3 space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-sm font-semibold">Debug WhatsApp Cloud API</div>
           <div className="text-[11px] text-muted-foreground">
-            Valida token (temporário ou permanente), WABA, phone_number_id e envio de
-            mensagem. Não salva nada.
+            Valida token (temporário ou permanente), WABA, phone_number_id e envio de mensagem. Não
+            salva nada.
           </div>
         </div>
       </div>
@@ -807,7 +784,7 @@ function WhatsAppCloudDebugPanel({
           className="w-full px-3 py-2 text-xs rounded-md border border-border bg-background font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="WABA ID (opcional)">
           <input
             value={wabaId}
@@ -823,7 +800,7 @@ function WhatsAppCloudDebugPanel({
           />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Enviar para (E.164, opcional)">
           <input
             value={toNumber}
@@ -847,7 +824,11 @@ function WhatsAppCloudDebugPanel({
           disabled={loading}
           className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-50"
         >
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Check className="h-3.5 w-3.5" />
+          )}
           Rodar debug
         </button>
         {canSave && (
@@ -856,7 +837,11 @@ function WhatsAppCloudDebugPanel({
             disabled={saving}
             className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-[#25D366] text-white px-3 py-2 hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plug className="h-3.5 w-3.5" />
+            )}
             Salvar como conexão ativa
           </button>
         )}
@@ -876,14 +861,12 @@ function WhatsAppCloudDebugPanel({
 
       {result !== null && (
         <pre className="text-[11px] leading-snug bg-secondary/40 border border-border rounded-md p-3 overflow-auto max-h-96 font-mono">
-{JSON.stringify(result, null, 2)}
-          </pre>
+          {JSON.stringify(result, null, 2)}
+        </pre>
       )}
     </div>
   );
 }
-
-
 
 function WhatsAppForm({
   companyId,
@@ -938,10 +921,9 @@ function WhatsAppForm({
   return (
     <div className="space-y-3">
       <div className="text-xs text-muted-foreground">
-        Pegue os valores em <strong>Meta for Developers → seu app → WhatsApp →
-        API Setup</strong>. Use um token <em>permanente</em> (System User) em
-        produção. O <em>verify token</em> é apenas um segredo que você define e
-        cola na Meta junto com a URL do webhook.
+        Pegue os valores em <strong>Meta for Developers → seu app → WhatsApp → API Setup</strong>.
+        Use um token <em>permanente</em> (System User) em produção. O <em>verify token</em> é apenas
+        um segredo que você define e cola na Meta junto com a URL do webhook.
       </div>
       <Field label="Nome de exibição">
         <input
@@ -950,7 +932,7 @@ function WhatsAppForm({
           className="w-full h-9 px-3 text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="phone_number_id *">
           <input
             value={phoneNumberId}
@@ -1036,7 +1018,11 @@ function WhatsAppForm({
           disabled={saving}
           className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-2 hover:opacity-90 disabled:opacity-50"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          {saving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Check className="h-3.5 w-3.5" />
+          )}
           Salvar conexão
         </button>
       </div>

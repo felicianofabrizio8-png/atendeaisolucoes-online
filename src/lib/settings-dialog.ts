@@ -5,9 +5,10 @@ import { useSyncExternalStore } from "react";
 
 export type SettingsTab = "usuarios" | "aparencia" | "atendimento" | "conexoes" | "privacidade";
 
-type State = { open: boolean; tab: SettingsTab };
+/** `direct`: aberto já numa seção específica (o celular pula a lista). */
+type State = { open: boolean; tab: SettingsTab; direct: boolean };
 
-let state: State = { open: false, tab: "aparencia" };
+let state: State = { open: false, tab: "aparencia", direct: false };
 const listeners = new Set<() => void>();
 
 function set(next: State) {
@@ -25,7 +26,7 @@ function subscribe(listener: () => void) {
 const getState = () => state;
 
 export function openSettings(tab?: SettingsTab) {
-  set({ open: true, tab: tab ?? state.tab });
+  set({ open: true, tab: tab ?? state.tab, direct: !!tab });
 }
 
 export function closeSettings() {

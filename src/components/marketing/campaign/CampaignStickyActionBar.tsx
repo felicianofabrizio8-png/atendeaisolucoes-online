@@ -1,9 +1,9 @@
 // Barra sticky com ação principal ("Gerar campanha"). Desktop = flutuante
 // no canto inferior direito; mobile = barra inferior full-width.
 //
-// Abaixo de `lg` existe a navegação inferior fixa (MobileBottomNav, ~61px).
-// A barra fica logo acima dela; colada em `bottom-0` ficaria coberta e o
-// botão principal não receberia o toque.
+// Abaixo de `md` existe a navegação inferior flutuante (MobileBottomNav). A
+// barra fica logo acima dela (--mobile-dock-space); colada em `bottom-0`
+// ficaria coberta e o botão principal não receberia o toque.
 
 import type { ReactNode } from "react";
 
@@ -12,8 +12,8 @@ interface Props {
   className?: string;
 }
 
-const ABOVE_MOBILE_NAV = "bottom-[calc(3.8125rem+env(safe-area-inset-bottom))]";
-const ABOVE_MOBILE_NAV_FLOATING = "md:bottom-[calc(4.8125rem+env(safe-area-inset-bottom))]";
+const ABOVE_MOBILE_NAV = "bottom-[var(--mobile-dock-space)]";
+const ABOVE_MOBILE_NAV_FLOATING = "md:bottom-6";
 
 export function CampaignStickyActionBar({ children, className }: Props) {
   return (

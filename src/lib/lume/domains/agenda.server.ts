@@ -21,7 +21,15 @@ import type { LumeContext, LumeDomain, LumeTool, LumeUndo } from "../types";
 const MAX_LIST = 60;
 const MAX_BULK = 25;
 
-type Row = AgendaEvent & { company_id?: string };
+type Row = AgendaEvent & {
+  company_id?: string;
+  agenda_event_tags?: Array<{ tag_id: string }>;
+  agenda_event_participants?: Array<{ user_id: string; name: string; role: string }>;
+};
+
+/** Com hierarquia, lê também alcance, dona, tags e participantes (para desfazer por inteiro). */
+const HIERARCHY_COLUMNS =
+  "owner_id,scope,everyone,agenda_event_tags(tag_id),agenda_event_participants(user_id,name,role)";
 
 async function companyTypes(ctx: LumeContext): Promise<AgendaEventType[]> {
   if (!ctx.extended) return [];
@@ -58,7 +66,11 @@ async function loadEvents(ctx: LumeContext, ids: string[]): Promise<Row[]> {
   if (!ids.length) return [];
   const { data, error } = await ctx.client
     .from("visits")
-    .select(`${selectColumns(ctx)},company_id`)
+    .select(
+      hasHierarchy(ctx)
+        ? `${selectColumns(ctx)},company_id,${HIERARCHY_COLUMNS}`
+        : `${selectColumns(ctx)},company_id`,
+    )
     .eq("company_id", ctx.companyId)
     .in("id", ids);
   if (error) throw new Error("Não consegui ler a agenda.");
@@ -136,9 +148,86 @@ const EVENT_FIELDS = {
   tecnico: { type: "string", description: "Quem executa." },
   responsavel: { type: "string", description: "Responsável ou vendedor." },
   notas: { type: "string", description: "O que será feito, pauta, orientações." },
+  alcance: {
+    type: "string",
+    enum: ["pessoal", "equipe"],
+    description: "Pessoal (padrão) ou da equipe. Equipe exige a permissão de gestão da agenda.",
+  },
+  participantes: {
+    type: "array",
+    items: { type: "string" },
+    description: "Nomes de membros da equipe, ou 'todos'. Só para compromisso da equipe.",
+  },
+  tags: { type: "array", items: { type: "string" }, description: "Nomes de tags existentes." },
 } as const;
 
 type EventArgs = Partial<Record<keyof typeof EVENT_FIELDS, unknown>>;
+
+const EVERYONE = new Set(["todos", "equipe", "toda a equipe"]);
+
+/** Migração de hierarquia aplicada? Sem a informação, segue a estrutura nova da Agenda. */
+/** Alcance é obrigatório no banco: desfazer nunca grava alcance vazio. */
+function undoChanges(changes: Record<string, unknown>) {
+  const { scope, ...rest } = changes;
+  return scope == null ? rest : { ...rest, scope };
+}
+
+function hasHierarchy(ctx: LumeContext) {
+  return ctx.extended && ctx.hierarchy !== false;
+}
+
+function namesOf(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && !!item.trim())
+    : [];
+}
+
+/** Grava participantes e tags pelo nome; devolve os nomes que não existem. */
+async function saveRelations(ctx: LumeContext, eventId: string, args: EventArgs) {
+  const missing: string[] = [];
+  const wanted = namesOf(args.participantes).filter((name) => !EVERYONE.has(norm(name)));
+  if (wanted.length) {
+    const team = await teamNames(ctx);
+    const rows = wanted.flatMap((name) => {
+      const member = team.find((item) => norm(item.name).includes(norm(name)));
+      if (!member) {
+        missing.push(name);
+        return [];
+      }
+      return [
+        {
+          company_id: ctx.companyId,
+          event_id: eventId,
+          user_id: member.id,
+          name: member.name,
+          role: "participante",
+        },
+      ];
+    });
+    if (rows.length) await ctx.client.from("agenda_event_participants").insert(rows);
+  }
+  const tagNames = namesOf(args.tags);
+  if (tagNames.length) {
+    const { data } = await ctx.client
+      .from("agenda_tags")
+      .select("id,name,owner_id")
+      .eq("company_id", ctx.companyId);
+    // Tags da empresa e as pessoais de quem pede; as pessoais de outros nunca.
+    const available = (
+      (data ?? []) as Array<{ id: string; name: string; owner_id: string | null }>
+    ).filter((tag) => tag.owner_id === null || tag.owner_id === ctx.userId);
+    const rows = tagNames.flatMap((name) => {
+      const tag = available.find((item) => norm(item.name) === norm(name));
+      if (!tag) {
+        missing.push(name);
+        return [];
+      }
+      return [{ company_id: ctx.companyId, event_id: eventId, tag_id: tag.id }];
+    });
+    if (rows.length) await ctx.client.from("agenda_event_tags").insert(rows);
+  }
+  return missing;
+}
 
 /** Converte os argumentos do modelo em colunas de `visits` (só as informadas). */
 function toColumns(
@@ -209,6 +298,16 @@ function toColumns(
     if (end && ctx.extended) columns.ends_at = end.toISOString();
   }
   if (args.dia_inteiro !== undefined && ctx.extended) columns.all_day = args.dia_inteiro === true;
+  if (hasHierarchy(ctx)) {
+    if (args.alcance === "pessoal" || args.alcance === "equipe") {
+      columns.scope = args.alcance;
+      if (args.alcance === "pessoal") columns.everyone = false;
+    }
+    if (namesOf(args.participantes).some((name) => EVERYONE.has(norm(name)))) {
+      columns.scope = "equipe";
+      columns.everyone = true;
+    }
+  }
   return { columns, problems };
 }
 
@@ -453,12 +552,21 @@ const createEvent: LumeTool<EventArgs> = {
       row.salesperson as string,
     ]);
 
+    if (hasHierarchy(ctx) && row.scope === "equipe" && row.everyone === undefined)
+      row.everyone = false;
     const { data, error } = await ctx.client.from("visits").insert(row).select("id").single();
-    if (error || !data)
+    if (error || !data) {
+      const reason = (error as { message?: string } | null)?.message ?? "";
       return {
-        output: { erro: "O banco recusou o compromisso (verifique sua permissão de agenda)." },
+        output: {
+          erro: /gestão da agenda/i.test(reason)
+            ? 'Só a gestão da agenda cria compromissos da equipe. Peça a permissão "Gerenciar agenda da equipe" ao administrador.'
+            : "O banco recusou o compromisso (verifique sua permissão de agenda).",
+        },
       };
+    }
     const id = (data as { id: string }).id;
+    const missing = hasHierarchy(ctx) ? await saveRelations(ctx, id, args) : [];
     if (ctx.extended && type?.checklist_template.length) {
       await ctx.client.from("agenda_checklist_items").insert(
         type.checklist_template.map((label, position) => ({
@@ -480,6 +588,7 @@ const createEvent: LumeTool<EventArgs> = {
           titulo: event.title,
           inicio: formatLocal(new Date(event.scheduled_at), ctx.timeZone),
         })),
+        nao_encontrados: missing.length ? missing : undefined,
       },
       undo: { op: "delete_events", ids: [id] },
       touched: [id],
@@ -513,10 +622,18 @@ const updateEvent: LumeTool<{ id: string } & EventArgs> = {
     if (problems.length) return { output: { erro: problems.join(" ") } };
     if (!Object.keys(columns).length) return { output: { erro: "Nada para alterar." } };
     const previous: Record<string, unknown> = {};
-    for (const key of Object.keys(columns))
-      previous[key] = (current as unknown as Record<string, unknown>)[key] ?? null;
-    const { error } = await ctx.client.from("visits").update(columns).eq("id", current.id);
+    const before = current as unknown as Record<string, unknown>;
+    // Só guarda o que foi lido: coluna não lida viraria nulo ao desfazer.
+    for (const key of Object.keys(columns)) if (key in before) previous[key] = before[key] ?? null;
+    const { data: updated, error } = await ctx.client
+      .from("visits")
+      .update(columns)
+      .eq("id", current.id)
+      .select("id");
     if (error) return { output: { erro: "O banco recusou a alteração." } };
+    // Nenhuma linha afetada: o banco não deixou (compromisso de outra pessoa ou da equipe).
+    if (!(updated as unknown[] | null)?.length)
+      return { output: { erro: "Você não tem permissão para alterar este compromisso." } };
     let clash: Row[] = [];
     if (columns.scheduled_at || columns.technician || columns.salesperson) {
       const merged = { ...current, ...columns } as Row;
@@ -565,18 +682,26 @@ const deleteEvents: LumeTool<{ ids: string[] }> = {
   async execute(args, ctx) {
     const rows = await loadEvents(ctx, args.ids.slice(0, MAX_BULK));
     if (!rows.length) return { output: { erro: "Nenhum compromisso encontrado com esses ids." } };
-    const { error } = await ctx.client
+    const { data: deletedRows, error } = await ctx.client
       .from("visits")
       .delete()
       .in(
         "id",
         rows.map((row) => row.id),
-      );
+      )
+      .select("id");
     if (error) return { output: { erro: "O banco recusou a exclusão." } };
+    const deletedIds = new Set(((deletedRows ?? []) as Array<{ id: string }>).map((row) => row.id));
+    const deleted = rows.filter((row) => deletedIds.has(row.id));
+    if (!deleted.length)
+      return { output: { erro: "Você não tem permissão para excluir esses compromissos." } };
     return {
-      output: { excluidos: rows.length },
-      undo: { op: "restore_events", rows: rows as unknown as Array<Record<string, unknown>> },
-      touched: rows.map((row) => row.id),
+      output: {
+        excluidos: deleted.length,
+        ...(deleted.length < rows.length ? { sem_permissao: rows.length - deleted.length } : {}),
+      },
+      undo: { op: "restore_events", rows: deleted as unknown as Array<Record<string, unknown>> },
+      touched: deleted.map((row) => row.id),
     };
   },
 };
@@ -807,7 +932,9 @@ Regras da agenda:
 - Para alterar ou excluir, primeiro use agenda_listar para achar o id certo. Se houver mais de um candidato, pergunte qual.
 - Ao criar, se faltar só um detalhe opcional, crie assim mesmo e diga o que pode ser completado. Se faltar dia ou hora, pergunte.
 - Se a ferramenta devolver conflitos, avise a pessoa com os horários que se chocam.
-- Não peça "tem certeza?": o sistema mostra o cartão de confirmação sozinho para alterações, exclusões e avisos.`;
+- Não peça "tem certeza?": o sistema mostra o cartão de confirmação sozinho para alterações, exclusões e avisos.
+- Por padrão crie compromissos pessoais. Só use alcance "equipe" quando a pessoa pedir algo para a equipe; se o banco recusar, explique que é preciso a permissão "Gerenciar agenda da equipe".
+- Tags e participantes vão pelo nome; se algum não existir, avise quais.`;
   },
   tools: [
     listEvents,
@@ -828,16 +955,47 @@ Regras da agenda:
         .in("id", undo.ids);
       if (error) throw new Error("Não foi possível desfazer.");
     } else if (undo.op === "restore_events") {
+      const tagRows: Array<Record<string, unknown>> = [];
+      const peopleRows: Array<Record<string, unknown>> = [];
       const rows = undo.rows.map((row) => {
-        const { created_at: _c, updated_at: _u, created_by: _cb, updated_by: _ub, ...rest } = row;
+        const {
+          created_at: _c,
+          updated_at: _u,
+          created_by: _cb,
+          updated_by: _ub,
+          agenda_event_tags: tags,
+          agenda_event_participants: people,
+          ...rest
+        } = row;
+        for (const tag of (tags ?? []) as Array<{ tag_id: string }>)
+          tagRows.push({ company_id: ctx.companyId, event_id: row.id, tag_id: tag.tag_id });
+        for (const person of (people ?? []) as Array<{ user_id: string; name: string; role: string }>)
+          peopleRows.push({
+            company_id: ctx.companyId,
+            event_id: row.id,
+            user_id: person.user_id,
+            name: person.name,
+            role: person.role,
+          });
         return { ...rest, company_id: ctx.companyId };
       });
       const { error } = await ctx.client.from("visits").insert(rows);
       if (error) throw new Error("Não foi possível restaurar os compromissos.");
+      // A exclusão apagou tags e participantes junto (cascata): devolve os dois.
+      if (tagRows.length) {
+        const { error: tagError } = await ctx.client.from("agenda_event_tags").insert(tagRows);
+        if (tagError) throw new Error("Compromissos restaurados, mas sem as tags.");
+      }
+      if (peopleRows.length) {
+        const { error: peopleError } = await ctx.client
+          .from("agenda_event_participants")
+          .insert(peopleRows);
+        if (peopleError) throw new Error("Compromissos restaurados, mas sem os participantes.");
+      }
     } else if (undo.op === "update_event") {
       const { error } = await ctx.client
         .from("visits")
-        .update(undo.changes)
+        .update(undoChanges(undo.changes))
         .eq("company_id", ctx.companyId)
         .eq("id", undo.id);
       if (error) throw new Error("Não foi possível desfazer a alteração.");

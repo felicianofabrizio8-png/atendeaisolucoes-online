@@ -17,23 +17,28 @@ import {
   Trash2,
   User,
   UserCog,
+  UserRound,
+  Users,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { getConversations } from "@/data/leadRepo";
 import {
   eventEnd,
   SOURCE_LABEL,
+  canEditEvent,
   STATUS_KEYS,
   STATUS_LABEL,
   TYPE_HUE,
   TYPE_LABEL,
   type AgendaEvent,
   type AgendaEventType,
+  type AgendaTag,
   type EventSource,
   type VisitStatus,
 } from "./agenda-model";
 import { PENDING_SCHEMA_MESSAGE } from "./agenda-schema";
 import { describeChange, useEventDetails } from "./useEventDetails";
+import type { TeamMember } from "./useTeamDirectory";
 
 /**
  * Tudo sobre um compromisso: o que é, quando, com quem, quem criou e por onde, o que
@@ -43,6 +48,11 @@ export function EventDrawer({
   event,
   type,
   extended,
+  hierarchy = false,
+  manager = false,
+  me = "",
+  members = [],
+  tags = [],
   children,
   onClose,
   onStatus,
@@ -54,6 +64,12 @@ export function EventDrawer({
   event: AgendaEvent | null;
   type: AgendaEventType | null;
   extended: boolean;
+  /** Migração de hierarquia aplicada: dono, alcance, participantes e tags. */
+  hierarchy?: boolean;
+  manager?: boolean;
+  me?: string;
+  members?: TeamMember[];
+  tags?: AgendaTag[];
   /** Seções extras (checklist, campo) entram aqui sem o painel conhecê-las. */
   children?: ReactNode;
   onClose: () => void;
@@ -80,6 +96,19 @@ export function EventDrawer({
   const end = event ? eventEnd(event) : null;
   const creator = event?.created_by ? names[event.created_by] : null;
   const editor = event?.updated_by ? names[event.updated_by] : null;
+  // Funcionário edita só o pessoal dele; gestor e admin editam tudo.
+  const canEdit = !event || !hierarchy || canEditEvent(event, me, manager);
+  const nameOf = (id: string | null | undefined) =>
+    (id && members.find((member) => member.id === id)?.name) || null;
+  const eventTags = event ? tags.filter((tag) => (event.tag_ids ?? []).includes(tag.id)) : [];
+  const participants = event ? (event.participant_ids ?? []).map(nameOf).filter(Boolean) : [];
+  const scopeLabel = !event
+    ? ""
+    : event.scope === "equipe"
+      ? event.everyone
+        ? "Equipe · toda a equipe"
+        : `Equipe · ${participants.length} participante${participants.length === 1 ? "" : "s"}`
+      : "Pessoal";
 
   return (
     <Sheet open={!!event} onOpenChange={(open) => !open && onClose()}>
@@ -100,7 +129,11 @@ export function EventDrawer({
                   className="ag-dot"
                   style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${hue})` }}
                 />
-                {typeName}
+                {hierarchy
+                  ? event.scope === "equipe"
+                    ? "Agenda da equipe"
+                    : "Agenda pessoal"
+                  : typeName}
               </p>
               <SheetTitle className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-white">
                 {event.title}
@@ -110,27 +143,31 @@ export function EventDrawer({
                   ? `${format(start, "EEEE, d 'de' MMMM", { locale: ptBR })} · dia inteiro`
                   : `${format(start, "EEEE, d 'de' MMMM · HH:mm", { locale: ptBR })} – ${format(end, "HH:mm")}`}
               </SheetDescription>
-              <div className="mt-5 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Status">
-                {STATUS_KEYS.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    role="radio"
-                    aria-checked={event.status === status}
-                    aria-pressed={event.status === status}
-                    className="ag-chip"
-                    onClick={() => onStatus(status)}
-                  >
-                    {STATUS_LABEL[status]}
-                  </button>
-                ))}
-              </div>
+              {canEdit && (
+                <div className="mt-5 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Status">
+                  {STATUS_KEYS.map((status) => (
+                    <button
+                      key={status}
+                      type="button"
+                      role="radio"
+                      aria-checked={event.status === status}
+                      aria-pressed={event.status === status}
+                      className="ag-chip"
+                      onClick={() => onStatus(status)}
+                    >
+                      {STATUS_LABEL[status]}
+                    </button>
+                  ))}
+                </div>
+              )}
             </header>
 
             <div className="flex flex-wrap gap-2 border-b border-[var(--ag-edge)] px-6 py-4">
-              <button type="button" className="ag-btn" onClick={onEdit}>
-                <Pencil className="h-3.5 w-3.5" /> Editar
-              </button>
+              {canEdit && (
+                <button type="button" className="ag-btn" onClick={onEdit}>
+                  <Pencil className="h-3.5 w-3.5" /> Editar
+                </button>
+              )}
               <button type="button" className="ag-btn" onClick={onDuplicate}>
                 <Copy className="h-3.5 w-3.5" /> Duplicar
               </button>
@@ -155,28 +192,65 @@ export function EventDrawer({
                   <MessagesSquare className="h-3.5 w-3.5" /> Conversa
                 </Link>
               )}
-              {event.appointment_type !== "loja" && (
+              {event.appointment_type !== "loja" && (!hierarchy || !!event.technician) && (
                 <button type="button" className="ag-btn" onClick={onSendTechnician}>
                   <Send className="h-3.5 w-3.5" /> Enviar ao técnico
                 </button>
               )}
-              <button
-                type="button"
-                className="ag-btn ml-auto !border-[#ff6b6b55] !text-[#ff9a9a]"
-                onClick={onDelete}
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Excluir
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="ag-btn ml-auto !border-[#ff6b6b55] !text-[#ff9a9a]"
+                  onClick={onDelete}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Excluir
+                </button>
+              )}
             </div>
 
             <dl className="space-y-3 px-6 py-5 text-sm">
+              {hierarchy && (
+                <>
+                  <Detail
+                    icon={<UserRound />}
+                    label="Dono"
+                    value={
+                      nameOf(event.owner_id) ?? (event.owner_id ? "Membro da equipe" : "Equipe")
+                    }
+                  />
+                  <Detail icon={<Users />} label="Agenda" value={scopeLabel} />
+                  <Detail icon={<Users />} label="Participantes" value={participants.join(", ")} />
+                  {eventTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-7" aria-label="Tags">
+                      {eventTags.map((tag) => (
+                        <span
+                          key={tag.id}
+                          className="ag-chip"
+                          style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${tag.hue})` }}
+                        >
+                          <span className="ag-dot" />
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
               <Detail icon={<User />} label="Cliente" value={event.customer_name} />
               <Detail icon={<Phone />} label="Telefone" value={event.customer_phone} />
               <Detail icon={<Building2 />} label="Cidade" value={event.city} />
               <Detail icon={<MapPin />} label="Endereço" value={event.address} />
               <Detail icon={<Package />} label="Produto ou serviço" value={event.product} />
-              <Detail icon={<User />} label="Vendedor" value={event.salesperson} />
-              <Detail icon={<UserCog />} label="Técnico" value={event.technician} />
+              <Detail
+                icon={<User />}
+                label={hierarchy ? "Vendedor (registro antigo)" : "Vendedor"}
+                value={event.salesperson}
+              />
+              <Detail
+                icon={<UserCog />}
+                label={hierarchy ? "Técnico (registro antigo)" : "Técnico"}
+                value={event.technician}
+              />
               <Detail icon={<StickyNote />} label="Notas" value={event.notes} multiline />
               {type?.fields.map((field) => (
                 <Detail

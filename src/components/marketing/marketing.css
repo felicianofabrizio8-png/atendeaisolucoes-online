@@ -3951,6 +3951,18 @@
   .lume-marketing .mkt-pill > [role="tab"] {
     padding: 0 14px;
   }
+  /* Navegação principal ocupa a largura toda, com as quatro áreas repartidas
+     por igual — antes ficava encostada à esquerda com um vazio à direita. */
+  .lume-marketing .mkt-main-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .lume-marketing .mkt-main-nav > [role="tab"] {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 6px;
+    padding: 0 8px;
+  }
   .lume-marketing .mkt-pill-quiet {
     align-self: flex-start;
   }

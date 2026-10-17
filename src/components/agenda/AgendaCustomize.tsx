@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Eye, EyeOff, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { KIND_LABEL, type AgendaEventType, type AgendaPreferences } from "./agenda-model";
@@ -19,6 +19,7 @@ export function AgendaCustomize({
   onToggle,
   onRemove,
   onSeed,
+  tagsSlot,
 }: {
   open: boolean;
   extended: boolean;
@@ -30,6 +31,8 @@ export function AgendaCustomize({
   onToggle: (id: string, active: boolean) => void;
   onRemove: (id: string) => void;
   onSeed: () => void;
+  /** Com a hierarquia, as tags substituem os tipos de evento. */
+  tagsSlot?: ReactNode;
 }) {
   const [editing, setEditing] = useState<AgendaEventType | "new" | null>(null);
 
@@ -45,7 +48,7 @@ export function AgendaCustomize({
             Sua Agenda, do seu jeito
           </SheetTitle>
           <SheetDescription className="mt-1 text-sm text-[var(--ag-muted)]">
-            Os tipos valem para toda a empresa. A visão vale só para você.
+            As tags valem para toda a empresa. A visão vale só para você.
           </SheetDescription>
         </div>
 
@@ -79,89 +82,97 @@ export function AgendaCustomize({
           </label>
         </section>
 
-        <section className="px-6 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="ag-mono">Tipos de evento da empresa</h3>
-            {extended && (
-              <button type="button" className="ag-btn !py-1.5" onClick={() => setEditing("new")}>
-                <Plus className="h-3.5 w-3.5" /> Novo tipo
-              </button>
-            )}
-          </div>
-
-          {!extended && (
-            <p className="mt-3 text-sm text-[var(--ag-muted)]">{PENDING_SCHEMA_MESSAGE}</p>
-          )}
-
-          {extended && !types.length && (
-            <div className="mt-4 rounded-2xl border border-dashed border-[var(--ag-edge-strong)] p-5 text-sm">
-              <p>Nenhum tipo criado ainda.</p>
-              <p className="mt-1 text-[var(--ag-muted)]">
-                Comece com um conjunto genérico (atendimento, visita, reunião, tarefa, lembrete e
-                folga) e ajuste depois.
-              </p>
-              <button type="button" className="ag-btn ag-btn-primary mt-4" onClick={onSeed}>
-                <Sparkles className="h-4 w-4" /> Criar tipos sugeridos
-              </button>
+        {tagsSlot ? (
+          <section className="px-6 py-5" aria-label="Tags">
+            {tagsSlot}
+          </section>
+        ) : (
+          <section className="px-6 py-5">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="ag-mono">Tags da empresa</h3>
+              {extended && (
+                <button type="button" className="ag-btn !py-1.5" onClick={() => setEditing("new")}>
+                  <Plus className="h-3.5 w-3.5" /> Nova tag
+                </button>
+              )}
             </div>
-          )}
 
-          <ul className="mt-4 space-y-2">
-            {types.map((type) => (
-              <li
-                key={type.id}
-                className="flex items-center gap-3 rounded-2xl border border-[var(--ag-edge)] px-4 py-3"
-                style={{ opacity: type.active ? 1 : 0.5 }}
-              >
-                <span
-                  className="ag-dot"
-                  style={
-                    { ["--ag-type" as string]: `oklch(0.7 0.08 ${type.hue})` } as CSSProperties
-                  }
-                />
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => setEditing(type)}
-                >
-                  <span className="block truncate text-sm font-semibold">{type.name}</span>
-                  <span className="block text-[11.5px] text-[var(--ag-muted)]">
-                    {KIND_LABEL[type.kind]} · {type.default_duration_min} min
-                    {type.requires_customer ? " · com cliente" : ""}
-                    {type.fields.length ? ` · ${type.fields.length} campos` : ""}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ag-icon-btn !h-8 !w-8"
-                  aria-label={type.active ? `Ocultar ${type.name}` : `Mostrar ${type.name}`}
-                  onClick={() => onToggle(type.id, !type.active)}
-                >
-                  {type.active ? (
-                    <Eye className="h-3.5 w-3.5" />
-                  ) : (
-                    <EyeOff className="h-3.5 w-3.5" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="ag-icon-btn !h-8 !w-8"
-                  aria-label={`Excluir ${type.name}`}
-                  onClick={() => {
-                    if (
-                      confirm(`Excluir o tipo "${type.name}"? Os compromissos continuam na agenda.`)
-                    )
-                      onRemove(type.id);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+            {!extended && (
+              <p className="mt-3 text-sm text-[var(--ag-muted)]">{PENDING_SCHEMA_MESSAGE}</p>
+            )}
 
-        {editing && (
+            {extended && !types.length && (
+              <div className="mt-4 rounded-2xl border border-dashed border-[var(--ag-edge-strong)] p-5 text-sm">
+                <p>Nenhuma tag criada ainda. Crie as que fazem sentido para a sua empresa.</p>
+                <p className="mt-1 text-[var(--ag-muted)]">
+                  Comece com um conjunto genérico (atendimento, visita, reunião, tarefa, lembrete e
+                  folga) e ajuste depois.
+                </p>
+                <button type="button" className="ag-btn ag-btn-primary mt-4" onClick={onSeed}>
+                  <Sparkles className="h-4 w-4" /> Começar com tags sugeridas
+                </button>
+              </div>
+            )}
+
+            <ul className="mt-4 space-y-2">
+              {types.map((type) => (
+                <li
+                  key={type.id}
+                  className="flex items-center gap-3 rounded-2xl border border-[var(--ag-edge)] px-4 py-3"
+                  style={{ opacity: type.active ? 1 : 0.5 }}
+                >
+                  <span
+                    className="ag-dot"
+                    style={
+                      { ["--ag-type" as string]: `oklch(0.7 0.08 ${type.hue})` } as CSSProperties
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setEditing(type)}
+                  >
+                    <span className="block truncate text-sm font-semibold">{type.name}</span>
+                    <span className="block text-[11.5px] text-[var(--ag-muted)]">
+                      {KIND_LABEL[type.kind]} · {type.default_duration_min} min
+                      {type.requires_customer ? " · com cliente" : ""}
+                      {type.fields.length ? ` · ${type.fields.length} campos` : ""}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ag-icon-btn !h-8 !w-8"
+                    aria-label={type.active ? `Ocultar ${type.name}` : `Mostrar ${type.name}`}
+                    onClick={() => onToggle(type.id, !type.active)}
+                  >
+                    {type.active ? (
+                      <Eye className="h-3.5 w-3.5" />
+                    ) : (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="ag-icon-btn !h-8 !w-8"
+                    aria-label={`Excluir ${type.name}`}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Excluir a tag "${type.name}"? Os compromissos continuam na agenda.`,
+                        )
+                      )
+                        onRemove(type.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {!tagsSlot && editing && (
           <TypeEditor
             type={editing === "new" ? null : editing}
             onCancel={() => setEditing(null)}
@@ -204,7 +215,7 @@ function TypeEditor({
 
   return (
     <section className="space-y-4 border-t border-[var(--ag-edge)] bg-[var(--ag-raised)] px-6 py-5">
-      <h3 className="ag-mono">{type ? `Editar "${type.name}"` : "Novo tipo"}</h3>
+      <h3 className="ag-mono">{type ? `Editar "${type.name}"` : "Nova tag"}</h3>
       <label className="block space-y-1.5 text-[12px] text-[var(--ag-muted)]">
         Nome
         <input
@@ -308,7 +319,7 @@ function TypeEditor({
       </label>
 
       <div className="space-y-2">
-        <p className="text-[12px] text-[var(--ag-muted)]">Campos extras deste tipo</p>
+        <p className="text-[12px] text-[var(--ag-muted)]">Campos extras desta tag</p>
         {draft.fields.map((field, index) => (
           <div key={index} className="flex gap-2">
             <input
@@ -386,7 +397,7 @@ function TypeEditor({
             })
           }
         >
-          Salvar tipo
+          Salvar tag
         </button>
       </div>
     </section>

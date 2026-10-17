@@ -9,6 +9,8 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { AuthProvider, useAuth } from "@/auth/AuthContext";
+import { PendingInviteGate } from "@/components/team/PendingInviteGate";
+import { WelcomeTeamDialog } from "@/components/team/WelcomeTeamDialog";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 import { installGlobalErrorHandlers } from "@/lib/audit";
@@ -127,6 +129,9 @@ function RootComponent() {
       <AuthProvider>
         <CampaignRenderTrackerProvider>
           <AuthGate />
+          {/* Convite pelo link e boas-vindas: acima de tudo, inclusive de quem aguarda aprovação. */}
+          <PendingInviteGate />
+          <WelcomeTeamDialog />
           <Toaster position="top-right" richColors closeButton />
         </CampaignRenderTrackerProvider>
       </AuthProvider>

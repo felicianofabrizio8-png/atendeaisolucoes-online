@@ -23,6 +23,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { requireTeamPermission } from "@/lib/team/middleware";
+import { fetchLeadVisits } from "@/lib/agenda/lead-visits";
 import {
   assessRecovery,
   buildDashboardCards,
@@ -121,11 +122,8 @@ export const getRecoveryEngine = createServerFn({ method: "GET" })
         .select("lead_id, sent_at, viewed_at, status, final_value, total, created_at")
         .eq("company_id", companyId)
         .in("lead_id", leadIds),
-      db
-        .from("visits")
-        .select("lead_id, scheduled_at, status")
-        .eq("company_id", companyId)
-        .in("lead_id", leadIds),
+      // Agenda pessoal: visitas de colegas para o lead também contam.
+      fetchLeadVisits(db as never, companyId, leadIds).then((data) => ({ data, error: null })),
       db
         .from("follow_ups")
         .select("conversation_id, sent_at, responded_at")

@@ -57,3 +57,34 @@ npx vitest run src/lib/__tests__/team-database.test.ts src/lib/__tests__/team-pe
 npx tsc --noEmit
 npm run build
 ```
+
+## Agenda com hierarquia e convite por link (16/10)
+
+Migrações, nesta ordem (o Supabase aplica pela data do arquivo):
+1. `20261007180000_team_permissions_and_assignment.sql` — equipe e permissões.
+2. `20261015120000_agenda_lume_foundation.sql` — Agenda e Lume.
+3. `20261016120000_agenda_team_hierarchy.sql` — agenda pessoal × equipe, tags e convite por link.
+
+### Regras
+- **Usar a agenda (pessoal)** (`agenda.manage`): cada pessoa tem a própria agenda (clientes, lembretes, tarefas) e vê também os compromissos de equipe em que participa ou que são para toda a equipe. Edita só os pessoais dela.
+- **Gerenciar agenda da equipe** (`agenda.team`): cria compromissos da equipe, escolhe participantes e vê a agenda de todos. O admin tem tudo.
+- Compromissos anteriores a esta versão viram "de toda a equipe": todos continuam vendo.
+- **Tags**: da empresa (só gestão cria) e pessoais (só a dona vê). Nenhuma vem pronta.
+- A regra vale no banco (RLS e gatilhos); a tela e a Lume só refletem.
+
+### Convite por link
+- O admin gera em Configurações → Usuários e Permissões → Links de convite: perfil de quem entra, exigir aprovação, validade e limite de usos. Link nunca concede administrador.
+- Quem não tem conta abre o link, cria a conta **normalmente** (com as verificações de e-mail) e, depois de entrar, vê o popup "Você foi convidado para fazer parte da equipe X. Deseja entrar?".
+- Conta que já existe só troca de equipe se for a única pessoa da equipe atual; com colegas, é recusada.
+- Com aprovação, a pessoa fica "Aguardando aprovação" até o admin aprovar em "Aguardando aprovação".
+- Inclua `/convite` (com `?link=`) nos redirects permitidos do Supabase Auth.
+
+### Conferência após ativar
+1. Admin gera um link com aprovação e copia.
+2. Em outra janela, crie uma conta pelo link, confirme o e-mail e entre: o popup pede confirmação; ao confirmar, aparece "Aguardando aprovação".
+3. Admin aprova; a pessoa entra e vê só a própria agenda (sem a visão Pessoas).
+4. A pessoa cria um compromisso pessoal; outra pessoa da equipe não o vê.
+5. Admin dá o perfil "Gestor da agenda"; a pessoa passa a criar compromissos da equipe e ver a agenda de todos.
+6. Peça à Lume "marque reunião da equipe sexta 10h com o Bruno": funciona para o gestor e é recusada com explicação para o funcionário.
+
+Testes: `npx vitest run src/lib/__tests__/agenda-hierarchy-database.test.ts src/lib/__tests__/team-database.test.ts src/routes/__tests__/users-permissions.test.tsx src/routes/__tests__/invite-link-flow.test.tsx src/components/agenda`.

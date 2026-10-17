@@ -89,6 +89,8 @@ function ProductsPage() {
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
   const [query, setQuery] = useState("");
+  // Mobile: categoria aberta em grade. `null` = todas, uma faixa deslizante por categoria.
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
   const [dimensionRequiredCategories, setDimensionRequiredCategories] = useState<string[]>([]);
 
   useEffect(() => {
@@ -191,12 +193,62 @@ function ProductsPage() {
           </div>
         )}
 
-        {grouped.map(([category, items]) => (
-          <section key={category}>
-            <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-3 px-1">
-              {category || "Sem categoria"}
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+        {/* Mobile: chips de categoria. "Todas" mostra uma faixa deslizante por
+            categoria (o catálogo inteiro cabe em poucas telas); escolher uma
+            categoria abre os produtos dela em grade. */}
+        {grouped.length > 1 && (
+          <div className="md:hidden -mx-3 flex gap-2 overflow-x-auto px-3 scrollbar-none" role="tablist" aria-label="Categorias">
+            {[null, ...grouped.map(([category]) => category)].map((category) => {
+              const selected = openCategory === category;
+              return (
+                <button
+                  key={category ?? "__all"}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setOpenCategory(category)}
+                  style={{ minHeight: 34 }}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition-colors",
+                    selected
+                      ? "border-transparent bg-foreground text-background"
+                      : "border-border text-muted-foreground",
+                  )}
+                >
+                  {category === null ? "Todas" : category || "Sem categoria"}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {grouped
+          .filter(([category]) => openCategory === null || category === openCategory)
+          .map(([category, items]) => (
+          <section key={category} className={cn(openCategory !== null && "max-md:-mt-1")}>
+            <div className="mb-3 flex items-center justify-between gap-2 px-1">
+              <h2 className="text-xs uppercase tracking-wide text-muted-foreground">
+                {category || "Sem categoria"}
+                <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70 md:hidden">· {items.length}</span>
+              </h2>
+              {openCategory === null && items.length > 2 && grouped.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setOpenCategory(category)}
+                  style={{ minHeight: 0 }}
+                  className="md:hidden text-xs font-medium text-primary"
+                >
+                  Ver todos
+                </button>
+              )}
+            </div>
+            <div
+              className={cn(
+                "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4",
+                openCategory === null && grouped.length > 1 && "m-rail",
+              )}
+              style={{ "--m-rail-item": "46%", "--m-rail-gutter": "12px" } as React.CSSProperties}
+            >
               {items.map((p, idx) => (
                 <ProductCard
                   key={p.id}
@@ -238,7 +290,7 @@ function ProductsPage() {
               ))}
             </div>
           </section>
-        ))}
+          ))}
 
         {access.can("quotes.manage") && !query.trim() && products.length > 0 && (
           <div className="pt-2">

@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
+import { MobileSection, MobileSections, type MobileSectionTab } from "@/components/layout/MobileSections";
 import { useEffect, useState } from "react";
 import {
   BarChart3,
@@ -23,6 +25,12 @@ import {
 export const Route = createFileRoute("/relatorios")({
   component: ReportsPage,
 });
+
+const REPORT_TABS: MobileSectionTab[] = [
+  { id: "resumo", label: "Resumo" },
+  { id: "origem", label: "Origem" },
+  { id: "perdas", label: "Perdas" },
+];
 
 function ReportsPage() {
   const [data, setData] = useState<ReportsData>(EMPTY_REPORTS);
@@ -61,13 +69,15 @@ function ReportsPage() {
         </div>
       </header>
 
-      <div className="p-4 md:p-6 space-y-6 max-w-6xl">
+      <div className="p-4 md:p-6 flex flex-col gap-6 max-w-6xl">
         {!loading && !data.hasData && (
           <div className="rounded-lg border border-dashed border-border p-6 text-center">
             <p className="text-sm text-muted-foreground">Sem dados ainda</p>
           </div>
         )}
 
+        <MobileSections tabs={REPORT_TABS} label="Seções do relatório" className="-mb-2">
+        <MobileSection id="resumo">
         {/* Funil */}
         <section>
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
@@ -106,7 +116,7 @@ function ReportsPage() {
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
             Performance
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="m-rail grid grid-cols-1 md:grid-cols-3 gap-3" style={{ "--m-rail-item": "72%" } as CSSProperties}>
             <KpiCard
               icon={Clock}
               label="Tempo médio de resposta"
@@ -137,6 +147,9 @@ function ReportsPage() {
           </div>
         </section>
 
+        </MobileSection>
+
+        <MobileSection id="origem">
         {/* Origem dos leads */}
         <section>
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-2">
@@ -159,7 +172,7 @@ function ReportsPage() {
                     className="px-4 py-2.5 flex items-center gap-3"
                   >
                     <div className="flex-1 text-sm truncate">{s.source}</div>
-                    <div className="h-1.5 w-40 rounded-full bg-secondary overflow-hidden">
+                    <div className="h-1.5 w-20 sm:w-40 rounded-full bg-secondary overflow-hidden">
                       <div
                         className="h-full bg-primary"
                         style={{ width: `${pct}%` }}
@@ -213,6 +226,9 @@ function ReportsPage() {
           )}
         </section>
 
+        </MobileSection>
+
+        <MobileSection id="perdas">
         {/* Motivos de perda */}
         <section>
           <h2 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
@@ -225,7 +241,34 @@ function ReportsPage() {
               </p>
             </div>
           ) : (
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <>
+            {/* Mobile: um card por motivo — nome, barra e números lado a lado,
+                sem rolagem horizontal de tabela. */}
+            <ul className="md:hidden rounded-xl border border-border bg-card divide-y divide-border">
+              {data.lossReasons.map((r, idx) => {
+                const pct = data.lostCount > 0 ? (r.count / data.lostCount) * 100 : 0;
+                return (
+                  <li key={r.reason} className={cn("px-4 py-3", idx === 0 && "bg-[var(--status-lost)]/5")}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className={cn("min-w-0 truncate text-sm", idx === 0 && "font-semibold")}>{r.reason}</span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">{r.count}</span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 rounded-full bg-secondary overflow-hidden">
+                        <div className="h-full bg-[var(--status-lost)]" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="w-10 text-right text-[11px] tabular-nums text-muted-foreground">{pct.toFixed(0)}%</span>
+                      <span className="text-[11px] tabular-nums text-muted-foreground">{formatBRL(r.value)}</span>
+                    </div>
+                  </li>
+                );
+              })}
+              <li className="flex items-center justify-between bg-secondary/20 px-4 py-2.5 text-sm font-semibold tabular-nums">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Total</span>
+                <span>{data.lostCount} · {formatBRL(totalLossValue)}</span>
+              </li>
+            </ul>
+            <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-secondary/40">
                   <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -296,8 +339,11 @@ function ReportsPage() {
                 </tfoot>
               </table>
             </div>
+            </>
           )}
         </section>
+        </MobileSection>
+        </MobileSections>
       </div>
     </div>
   );
@@ -317,7 +363,7 @@ function KpiCard({
   tone?: "default" | "won" | "lost";
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-xl md:rounded-lg border border-border bg-card p-3.5 md:p-4">
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
         <Icon
           className={cn(

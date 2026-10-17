@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { LumeLogo } from "@/components/brand/LumeLogo";
+import { readPendingInvite } from "@/lib/team/invite-link";
 
 export type AuthMode = "signin" | "signup" | "forgot";
 
@@ -12,8 +13,8 @@ type AuthFormProps = {
   onAuthenticated?: () => void;
 };
 
-const inputClass =
-  "mt-1.5 h-12 w-full rounded-2xl border border-white/10 bg-white/[0.045] px-4 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-violet-300/60 focus:bg-white/[0.08] focus:ring-2 focus:ring-violet-300/15";
+// Mesmos campos do formulário de Orçamentos (quotes.css).
+const inputClass = "quote-form-input auth-lume-field";
 
 export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormProps) {
   const navigate = useNavigate();
@@ -27,6 +28,8 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Veio por convite: a conta é criada normalmente e a entrada na equipe é confirmada depois.
+  const [invited] = useState(() => !!readPendingInvite());
 
   const changeMode = (next: AuthMode) => {
     setMode(next);
@@ -50,10 +53,12 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
           email,
           password,
           displayName: displayName || email.split("@")[0],
-          companyName: companyName || "Minha Empresa",
+          companyName: invited ? "Minha Empresa" : companyName || "Minha Empresa",
         });
         setInfo(
-          "Conta criada! Se a confirmação por email estiver ativa, verifique sua caixa. Caso contrário, já pode entrar.",
+          invited
+            ? "Conta criada! Confirme seu e-mail e entre para aceitar o convite da equipe."
+            : "Conta criada! Se a confirmação por email estiver ativa, verifique sua caixa. Caso contrário, já pode entrar.",
         );
         setMode("signin");
       } else {
@@ -114,7 +119,7 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
         </button>
       ) : (
         <div
-          className="mb-6 grid grid-cols-2 rounded-full border border-white/10 bg-black/50 p-1"
+          className="lq-chips lq-chips-lg auth-lume-switch mb-6"
           role="group"
           aria-label="Acesso à conta"
         >
@@ -122,7 +127,6 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
             type="button"
             onClick={() => changeMode("signin")}
             aria-pressed={mode === "signin"}
-            className={`min-h-10 rounded-full text-sm font-semibold transition ${mode === "signin" ? "bg-white text-[#14101a] shadow-md" : "text-white/55 hover:text-white"}`}
           >
             Entrar
           </button>
@@ -130,7 +134,6 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
             type="button"
             onClick={() => changeMode("signup")}
             aria-pressed={mode === "signup"}
-            className={`min-h-10 rounded-full text-sm font-semibold transition ${mode === "signup" ? "bg-white text-[#14101a] shadow-md" : "text-white/55 hover:text-white"}`}
           >
             Criar conta
           </button>
@@ -139,20 +142,22 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
 
       <form onSubmit={submit} className="space-y-4">
         {mode === "signup" && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-xs font-medium text-white/70">
-              Nome da empresa
-              <input
-                type="text"
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                placeholder="Sua empresa"
-                autoComplete="organization"
-                required
-                className={inputClass}
-              />
-            </label>
-            <label className="block text-xs font-medium text-white/70">
+          <div className={invited ? "grid gap-4" : "grid gap-4 sm:grid-cols-2"}>
+            {!invited && (
+              <label className="lq-field-label block">
+                Nome da empresa
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(event) => setCompanyName(event.target.value)}
+                  placeholder="Sua empresa"
+                  autoComplete="organization"
+                  required
+                  className={inputClass}
+                />
+              </label>
+            )}
+            <label className="lq-field-label block">
               Seu nome
               <input
                 type="text"
@@ -166,7 +171,7 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
           </div>
         )}
 
-        <label className="block text-xs font-medium text-white/70">
+        <label className="lq-field-label block">
           Email
           <input
             type="email"
@@ -182,7 +187,7 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
         {mode !== "forgot" && (
           <div>
             <div className="flex items-center justify-between gap-2">
-              <label htmlFor="auth-password" className="text-xs font-medium text-white/70">
+              <label htmlFor="auth-password" className="lq-field-label">
                 Senha
               </label>
               {mode === "signin" && (
@@ -239,7 +244,7 @@ export function AuthForm({ initialMode = "signin", onAuthenticated }: AuthFormPr
         <button
           type="submit"
           disabled={loading}
-          className="group mt-1 flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#14101a] shadow-[0_12px_32px_rgba(0,0,0,0.3)] transition hover:bg-[#f5edfc] disabled:cursor-wait disabled:opacity-60"
+          className="lq-primary auth-lume-submit group mt-1 disabled:cursor-wait disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
           {mode === "signin"

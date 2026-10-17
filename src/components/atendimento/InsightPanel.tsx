@@ -11,6 +11,7 @@ import { useSalesAgentPanelMode } from "@/hooks/useSalesAgentPanelMode";
 import { listQuotes, subscribeQuotes } from "@/data/quotes";
 import { QuoteCard } from "@/components/orcamentos/QuoteCard";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { CustomerTierBadge } from "./CustomerTierBadge";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
 import { followupReasonLabel, type FollowupCycleView } from "@/lib/atendimento/followup-view";
@@ -25,14 +26,18 @@ export function InsightPanel({
   simulated = false,
   composerHasDraft = false,
   followup,
+  initialTab = "info",
 }: {
   contact: AtendimentoContact;
   onUseSuggestion: (text: string) => void;
   simulated?: boolean;
   composerHasDraft?: boolean;
   followup?: FollowupCycleView;
+  /** A estrela do topo da conversa (celular) abre direto na Lume. */
+  initialTab?: Tab;
 }) {
-  const [tab, setTab] = useState<Tab>("info");
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const isMobile = useIsMobile();
   const reducedMotion = useReducedMotion();
 
   return (
@@ -48,7 +53,22 @@ export function InsightPanel({
           transition={{ duration: reducedMotion ? 0 : 0.14, ease: "easeOut" }}
         >
           {tab === "info" ? (
-            <InfoTab contact={contact} followup={followup} />
+            // Coluna: Info em cima, automações embaixo (o contêiner da aba é flex
+            // em linha, e lado a lado as duas espremiam a tela do celular).
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+              <InfoTab contact={contact} followup={followup} />
+              {/* Celular: as automações moram no Info, para a Lume ficar só com
+                  a conversa com a IA. Continuam montadas e acessíveis. */}
+              {isMobile && !simulated && (
+                <div className="mt-5">
+                  <CoachAutomations
+                    contact={contact}
+                    onUseSuggestion={onUseSuggestion}
+                    composerHasDraft={composerHasDraft}
+                  />
+                </div>
+              )}
+            </div>
           ) : simulated ? (
             <ConversationAiChat contact={contact} onUseSuggestion={onUseSuggestion} simulated />
           ) : (
@@ -56,6 +76,7 @@ export function InsightPanel({
               contact={contact}
               onUseSuggestion={onUseSuggestion}
               composerHasDraft={composerHasDraft}
+              withAutomations={!isMobile}
             />
           )}
         </motion.div>
@@ -65,6 +86,32 @@ export function InsightPanel({
 }
 
 function CoachTab({
+  contact,
+  onUseSuggestion,
+  composerHasDraft,
+  withAutomations = true,
+}: {
+  contact: AtendimentoContact;
+  onUseSuggestion: (text: string) => void;
+  composerHasDraft: boolean;
+  withAutomations?: boolean;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <ConversationAiChat contact={contact} onUseSuggestion={onUseSuggestion} />
+      {withAutomations && (
+        <CoachAutomations
+          contact={contact}
+          onUseSuggestion={onUseSuggestion}
+          composerHasDraft={composerHasDraft}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Aprovação do modo assistido, resposta automática e devolução para a IA. */
+function CoachAutomations({
   contact,
   onUseSuggestion,
   composerHasDraft,
@@ -91,8 +138,7 @@ function CoachTab({
   const { isAdmin } = useIsAdmin();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <ConversationAiChat contact={contact} onUseSuggestion={onUseSuggestion} />
+    <>
       {/* Aberto por padrão: aqui moram a aprovação do modo assistido, a resposta
           automática e a devolução para a IA — fechado, a Vendedora fica parada. */}
       <details open className="shrink-0 rounded-2xl border border-border">
@@ -119,7 +165,7 @@ function CoachTab({
           )}
         </div>
       </details>
-    </div>
+    </>
   );
 }
 

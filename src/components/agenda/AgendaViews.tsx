@@ -7,6 +7,7 @@ import {
   layoutDay,
   STATUS_LABEL,
   teamLoad,
+  teamLoadByMember,
   TYPE_HUE,
   TYPE_LABEL,
   type AgendaEvent,
@@ -49,12 +50,15 @@ export function TimeGridView({
   onCreateAt,
   onMove,
   startHour = 7,
+  canEdit = () => true,
 }: ViewProps & {
   days: Date[];
   onCreateAt: (at: Date) => void;
   onMove: (event: AgendaEvent, at: Date) => void;
   /** Hora em que a grade abre rolada (preferência de cada pessoa). */
   startHour?: number;
+  /** Só quem pode editar o compromisso arrasta para remarcar. */
+  canEdit?: (event: AgendaEvent) => boolean;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -136,7 +140,7 @@ export function TimeGridView({
                 <button
                   key={event.id}
                   type="button"
-                  draggable
+                  draggable={canEdit(event)}
                   title={describe(event)}
                   aria-label={describe(event)}
                   className="ag-event absolute px-2.5 py-1.5"
@@ -336,8 +340,14 @@ export function TeamView({
   conflicts,
   onOpen,
   weeklyHours = 44,
-}: ViewProps & { days: Date[]; weeklyHours?: number }) {
-  const rows = teamLoad(events, days);
+  members,
+}: ViewProps & {
+  days: Date[];
+  weeklyHours?: number;
+  /** Com hierarquia: agrupa por dono e participantes. */
+  members?: ReadonlyArray<{ id: string; name: string }>;
+}) {
+  const rows = members ? teamLoadByMember(events, days, members) : teamLoad(events, days);
   if (!rows.length)
     return (
       <p className="p-10 text-center text-sm text-[var(--ag-muted)]">

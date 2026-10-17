@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ArrowUp, Check, KeyRound, Loader2, Mic, Sparkles, Square, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ export function LumeDock({
   suggestions,
   onChanged,
   openSignal = 0,
+  mobileLauncher = true,
 }: {
   page: string;
   greeting: string;
@@ -41,7 +43,11 @@ export function LumeDock({
   onChanged?: (touched: string[]) => void;
   /** Mude o número para abrir o painel de fora (ex.: botão "Pedir à Lume"). */
   openSignal?: number;
+  /** false: no celular a tela tem o próprio botão (estrela no topo) e o
+      flutuante some — ele cobria o fim da página e a barra inferior. */
+  mobileLauncher?: boolean;
 }) {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [input, setInput] = useState("");
@@ -155,6 +161,7 @@ export function LumeDock({
       <button
         type="button"
         className="lume-launcher"
+        data-mobile={mobileLauncher ? undefined : "off"}
         aria-expanded={open}
         aria-controls="lume-dock-panel"
         onClick={() => setOpen((value) => !value)}
@@ -164,11 +171,16 @@ export function LumeDock({
       </button>
 
       {open && (
+        // No celular a janela é uma folha que sobe de baixo; o fundo escurece
+        // e tocar fora fecha.
+        <div className="lume-backdrop md:hidden" aria-hidden onClick={() => setOpen(false)} />
+      )}
+      {open && (
         <section id="lume-dock-panel" className="lume-window" aria-label="Assistente Lume">
           <header className="lume-window-head">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold">Lume · {page}</h3>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-[11px] text-muted-foreground max-md:hidden">
                 Peça por texto ou voz. Alterações pedem sua confirmação.
               </p>
             </div>
@@ -185,8 +197,25 @@ export function LumeDock({
           <div className="lume-log" role="log" aria-live="polite" aria-label="Conversa com a Lume">
             {!entries.length && (
               <div className="lume-welcome">
-                <OrbBloop size={130} state={orbState} />
+                <OrbBloop size={isMobile ? 64 : 130} state={orbState} />
                 <h4 className="text-lg font-semibold">{greeting}</h4>
+                {/* Celular: as sugestões ficam aqui em cima, numa faixa que
+                    desliza — embaixo do campo elas empilhavam quatro linhas. */}
+                {isMobile && (
+                  <div className="lume-suggest-row">
+                    {suggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="lume-chip"
+                        disabled={thinking || !!notConfigured}
+                        onClick={() => void send(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {(notConfigured || statusError) && (
@@ -295,19 +324,21 @@ export function LumeDock({
                 {voice.error}
               </p>
             )}
-            <div className="flex flex-wrap gap-1.5">
-              {suggestions.map((suggestion) => (
-                <Button
-                  key={suggestion}
-                  size="sm"
-                  disabled={thinking || !!notConfigured}
-                  onClick={() => void send(suggestion)}
-                >
-                  {suggestion}
-                </Button>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground">
+            {!isMobile && (
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.map((suggestion) => (
+                  <Button
+                    key={suggestion}
+                    size="sm"
+                    disabled={thinking || !!notConfigured}
+                    onClick={() => void send(suggestion)}
+                  >
+                    {suggestion}
+                  </Button>
+                ))}
+              </div>
+            )}
+            <p className="text-[10px] text-muted-foreground max-md:hidden">
               A Lume age com a sua permissão. Criar dá para desfazer; alterar e excluir pedem
               confirmação.
             </p>

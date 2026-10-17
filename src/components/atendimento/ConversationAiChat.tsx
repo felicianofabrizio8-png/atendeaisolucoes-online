@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
 import { OrbBloop } from "@/components/ui/orb-bloop";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { AiComposer, type Attachment } from "./AiComposer";
 import { RichText } from "./RichText";
 import type { AtendimentoContact } from "@/hooks/useAtendimentoData";
@@ -152,16 +153,58 @@ function ChatSession({
     }
   }
   const idle = !chat.length && !pending;
+  // Celular: orbe pequena ao lado da saudação, no topo, e os atalhos logo
+  // abaixo dela — nada empilhado embaixo do campo de mensagem.
+  const isMobile = useIsMobile();
+  const actionButtons = (compact: boolean) =>
+    COPILOT_ACTIONS.map((action, index) => {
+      const Icon = [MessageSquare, FileText, Lightbulb][index];
+      return (
+        <button
+          key={action.label}
+          type="button"
+          disabled={!!pending}
+          onClick={() => void ask(action.prompt, [], false)}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background px-2.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-violet-400/50 hover:bg-violet-500/5 hover:text-foreground disabled:opacity-40",
+            compact ? "min-h-8 py-1.5" : "py-2",
+          )}
+        >
+          <Icon className="h-3 w-3" />
+          {action.label}
+        </button>
+      );
+    });
   const entries = pending ? [...chat, pending] : chat;
   return (
-    <section aria-label="Chat com a IA Lume" className="at-ai-chat flex min-h-0 min-w-0 flex-1 flex-col">
+    <section
+      aria-label="Chat com a IA Lume"
+      className="at-ai-chat flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-1",
           idle && "py-2",
         )}
       >
-        {showIntro && (
+        {showIntro && isMobile && (
+          <header
+            aria-hidden={started}
+            className="shrink-0 pb-5 pt-1 transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none"
+            style={{ opacity: started ? 0 : 1, transform: started ? "translateY(-8px)" : "none" }}
+          >
+            <div className="flex items-center gap-3.5">
+              <OrbBloop size={56} />
+              <h3 className="text-[19px] font-semibold leading-tight tracking-tight">
+                {greeting(displayName)}
+              </h3>
+            </div>
+            <div className="-mx-1 mt-4 flex gap-1.5 overflow-x-auto px-1 scrollbar-none">
+              {actionButtons(true)}
+            </div>
+          </header>
+        )}
+        {showIntro && !isMobile && (
           <header
             aria-hidden={started}
             className="flex shrink-0 flex-col items-center pb-8 pt-4 text-center transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none"
@@ -264,23 +307,11 @@ function ChatSession({
           </p>
         )}
         <AiComposer value={input} onChange={setInput} onSubmit={ask} disabled={!!pending} />
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
-          {COPILOT_ACTIONS.map((action, index) => {
-            const Icon = [MessageSquare, FileText, Lightbulb][index];
-            return (
-              <button
-                key={action.label}
-                type="button"
-                disabled={!!pending}
-                onClick={() => void ask(action.prompt, [], false)}
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-2 text-[11px] font-medium text-muted-foreground transition-colors hover:border-violet-400/50 hover:bg-violet-500/5 hover:text-foreground disabled:opacity-40"
-              >
-                <Icon className="h-3 w-3" />
-                {action.label}
-              </button>
-            );
-          })}
-        </div>
+        {!isMobile && (
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+            {actionButtons(false)}
+          </div>
+        )}
       </div>
     </section>
   );
