@@ -4,9 +4,6 @@ import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-
 import {
   STATUS_KEYS,
   STATUS_LABEL,
-  TYPE_HUE,
-  TYPE_KEYS,
-  TYPE_LABEL,
   VIEW_LABEL,
   EMPTY_FILTERS,
   type AgendaEventType,
@@ -158,7 +155,11 @@ export function AgendaToolbar({
             )}
           </div>
         )}
-        <div className="ag-pills ag-scroll-row max-md:w-full max-md:justify-between" role="tablist" aria-label="Visão da agenda">
+        <div
+          className="ag-pills ag-scroll-row max-md:w-full max-md:justify-between"
+          role="tablist"
+          aria-label="Visão da agenda"
+        >
           {VIEWS.filter((item) => !(hideTeamView && item === "equipe")).map((item) => (
             <button
               key={item}
@@ -219,19 +220,9 @@ export function AgendaToolbar({
                     {type.name}
                   </button>
                 ))
-              : TYPE_KEYS.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    className="ag-chip"
-                    aria-pressed={filters.types.includes(type)}
-                    style={{ ["--ag-type" as string]: `oklch(0.7 0.08 ${TYPE_HUE[type]})` }}
-                    onClick={() => onFilters({ ...filters, types: toggle(filters.types, type) })}
-                  >
-                    <span className="ag-dot" />
-                    {TYPE_LABEL[type].short}
-                  </button>
-                ))}
+              : // Sem tags da empresa, não há filtro por tipo: os tipos fixos de
+                // instalação não valem para toda empresa.
+                null}
         </div>
         <select
           aria-label="Filtrar por status"

@@ -196,3 +196,51 @@ export function StatCarousel({
     </div>
   );
 }
+
+/**
+ * Versão de celular das métricas: uma faixa de contadores compactos que
+ * desliza na horizontal. O cartão giratório ocupava metade da tela e
+ * empurrava a lista de conversas para o pé da página; aqui cada métrica
+ * custa uma pílula, todas ficam à vista e o toque continua filtrando a fila.
+ */
+export function StatStrip({
+  stats,
+  activeKey,
+  onSelect,
+  className,
+}: {
+  stats: StatSnapshot[];
+  activeKey: string | null;
+  onSelect: (key: string | null) => void;
+  className?: string;
+}) {
+  if (stats.length === 0) return null;
+  return (
+    <div
+      role="toolbar"
+      aria-label="Filtrar conversas por situação"
+      className={cn(
+        "at-stat-strip -mx-3 flex gap-2 overflow-x-auto px-3 pb-0.5 scrollbar-none",
+        className,
+      )}
+    >
+      {stats.map((stat) => {
+        const active = activeKey === stat.key;
+        return (
+          <button
+            key={stat.key}
+            type="button"
+            aria-pressed={active}
+            title={stat.caption}
+            onClick={() => onSelect(active ? null : stat.key)}
+            className="at-stat-pill"
+            style={{ ["--pill-bg" as string]: stat.gradient }}
+          >
+            <span className="at-stat-pill-count">{stat.count}</span>
+            <span className="at-stat-pill-label">{stat.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

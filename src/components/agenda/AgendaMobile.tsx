@@ -20,6 +20,7 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
+  Sparkles,
   X,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -31,7 +32,6 @@ import {
   STATUS_KEYS,
   STATUS_LABEL,
   TYPE_HUE,
-  TYPE_KEYS,
   TYPE_LABEL,
   VIEW_LABEL,
   type AgendaEvent,
@@ -107,7 +107,7 @@ export function AgendaMobile({
   onScope: (scope: ScopeFilter) => void;
   onOpen: (event: AgendaEvent) => void;
   onCreate: (at: Date | null) => void;
-  /** O botão flutuante da Lume já mora na tela; mantido para compatibilidade. */
+  /** Estrela no topo: abre a Lume (o botão flutuante some no celular). */
   onAskLume?: () => void;
   onCustomize: () => void;
   /** Visões de detalhe (dia, lista, pessoas, linha) — as mesmas do desktop. */
@@ -142,6 +142,16 @@ export function AgendaMobile({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {onAskLume && (
+            <button
+              type="button"
+              className="agm-round agm-round-lume"
+              aria-label="Pedir à Lume"
+              onClick={onAskLume}
+            >
+              <Sparkles className="h-[18px] w-[18px]" />
+            </button>
+          )}
           <button
             type="button"
             className="agm-round"
@@ -183,13 +193,23 @@ export function AgendaMobile({
       </div>
 
       <div className="agm-nav">
-        <button type="button" className="agm-round agm-round-sm" aria-label="Anterior" onClick={() => onNavigate(-1)}>
+        <button
+          type="button"
+          className="agm-round agm-round-sm"
+          aria-label="Anterior"
+          onClick={() => onNavigate(-1)}
+        >
           <ChevronLeft className="h-4 w-4" />
         </button>
         <p className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold first-letter:uppercase">
           {navLabel(view, focus)}
         </p>
-        <button type="button" className="agm-round agm-round-sm" aria-label="Próximo" onClick={() => onNavigate(1)}>
+        <button
+          type="button"
+          className="agm-round agm-round-sm"
+          aria-label="Próximo"
+          onClick={() => onNavigate(1)}
+        >
           <ChevronRight className="h-4 w-4" />
         </button>
         {!isToday(focus) && (
@@ -451,7 +471,10 @@ function DayAgenda({
                     <span className="flex items-center gap-1.5">
                       <span className="truncate text-[14px] font-semibold">{event.title}</span>
                       {conflicts.has(event.id) && (
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#ff8a8a]" aria-label="Conflito de horário" />
+                        <AlertTriangle
+                          className="h-3.5 w-3.5 shrink-0 text-[#ff8a8a]"
+                          aria-label="Conflito de horário"
+                        />
                       )}
                     </span>
                     {(event.customer_name || place) && (
@@ -467,9 +490,7 @@ function DayAgenda({
                       </span>
                     )}
                     <span className="agm-event-tags">
-                      <span className="agm-event-type">
-                        {event.type_name ?? TYPE_LABEL[event.appointment_type]?.short}
-                      </span>
+                      {event.type_name && <span className="agm-event-type">{event.type_name}</span>}
                       <span className="agm-event-status">{STATUS_LABEL[event.status]}</span>
                     </span>
                   </span>
@@ -499,21 +520,46 @@ function ActiveFilters({
 }) {
   const pills: Array<{ key: string; label: string; remove: () => void }> = [];
   if (filters.search)
-    pills.push({ key: "q", label: `“${filters.search}”`, remove: () => onFilters({ ...filters, search: "" }) });
+    pills.push({
+      key: "q",
+      label: `“${filters.search}”`,
+      remove: () => onFilters({ ...filters, search: "" }),
+    });
   for (const id of filters.tagIds) {
     const tag = tags?.find((item) => item.id === id);
-    pills.push({ key: `t${id}`, label: tag?.name ?? "Tag", remove: () => onFilters({ ...filters, tagIds: filters.tagIds.filter((x) => x !== id) }) });
+    pills.push({
+      key: `t${id}`,
+      label: tag?.name ?? "Tag",
+      remove: () => onFilters({ ...filters, tagIds: filters.tagIds.filter((x) => x !== id) }),
+    });
   }
   for (const id of filters.typeIds) {
     const type = customTypes.find((item) => item.id === id);
-    pills.push({ key: `c${id}`, label: type?.name ?? "Tipo", remove: () => onFilters({ ...filters, typeIds: filters.typeIds.filter((x) => x !== id) }) });
+    pills.push({
+      key: `c${id}`,
+      label: type?.name ?? "Tipo",
+      remove: () => onFilters({ ...filters, typeIds: filters.typeIds.filter((x) => x !== id) }),
+    });
   }
   for (const type of filters.types)
-    pills.push({ key: `y${type}`, label: TYPE_LABEL[type].short, remove: () => onFilters({ ...filters, types: filters.types.filter((x) => x !== type) }) });
+    pills.push({
+      key: `y${type}`,
+      label: TYPE_LABEL[type].short,
+      remove: () => onFilters({ ...filters, types: filters.types.filter((x) => x !== type) }),
+    });
   for (const status of filters.statuses)
-    pills.push({ key: `s${status}`, label: STATUS_LABEL[status], remove: () => onFilters({ ...filters, statuses: filters.statuses.filter((x) => x !== status) }) });
+    pills.push({
+      key: `s${status}`,
+      label: STATUS_LABEL[status],
+      remove: () =>
+        onFilters({ ...filters, statuses: filters.statuses.filter((x) => x !== status) }),
+    });
   if (filters.person)
-    pills.push({ key: "p", label: filters.person, remove: () => onFilters({ ...filters, person: null }) });
+    pills.push({
+      key: "p",
+      label: filters.person,
+      remove: () => onFilters({ ...filters, person: null }),
+    });
 
   return (
     <div className="agm-active" aria-label="Filtros ativos">
@@ -563,7 +609,13 @@ function FilterSheet({
   const toggle = <T,>(list: T[], value: T) =>
     list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
 
-  const typeOptions: Array<{ key: string; label: string; hue: number; pressed: boolean; onToggle: () => void }> = tags
+  const typeOptions: Array<{
+    key: string;
+    label: string;
+    hue: number;
+    pressed: boolean;
+    onToggle: () => void;
+  }> = tags
     ? tags.map((tag) => ({
         key: tag.id,
         label: tag.name,
@@ -579,13 +631,7 @@ function FilterSheet({
           pressed: filters.typeIds.includes(type.id),
           onToggle: () => onFilters({ ...filters, typeIds: toggle(filters.typeIds, type.id) }),
         }))
-      : TYPE_KEYS.map((type) => ({
-          key: type,
-          label: TYPE_LABEL[type].short,
-          hue: TYPE_HUE[type],
-          pressed: filters.types.includes(type),
-          onToggle: () => onFilters({ ...filters, types: toggle(filters.types, type) }),
-        }));
+      : [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -633,25 +679,29 @@ function FilterSheet({
             </FilterGroup>
           )}
 
-          <FilterGroup title={tags ? "Tags" : "Tipo de compromisso"}>
-            {typeOptions.map((option) => (
-              <Choice
-                key={option.key}
-                pressed={option.pressed}
-                hue={option.hue}
-                onClick={option.onToggle}
-              >
-                {option.label}
-              </Choice>
-            ))}
-          </FilterGroup>
+          {typeOptions.length > 0 && (
+            <FilterGroup title="Tags">
+              {typeOptions.map((option) => (
+                <Choice
+                  key={option.key}
+                  pressed={option.pressed}
+                  hue={option.hue}
+                  onClick={option.onToggle}
+                >
+                  {option.label}
+                </Choice>
+              ))}
+            </FilterGroup>
+          )}
 
           <FilterGroup title="Situação">
             {STATUS_KEYS.map((status) => (
               <Choice
                 key={status}
                 pressed={filters.statuses.includes(status)}
-                onClick={() => onFilters({ ...filters, statuses: toggle(filters.statuses, status) })}
+                onClick={() =>
+                  onFilters({ ...filters, statuses: toggle(filters.statuses, status) })
+                }
               >
                 {STATUS_LABEL[status]}
               </Choice>
@@ -674,13 +724,21 @@ function FilterSheet({
             </FilterGroup>
           )}
 
-          <button type="button" className="text-[13px] font-medium text-[var(--ag-accent)]" onClick={onCustomize}>
-            Personalizar tipos e horários da agenda →
+          <button
+            type="button"
+            className="text-[13px] font-medium text-[var(--ag-accent)]"
+            onClick={onCustomize}
+          >
+            Personalizar tags e horários da agenda →
           </button>
         </div>
 
         <div className="agm-sheet-foot">
-          <button type="button" className="ag-btn flex-1 justify-center" onClick={() => onFilters(EMPTY_FILTERS)}>
+          <button
+            type="button"
+            className="ag-btn flex-1 justify-center"
+            onClick={() => onFilters(EMPTY_FILTERS)}
+          >
             Limpar
           </button>
           <button
@@ -722,11 +780,14 @@ function Choice({
       aria-pressed={pressed}
       onClick={onClick}
       className="agm-choice"
-      style={hue !== undefined ? ({ ["--ag-type" as string]: `oklch(0.7 0.08 ${hue})` } as CSSProperties) : undefined}
+      style={
+        hue !== undefined
+          ? ({ ["--ag-type" as string]: `oklch(0.7 0.08 ${hue})` } as CSSProperties)
+          : undefined
+      }
     >
       {hue !== undefined && <span className="ag-dot" />}
       {children}
     </button>
   );
 }
-

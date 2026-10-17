@@ -23,6 +23,17 @@
   background: var(--ag-bg);
   min-height: 100%;
 }
+/* Página da Agenda dentro da área rolável do app: cresce com o conteúdo.
+   Com `flex: 1 1 0` + min-height 100% a caixa ficava presa à altura da tela,
+   o conteúdo transbordava e o espaço reservado para a barra inferior ficava
+   antes do fim — os últimos compromissos não saíam de trás da barra. */
+.app-content > .lume-agenda {
+  flex: 1 0 auto;
+}
+/* O espaço reservado para a barra inferior fica com o mesmo fundo da Agenda. */
+.app-content:has(> .lume-agenda) {
+  background: #050507;
+}
 .lume-agenda ::selection {
   background: rgb(123 92 255 / 0.45);
 }
@@ -626,9 +637,11 @@
 }
 .agm-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
-  font-size: 40px;
+  column-gap: 8px;
+  /* "Fevereiro" + três botões redondos cabem até em 320px. */
+  font-size: clamp(28px, 8.6vw, 40px);
   line-height: 0.95;
   font-weight: 650;
   letter-spacing: -0.05em;
@@ -940,11 +953,7 @@
   border-radius: 18px;
   border: 1px solid color-mix(in oklch, var(--ag-type) 35%, transparent);
   background:
-    linear-gradient(
-      135deg,
-      color-mix(in oklch, var(--ag-type) 20%, transparent),
-      transparent 75%
-    ),
+    linear-gradient(135deg, color-mix(in oklch, var(--ag-type) 20%, transparent), transparent 75%),
     #0b0a10;
   padding: 12px 12px 12px 16px;
   text-align: left;
@@ -1097,4 +1106,9 @@
 }
 .agm-sheet-foot .ag-btn {
   min-height: 48px;
+}
+.agm-round-lume {
+  border-color: transparent;
+  background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+  color: #fff;
 }

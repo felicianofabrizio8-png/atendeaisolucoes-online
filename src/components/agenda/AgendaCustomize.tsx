@@ -48,7 +48,7 @@ export function AgendaCustomize({
             Sua Agenda, do seu jeito
           </SheetTitle>
           <SheetDescription className="mt-1 text-sm text-[var(--ag-muted)]">
-            Os tipos valem para toda a empresa. A visão vale só para você.
+            As tags valem para toda a empresa. A visão vale só para você.
           </SheetDescription>
         </div>
 
@@ -89,10 +89,10 @@ export function AgendaCustomize({
         ) : (
           <section className="px-6 py-5">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="ag-mono">Tipos de evento da empresa</h3>
+              <h3 className="ag-mono">Tags da empresa</h3>
               {extended && (
                 <button type="button" className="ag-btn !py-1.5" onClick={() => setEditing("new")}>
-                  <Plus className="h-3.5 w-3.5" /> Novo tipo
+                  <Plus className="h-3.5 w-3.5" /> Nova tag
                 </button>
               )}
             </div>
@@ -103,13 +103,13 @@ export function AgendaCustomize({
 
             {extended && !types.length && (
               <div className="mt-4 rounded-2xl border border-dashed border-[var(--ag-edge-strong)] p-5 text-sm">
-                <p>Nenhum tipo criado ainda.</p>
+                <p>Nenhuma tag criada ainda. Crie as que fazem sentido para a sua empresa.</p>
                 <p className="mt-1 text-[var(--ag-muted)]">
                   Comece com um conjunto genérico (atendimento, visita, reunião, tarefa, lembrete e
                   folga) e ajuste depois.
                 </p>
                 <button type="button" className="ag-btn ag-btn-primary mt-4" onClick={onSeed}>
-                  <Sparkles className="h-4 w-4" /> Criar tipos sugeridos
+                  <Sparkles className="h-4 w-4" /> Começar com tags sugeridas
                 </button>
               </div>
             )}
@@ -158,7 +158,7 @@ export function AgendaCustomize({
                     onClick={() => {
                       if (
                         confirm(
-                          `Excluir o tipo "${type.name}"? Os compromissos continuam na agenda.`,
+                          `Excluir a tag "${type.name}"? Os compromissos continuam na agenda.`,
                         )
                       )
                         onRemove(type.id);
@@ -215,7 +215,7 @@ function TypeEditor({
 
   return (
     <section className="space-y-4 border-t border-[var(--ag-edge)] bg-[var(--ag-raised)] px-6 py-5">
-      <h3 className="ag-mono">{type ? `Editar "${type.name}"` : "Novo tipo"}</h3>
+      <h3 className="ag-mono">{type ? `Editar "${type.name}"` : "Nova tag"}</h3>
       <label className="block space-y-1.5 text-[12px] text-[var(--ag-muted)]">
         Nome
         <input
@@ -319,7 +319,7 @@ function TypeEditor({
       </label>
 
       <div className="space-y-2">
-        <p className="text-[12px] text-[var(--ag-muted)]">Campos extras deste tipo</p>
+        <p className="text-[12px] text-[var(--ag-muted)]">Campos extras desta tag</p>
         {draft.fields.map((field, index) => (
           <div key={index} className="flex gap-2">
             <input
@@ -397,7 +397,7 @@ function TypeEditor({
             })
           }
         >
-          Salvar tipo
+          Salvar tag
         </button>
       </div>
     </section>

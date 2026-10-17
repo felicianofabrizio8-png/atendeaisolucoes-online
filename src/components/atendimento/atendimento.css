@@ -358,14 +358,67 @@
     height: clamp(150px, 23dvh, 200px);
   }
 }
+/* Métricas em pílulas (celular). O fundo é o mesmo gradiente do cartão
+   giratório, então cada situação mantém a sua cor. */
+.lume-atendimento .at-stat-pill {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid #ffffff1f;
+  padding: 0 14px 0 6px;
+  background: var(--pill-bg), #07070b;
+  color: #fff;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+.lume-atendimento .at-stat-pill:active {
+  transform: scale(0.96);
+}
+.lume-atendimento .at-stat-pill[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px #fff;
+}
+.lume-atendimento .at-stat-pill-count {
+  display: inline-flex;
+  min-width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 7px;
+  background: #00000059;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.lume-atendimento .at-stat-pill-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
+  /* Celular: a fila e a conversa ocupam a tela inteira. Cartão dentro de
+     cartão gastava 12px de cada lado e deixava a lista num poço. */
   .lume-atendimento .at-workspace {
     gap: 0;
-    padding: 6px;
+    padding: 0;
   }
   .lume-atendimento .at-queue,
   .lume-atendimento .at-conversation {
-    border-radius: 20px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .lume-atendimento .at-queue {
+    gap: 12px;
+    padding: 12px 12px 0;
   }
   .lume-atendimento .at-thread-header {
     gap: 8px;
@@ -399,5 +452,33 @@
   }
   .lume-atendimento details::details-content {
     transition: none !important;
+  }
+}
+@media (max-width: 639px) {
+  /* Estrela da Lume no topo da conversa: abre direto o chat com a IA. */
+  .lume-atendimento .at-lume-star {
+    border-color: transparent;
+    background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+    color: #fff;
+  }
+}
+@media (max-width: 639px) {
+  /* Folha Info/Lume no celular: o seletor sobe para a linha do X e encolhe,
+     liberando altura para a conversa com a IA. */
+  .lume-atendimento.at-insight-sheet {
+    padding-top: 16px;
+  }
+  .lume-atendimento.at-insight-sheet .at-tabs {
+    align-self: flex-start;
+    width: fit-content;
+    font-size: 13px;
+  }
+  .lume-atendimento.at-insight-sheet .at-tabs button {
+    width: 72px;
+    min-height: 34px;
+    padding-block: 4px;
+  }
+  .lume-atendimento.at-insight-sheet .at-insight {
+    gap: 16px;
   }
 }

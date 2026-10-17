@@ -357,54 +357,54 @@ function AgendaPage() {
   // celular reaproveita as mesmas visões para Dia, Lista, Pessoas e Linha.
   const renderView = () => (
     <>
-          {view === "dia" || view === "semana" ? (
-            <TimeGridView
-              days={days}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-              startHour={preferences.dayStartHour}
-              onCreateAt={(at) => openCreate(at)}
-              onMove={(event, at) => void move(event, at)}
-              canEdit={(event) => !hierarchy || canEditEvent(event, me, manager)}
-            />
-          ) : view === "mes" ? (
-            <MonthView
-              days={days}
-              focus={focus}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-              onOpenDay={(day) => {
-                setFocus(day);
-                changeView("dia");
-              }}
-            />
-          ) : view === "linha" ? (
-            <TimelineView
-              days={days}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-            />
-          ) : view === "equipe" ? (
-            <TeamView
-              days={days}
-              events={inRange}
-              conflicts={conflicts}
-              onOpen={(event) => setSelectedId(event.id)}
-              members={hierarchy ? members : undefined}
-            />
-          ) : (
-            <ListView
-              events={inRange}
-              loading={loading}
-              onEdit={openEdit}
-              onDelete={(event) => void handleDelete(event)}
-              onStatus={(event, status) => void setStatus(event.id, status)}
-              onSend={setSendTarget}
-            />
-          )}
+      {view === "dia" || view === "semana" ? (
+        <TimeGridView
+          days={days}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+          startHour={preferences.dayStartHour}
+          onCreateAt={(at) => openCreate(at)}
+          onMove={(event, at) => void move(event, at)}
+          canEdit={(event) => !hierarchy || canEditEvent(event, me, manager)}
+        />
+      ) : view === "mes" ? (
+        <MonthView
+          days={days}
+          focus={focus}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+          onOpenDay={(day) => {
+            setFocus(day);
+            changeView("dia");
+          }}
+        />
+      ) : view === "linha" ? (
+        <TimelineView
+          days={days}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+        />
+      ) : view === "equipe" ? (
+        <TeamView
+          days={days}
+          events={inRange}
+          conflicts={conflicts}
+          onOpen={(event) => setSelectedId(event.id)}
+          members={hierarchy ? members : undefined}
+        />
+      ) : (
+        <ListView
+          events={inRange}
+          loading={loading}
+          onEdit={openEdit}
+          onDelete={(event) => void handleDelete(event)}
+          onStatus={(event, status) => void setStatus(event.id, status)}
+          onSend={setSendTarget}
+        />
+      )}
     </>
   );
 
@@ -456,57 +456,60 @@ function AgendaPage() {
           />
         </div>
       ) : (
-      <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
-        <AgendaHero
-          pulse={pulse}
-          onCreate={() => openCreate()}
-          onAskLume={() => setLumeSignal((n) => n + 1)}
-        />
-
-        <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
-          <AgendaToolbar
-            view={view}
-            focus={focus}
-            filters={filters}
-            people={people}
-            onView={changeView}
-            onNavigate={(direction) => setFocus((current) => shiftFocus(view, current, direction))}
-            onToday={() => setFocus(new Date())}
-            onFilters={setFilters}
-            onCustomize={() => setCustomizing(true)}
-            customTypes={eventTypes.types.filter((type) => type.active)}
-            tags={hierarchy ? agendaTags.tags : undefined}
-            manager={hierarchy && manager}
-            scope={effectiveScope}
-            members={members}
-            onScope={changeScope}
-            hideTeamView={hierarchy && !manager}
+        <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+          <AgendaHero
+            pulse={pulse}
+            onCreate={() => openCreate()}
+            onAskLume={() => setLumeSignal((n) => n + 1)}
           />
-          {conflicts.size > 0 && (
-            <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
-              <Bell className="h-3.5 w-3.5" />
-              {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com borda
-              tracejada.
-            </p>
+
+          <section className="ag-panel p-4 sm:p-5" aria-label="Calendário">
+            <AgendaToolbar
+              view={view}
+              focus={focus}
+              filters={filters}
+              people={people}
+              onView={changeView}
+              onNavigate={(direction) =>
+                setFocus((current) => shiftFocus(view, current, direction))
+              }
+              onToday={() => setFocus(new Date())}
+              onFilters={setFilters}
+              onCustomize={() => setCustomizing(true)}
+              customTypes={eventTypes.types.filter((type) => type.active)}
+              tags={hierarchy ? agendaTags.tags : undefined}
+              manager={hierarchy && manager}
+              scope={effectiveScope}
+              members={members}
+              onScope={changeScope}
+              hideTeamView={hierarchy && !manager}
+            />
+            {conflicts.size > 0 && (
+              <p className="mt-3 flex items-center gap-2 text-xs text-[#ff9a9a]">
+                <Bell className="h-3.5 w-3.5" />
+                {conflicts.size} compromissos com a mesma pessoa no mesmo horário — marcados com
+                borda tracejada.
+              </p>
+            )}
+          </section>
+
+          {error && (
+            <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
+              <span>{error}</span>
+              <button type="button" className="ag-btn" onClick={() => void reload()}>
+                Tentar novamente
+              </button>
+            </div>
           )}
-        </section>
 
-        {error && (
-          <div className="ag-panel flex items-center justify-between gap-3 p-4 text-sm">
-            <span>{error}</span>
-            <button type="button" className="ag-btn" onClick={() => void reload()}>
-              Tentar novamente
-            </button>
-          </div>
-        )}
-
-        <section className="ag-panel overflow-hidden" aria-busy={loading}>
-          {renderView()}
-        </section>
-      </div>
+          <section className="ag-panel overflow-hidden" aria-busy={loading}>
+            {renderView()}
+          </section>
+        </div>
       )}
 
       <LumeDock
+        mobileLauncher={false}
         page="Agenda"
         greeting="O que vamos organizar?"
         openSignal={lumeSignal}
@@ -675,16 +678,17 @@ function VisitCard({
   onStatusChange,
   onSend,
 }: {
-  visit: Visit;
+  visit: Visit & { type_name?: string; type_hue?: number };
   onEdit: () => void;
   onDelete: () => void;
   onStatusChange: (s: VisitStatus) => void;
   onSend: () => void;
 }) {
   const time = format(new Date(visit.scheduled_at), "HH:mm");
-  const meta = TYPE_META[visit.appointment_type];
-  const Icon = meta.icon;
-  const isStore = visit.appointment_type === "loja";
+  // Multiempresa: a etiqueta é a tag/tipo criado pela empresa. Os tipos fixos
+  // antigos (visita técnica, instalação…) não aparecem mais na tela.
+  const tagName = visit.type_name;
+  const tagColor = visit.type_hue !== undefined ? `oklch(0.7 0.11 ${visit.type_hue})` : undefined;
 
   const conversation = useMemo(() => {
     if (!visit.lead_id) return undefined;
@@ -694,32 +698,27 @@ function VisitCard({
   const phoneDigits = onlyDigits(visit.customer_phone ?? "");
   const waUrl = phoneDigits
     ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(
-        `Olá ${visit.customer_name ?? ""}! Confirmando seu compromisso (${meta.label}) em ${format(new Date(visit.scheduled_at), "dd/MM 'às' HH:mm")}.`,
+        `Olá ${visit.customer_name ?? ""}! Confirmando seu compromisso${tagName ? ` (${tagName})` : ""} em ${format(new Date(visit.scheduled_at), "dd/MM 'às' HH:mm")}.`,
       )}`
     : null;
 
   return (
-    <Card
-      className={cn("border-l-4", meta.class.replace(/bg-[^\s]+/g, "").trim() || "border-l-border")}
-    >
+    <Card className="border-l-4" style={{ borderLeftColor: tagColor ?? "var(--border)" }}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline" className={cn("gap-1 border", meta.class)}>
-                <Icon className="h-3 w-3" />
-                {meta.short}
-              </Badge>
-              {isStore && (
-                <Badge
-                  variant="outline"
-                  className="gap-1 border-sky-500/50 bg-sky-500/10 text-sky-700 dark:text-sky-300"
-                >
-                  <Store className="h-3 w-3" />
-                  Na loja
+            {tagName && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline" className="gap-1.5 border">
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: tagColor ?? "currentColor" }}
+                  />
+                  {tagName}
                 </Badge>
-              )}
-            </div>
+              </div>
+            )}
             <CardTitle className="text-base mt-1.5 truncate">{visit.title}</CardTitle>
             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
               <Clock className="h-3 w-3" />
@@ -739,15 +738,16 @@ function VisitCard({
           <Row icon={<Phone className="h-3.5 w-3.5" />} text={visit.customer_phone} />
         )}
         {visit.city && <Row icon={<Building2 className="h-3.5 w-3.5" />} text={visit.city} />}
-        {visit.address && !isStore && (
-          <Row icon={<MapPin className="h-3.5 w-3.5" />} text={visit.address} />
-        )}
+        {visit.address && <Row icon={<MapPin className="h-3.5 w-3.5" />} text={visit.address} />}
         {visit.product && <Row icon={<Package className="h-3.5 w-3.5" />} text={visit.product} />}
         {visit.salesperson && (
-          <Row icon={<User className="h-3.5 w-3.5" />} text={`Vendedor: ${visit.salesperson}`} />
+          <Row icon={<User className="h-3.5 w-3.5" />} text={`Responsável: ${visit.salesperson}`} />
         )}
         {visit.technician && (
-          <Row icon={<UserCog className="h-3.5 w-3.5" />} text={`Técnico: ${visit.technician}`} />
+          <Row
+            icon={<UserCog className="h-3.5 w-3.5" />}
+            text={`Técnico (registro antigo): ${visit.technician}`}
+          />
         )}
         {visit.notes && <Row icon={<StickyNote className="h-3.5 w-3.5" />} text={visit.notes} />}
 
@@ -780,7 +780,8 @@ function VisitCard({
               </Link>
             </Button>
           )}
-          {!isStore && (
+          {/* Só quem tem técnico registrado — nem toda empresa faz instalação. */}
+          {visit.technician && (
             <Button size="sm" onClick={onSend}>
               <Send className="h-3.5 w-3.5" />
               Enviar ao técnico

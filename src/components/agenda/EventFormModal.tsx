@@ -27,12 +27,10 @@ import {
   STATUS_KEYS,
   STATUS_LABEL,
   TYPE_HUE,
-  TYPE_KEYS,
   TYPE_LABEL,
   type AgendaEvent,
   type AgendaEventType,
   type AgendaTag,
-  type AppointmentType,
 } from "./agenda-model";
 import { TagPicker } from "./TagPicker";
 import type { TeamMember } from "./useTeamDirectory";
@@ -203,17 +201,6 @@ export function EventFormModal({
       };
     });
     if (next.requires_customer) setWithCustomer(true);
-  }
-
-  function chooseLegacy(key: AppointmentType) {
-    setForm((current) => ({
-      ...current,
-      legacyType: key,
-      title:
-        !current.title.trim() || current.title === TYPE_LABEL[current.legacyType].label
-          ? TYPE_LABEL[key].label
-          : current.title,
-    }));
   }
 
   function setDuration(minutes: number) {
@@ -444,38 +431,36 @@ export function EventFormModal({
                   </section>
                 ) : (
                   <section className="lq-section">
-                    <SectionTitle icon={<Tag />}>Tipo</SectionTitle>
-                    <div
-                      className="lq-chips lq-chips-lg"
-                      role="radiogroup"
-                      aria-label="Tipo de compromisso"
-                    >
-                      {activeTypes.length
-                        ? activeTypes.map((item) => (
-                            <button
-                              type="button"
-                              key={item.id}
-                              role="radio"
-                              aria-checked={form.typeId === item.id}
-                              onClick={() => chooseType(item)}
-                            >
-                              <TypeDot hue={item.hue} />
-                              {item.name}
-                            </button>
-                          ))
-                        : TYPE_KEYS.map((key) => (
-                            <button
-                              type="button"
-                              key={key}
-                              role="radio"
-                              aria-checked={form.legacyType === key}
-                              onClick={() => chooseLegacy(key)}
-                            >
-                              <TypeDot hue={TYPE_HUE[key]} />
-                              {TYPE_LABEL[key].label}
-                            </button>
-                          ))}
-                    </div>
+                    <SectionTitle icon={<Tag />}>Tag</SectionTitle>
+                    {/* Multiempresa: nada de tipos fixos de instalação. A empresa
+                        cria as próprias tags em Personalizar; sem nenhuma, o
+                        compromisso segue sem tag. */}
+                    {activeTypes.length ? (
+                      <div
+                        className="lq-chips lq-chips-lg"
+                        role="radiogroup"
+                        aria-label="Tag do compromisso"
+                      >
+                        {activeTypes.map((item) => (
+                          <button
+                            type="button"
+                            key={item.id}
+                            role="radio"
+                            aria-checked={form.typeId === item.id}
+                            onClick={() => chooseType(item)}
+                          >
+                            <TypeDot hue={item.hue} />
+                            {item.name}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="lq-hint">
+                        {extended
+                          ? "Sua empresa ainda não tem tags. Crie as suas em Personalizar → Tags."
+                          : "As tags da empresa ficam disponíveis depois de publicar a atualização da agenda."}
+                      </p>
+                    )}
                   </section>
                 )}
                 <section className="lq-section">
@@ -725,25 +710,22 @@ export function EventFormModal({
                   </section>
                 ) : (
                   <section className="lq-section">
-                    <SectionTitle icon={<Users />}>Equipe</SectionTitle>
+                    <SectionTitle icon={<Users />}>Responsável</SectionTitle>
                     <div className="lq-fields">
-                      <FormField label="Responsável">
+                      <FormField label="Quem cuida deste compromisso" className="lq-span-2">
                         <input
                           value={form.salesperson}
-                          placeholder="Quem conduz"
+                          placeholder="Nome da pessoa"
                           onChange={(e) => set("salesperson", e.target.value)}
                           className={inputClass}
                         />
                       </FormField>
-                      <FormField label="Executor / técnico">
-                        <input
-                          value={form.technician}
-                          placeholder="Quem executa"
-                          onChange={(e) => set("technician", e.target.value)}
-                          className={inputClass}
-                        />
-                      </FormField>
                     </div>
+                    {/* Nem toda empresa tem técnico: o campo saiu. Registros antigos
+                        continuam guardados e aparecem só como informação. */}
+                    {form.technician.trim() && (
+                      <p className="lq-hint mt-3">Técnico (registro antigo): {form.technician}</p>
+                    )}
                   </section>
                 )}
               </>
@@ -854,20 +836,16 @@ export function EventFormModal({
                       </>
                     ) : (
                       <>
-                        <dt>Tipo</dt>
-                        <dd>{typeName}</dd>
+                        <dt>Tag</dt>
+                        <dd>{activeTypes.length ? typeName : "Sem tag"}</dd>
                       </>
                     )}
                     <dt>Cliente</dt>
                     <dd>{form.customerName.trim() || "Interno"}</dd>
                     {!hierarchy && (
                       <>
-                        <dt>Equipe</dt>
-                        <dd>
-                          {[form.salesperson, form.technician]
-                            .filter((name) => name.trim())
-                            .join(" · ") || "A definir"}
-                        </dd>
+                        <dt>Responsável</dt>
+                        <dd>{form.salesperson.trim() || "A definir"}</dd>
                       </>
                     )}
                   </dl>

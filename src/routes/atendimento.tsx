@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, FlaskConical, PanelRight } from "lucide-react";
+import { ArrowLeft, FlaskConical, PanelRight, Sparkles } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAtendimentoData, type AtendimentoContact } from "@/hooks/useAtendimentoData";
 import { useAtendimentoFollowup } from "@/hooks/useAtendimentoFollowup";
 import { computeStats, STAT_DEFINITIONS } from "@/lib/atendimento/stats";
-import { StatCarousel } from "@/components/atendimento/StatCarousel";
+import { StatCarousel, StatStrip } from "@/components/atendimento/StatCarousel";
 import { ConversationRail } from "@/components/atendimento/ConversationRail";
 import { ChatThread } from "@/components/atendimento/ChatThread";
 import { InsightPanel } from "@/components/atendimento/InsightPanel";
@@ -57,6 +58,8 @@ function AtendimentoPage() {
   const { contacts, isSimulated, status, error } = useAtendimentoData({ forceSimulated });
   const atendimentoFollowup = useAtendimentoFollowup({ enabled: !isSimulated });
   const compact = useIsCompact();
+  // Celular: o botão do topo é a estrela da Lume e abre direto no chat com a IA.
+  const isPhone = useIsMobile();
   const [selectedId, setSelectedId] = useState<string | null>(requestedConversationId);
   // Conversa aberta: o rodapé é do composer, a barra inferior desce.
   useHideMobileNav(!!selectedId);
@@ -77,7 +80,14 @@ function AtendimentoPage() {
     const q = query.trim().toLowerCase();
 
     return contacts.filter((c) => {
-      if (def && !def.match({ ...c, followup: atendimentoFollowup.byConversation.get(c.conversation.id) }, now)) return false;
+      if (
+        def &&
+        !def.match(
+          { ...c, followup: atendimentoFollowup.byConversation.get(c.conversation.id) },
+          now,
+        )
+      )
+        return false;
       if (!q) return true;
       const haystack = [
         c.lead.name,
@@ -133,7 +143,18 @@ function AtendimentoPage() {
             selectedId ? "hidden" : "flex",
           )}
         >
-          <StatCarousel stats={stats} activeKey={statFilter} onSelect={setStatFilter} />
+          <StatCarousel
+            stats={stats}
+            activeKey={statFilter}
+            onSelect={setStatFilter}
+            className="max-md:hidden"
+          />
+          <StatStrip
+            stats={stats}
+            activeKey={statFilter}
+            onSelect={setStatFilter}
+            className="md:hidden"
+          />
           <div className="min-h-0 flex-1">
             <ConversationRail
               contacts={visible}
@@ -172,7 +193,12 @@ function AtendimentoPage() {
         </aside>
 
         {/* Coluna 2 — conversa */}
-        <main className={cn("at-conversation min-h-0 min-w-0", selectedId ? "block" : "hidden xl:block")}>
+        <main
+          className={cn(
+            "at-conversation min-h-0 min-w-0",
+            selectedId ? "block" : "hidden xl:block",
+          )}
+        >
           {/* Os três estados vêm da `main` e existem para a tela nunca ficar
               em branco sem explicação: carregando, falha e vazio de verdade.
               Vazio é vazio — a fila simulada só aparece pelo botão "Ver
@@ -209,10 +235,11 @@ function AtendimentoPage() {
                     <SheetTrigger asChild>
                       <button
                         type="button"
-                        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary xl:hidden"
+                        className="at-lume-star inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 text-[11px] font-bold transition-colors hover:bg-secondary max-sm:h-10 max-sm:w-10 max-sm:justify-center max-sm:px-0 xl:hidden"
                       >
-                        <PanelRight className="h-3.5 w-3.5" />
-                        Info / Lume
+                        <PanelRight className="h-3.5 w-3.5 max-sm:hidden" />
+                        <Sparkles className="h-[18px] w-[18px] sm:hidden" />
+                        <span className="max-sm:sr-only">Info / Lume</span>
                       </button>
                     </SheetTrigger>
                     {/* pt-12: o botão de fechar da gaveta mora no canto superior
@@ -226,6 +253,7 @@ function AtendimentoPage() {
                         contact={selected}
                         onUseSuggestion={applySuggestion}
                         simulated={isSimulated}
+                        initialTab={isPhone ? "ia" : "info"}
                         followup={atendimentoFollowup.byConversation.get(selected.conversation.id)}
                         composerHasDraft={draft.trim().length > 0}
                       />

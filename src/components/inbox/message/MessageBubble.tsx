@@ -8,7 +8,23 @@ import { Virtuoso } from "react-virtuoso";
 import { timeAgo, type Message } from "@/data/mock";
 import { editMessage, deleteMessage } from "@/data/leadRepo";
 import { cn } from "@/lib/utils";
-import { FileText, Loader2, X, MoreVertical, Pencil, Trash2, Check, Copy, Eye, Download, Play, Pause, Mic, Forward, Reply } from "lucide-react";
+import {
+  FileText,
+  Loader2,
+  X,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Check,
+  Copy,
+  Eye,
+  Download,
+  Play,
+  Pause,
+  Mic,
+  Forward,
+  Reply,
+} from "lucide-react";
 import { ForwardMessageDialog, type ForwardMessageTarget } from "@/components/ForwardMessageDialog";
 import { getSignedImageUrl, getSignedWaMediaUrl, getSignedMediaUrl } from "@/lib/storage";
 import { toast } from "sonner";
@@ -33,9 +49,7 @@ function useResolvedMediaSrc(opts: {
         // Quando um bucket explícito é informado (mídia do agente em
         // `product-images`, por exemplo), assinamos contra esse bucket.
         // Default mantém o comportamento atual (whatsapp-media).
-        const r = bucket
-          ? await getSignedMediaUrl(bucket, path)
-          : await getSignedWaMediaUrl(path);
+        const r = bucket ? await getSignedMediaUrl(bucket, path) : await getSignedWaMediaUrl(path);
         if (!cancelled) setResolved(r);
         return;
       }
@@ -101,9 +115,7 @@ function ImagePreview({
   const [lightbox, setLightbox] = useState(false);
   const display = useResolvedMediaSrc({ path, url, bucket });
   if (error) {
-    return (
-      <span className="text-xs italic opacity-70">Imagem indisponível</span>
-    );
+    return <span className="text-xs italic opacity-70">Imagem indisponível</span>;
   }
   if (!display) {
     // Placeholder com aspect-ratio 4/3 reservado — evita layout shift quando a URL
@@ -157,9 +169,7 @@ function ImagePreview({
           onTouchStart={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.stopPropagation()}
         >
-          <DialogTitle className="sr-only">
-            {filename ?? "Imagem ampliada"}
-          </DialogTitle>
+          <DialogTitle className="sr-only">{filename ?? "Imagem ampliada"}</DialogTitle>
           <img
             src={display}
             alt={filename ?? "Imagem ampliada"}
@@ -330,7 +340,7 @@ function WhatsAppAudio({
       if (!a || !bar || !duration) return;
       const rect = bar.getBoundingClientRect();
       const clientX =
-        "touches" in e ? e.touches[0]?.clientX ?? 0 : (e as React.MouseEvent).clientX;
+        "touches" in e ? (e.touches[0]?.clientX ?? 0) : (e as React.MouseEvent).clientX;
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       a.currentTime = ratio * duration;
       setCurrent(a.currentTime);
@@ -429,10 +439,7 @@ function WhatsAppAudio({
             <button
               type="button"
               onClick={cycleSpeed}
-              className={cn(
-                "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                speedBtn,
-              )}
+              className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", speedBtn)}
               title="Velocidade"
             >
               {speed}x
@@ -618,7 +625,6 @@ function deletedLabelFor(kind: MediaKind | null): string {
 // getUnsupportedPlaceholder e mapas foram extraídos para
 // src/lib/inbox/unsupported-placeholder.ts (testável isoladamente).
 
-
 function UnsupportedPlaceholder({ label, rawType }: { label: string; rawType: string }) {
   return (
     <div
@@ -645,7 +651,7 @@ type ReplyToMeta = {
 function getReplyTo(m: Message): ReplyToMeta | null {
   const meta = m.sourceMetadata as Record<string, unknown> | undefined;
   const r = meta?.reply_to as ReplyToMeta | undefined;
-  if (!r || (typeof r !== "object")) return null;
+  if (!r || typeof r !== "object") return null;
   if (!r.preview && !r.message_id && !r.external_id) return null;
   return r;
 }
@@ -658,8 +664,6 @@ export function messageForAi(m: Message): { role: Message["role"]; text: string 
   const ctx = (reply.preview ?? "[mensagem anterior]").replace(/\s+/g, " ").slice(0, 200);
   return { role: m.role, text: `[em resposta a: ${ctx}] ${m.text}` };
 }
-
-
 
 function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const kind = (reply.type ?? "text").toLowerCase();
@@ -695,8 +699,7 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
   const isImage = kind === "image" || kind === "sticker";
   const isAudio = kind === "audio";
   const label =
-    reply.preview ??
-    (isImage ? "📷 Foto" : isAudio ? "🎤 Mensagem de voz" : "[mensagem]");
+    reply.preview ?? (isImage ? "📷 Foto" : isAudio ? "🎤 Mensagem de voz" : "[mensagem]");
 
   const virtuoso = useContext(VirtuosoScrollContext);
 
@@ -740,7 +743,6 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
     requestAnimationFrame(tryHighlight);
   }
 
-
   return (
     <button
       type="button"
@@ -754,17 +756,19 @@ function ReplyPreview({ reply }: { reply: ReplyToMeta }) {
         <div className="text-xs truncate opacity-90">{label}</div>
       </div>
       {isImage && thumb ? (
-        <img
-          src={thumb}
-          alt=""
-          className="h-10 w-10 rounded object-cover shrink-0"
-        />
+        <img src={thumb} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
       ) : null}
     </button>
   );
 }
 
-function AudioMimeDebug({ message, declaredMime }: { message: Message; declaredMime?: string | null }) {
+function AudioMimeDebug({
+  message,
+  declaredMime,
+}: {
+  message: Message;
+  declaredMime?: string | null;
+}) {
   const meta = message.sourceMetadata as Record<string, unknown> | undefined;
   const detected = (meta?.detected_audio as string | undefined) ?? null;
   const clientDebug = (meta?.client_debug as Record<string, unknown> | undefined) ?? null;
@@ -791,13 +795,11 @@ function MediaAiNote({ message, kind }: { message: Message; kind: MediaKind }) {
   const items: Array<{ label: string; value: string }> = [];
   if (kind === "audio" && transcription)
     items.push({ label: "Transcrição do áudio", value: transcription });
-  if (kind === "image" && vision)
-    items.push({ label: "IA identificou", value: vision });
+  if (kind === "image" && vision) items.push({ label: "IA identificou", value: vision });
   if (kind === "document") {
     if (extracted && extracted !== docSummary)
       items.push({ label: "Texto extraído", value: extracted });
-    if (docSummary)
-      items.push({ label: "Resumo do documento", value: docSummary });
+    if (docSummary) items.push({ label: "Resumo do documento", value: docSummary });
   }
 
   if (items.length === 0 && !err) return null;
@@ -831,8 +833,7 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
 
   if (info) {
     const trimmed = (message.text ?? "").trim();
-    const showCaption =
-      trimmed.length > 0 && !/^\[/.test(trimmed) && !/^https?:\/\//.test(trimmed);
+    const showCaption = trimmed.length > 0 && !/^\[/.test(trimmed) && !/^https?:\/\//.test(trimmed);
     const caption = showCaption ? <div>{trimmed}</div> : null;
     const aiNote = <MediaAiNote message={message} kind={info.kind} />;
 
@@ -841,7 +842,12 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
         return (
           <div className="space-y-1">
             {replyNode}
-            <ImagePreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
+            <ImagePreview
+              path={info.path}
+              url={info.url}
+              filename={info.filename}
+              bucket={info.bucket}
+            />
             {caption}
             {aiNote}
           </div>
@@ -850,7 +856,12 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
         return (
           <div className="space-y-1">
             {replyNode}
-            <VideoPreview path={info.path} url={info.url} filename={info.filename} bucket={info.bucket} />
+            <VideoPreview
+              path={info.path}
+              url={info.url}
+              filename={info.filename}
+              bucket={info.bucket}
+            />
             {caption}
           </div>
         );
@@ -954,9 +965,9 @@ function MessageContent({ message, isAgent = false }: { message: Message; isAgen
       {parts.map((p, i) =>
         p.type === "image" ? (
           <ImagePreview key={i} url={p.value} />
-        ) : (
-          p.value.trim() ? <div key={i}>{p.value}</div> : null
-        ),
+        ) : p.value.trim() ? (
+          <div key={i}>{p.value}</div>
+        ) : null,
       )}
     </div>
   );
@@ -981,28 +992,23 @@ function MessageBubbleImpl({
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.text);
-  const [confirmDelete, setConfirmDelete] = useState<null | "me" | "everyone">(
-    null,
-  );
+  const [confirmDelete, setConfirmDelete] = useState<null | "me" | "everyone">(null);
   const [busy, setBusy] = useState(false);
   const [forwardTarget, setForwardTarget] = useState<ForwardMessageTarget | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const tplMeta = m.sourceMetadata as
-    | { template_name?: string; category?: string }
-    | undefined;
+  const tplMeta = m.sourceMetadata as { template_name?: string; category?: string } | undefined;
   const isTemplate = m.role === "agent" && !!tplMeta?.template_name;
   const isAgent = m.role === "agent";
   const isDeleted = !!m.deletedAt;
-  const externalId = (m.sourceMetadata as { external_id?: string } | undefined)
-    ?.external_id;
+  const externalId = (m.sourceMetadata as { external_id?: string } | undefined)?.external_id;
   // Reply nativo só é usado quando há external_id no snapshot (lido no composer);
   // sem ele, o composer prefixa a citação no texto e envia pelo fluxo normal.
   const replyCtx = useContext(ReplyComposeContext);
   const mediaInfo = getMediaInfo(m);
   const hasText = !!m.text && m.text.trim().length > 0;
-  const canForwardMedia = !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
-
+  const canForwardMedia =
+    !!mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video");
 
   function startLongPress() {
     if (isDeleted || editing) return;
@@ -1042,7 +1048,6 @@ function MessageBubbleImpl({
       window.open(url, "_blank", "noopener,noreferrer");
     }
   }
-
 
   async function commitEdit() {
     const next = draft.trim();
@@ -1092,7 +1097,6 @@ function MessageBubbleImpl({
       )}
     >
       <div className="flex items-end gap-1 min-w-0 max-w-full">
-
         {isAgent && canManage && !isDeleted && !editing && (
           <div className="relative md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
             <button
@@ -1108,15 +1112,15 @@ function MessageBubbleImpl({
 
         {menuOpen && !isDeleted && !editing && (
           <>
-            <div
-              className="fixed inset-0 z-40"
-              onClick={() => setMenuOpen(false)}
-            />
+            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
             <div className="fixed left-1/2 -translate-x-1/2 bottom-6 md:absolute md:left-auto md:right-0 md:bottom-8 md:translate-x-0 z-50 min-w-[220px] rounded-md border border-border bg-popover shadow-lg p-1 text-sm animate-in fade-in zoom-in-95">
               {(hasText || mediaInfo) && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); replyCtx.start(m); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    replyCtx.start(m);
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                 >
                   <Reply className="h-3.5 w-3.5" /> Responder
@@ -1141,7 +1145,10 @@ function MessageBubbleImpl({
               {hasText && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); void copyText(); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void copyText();
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                 >
                   <Copy className="h-3.5 w-3.5" /> Copiar texto
@@ -1150,7 +1157,10 @@ function MessageBubbleImpl({
               {isAgent && canManage && mediaInfo?.url && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); window.open(mediaInfo.url!, "_blank", "noopener,noreferrer"); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    window.open(mediaInfo.url!, "_blank", "noopener,noreferrer");
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                 >
                   <Eye className="h-3.5 w-3.5" /> Visualizar
@@ -1159,7 +1169,10 @@ function MessageBubbleImpl({
               {isAgent && canManage && mediaInfo?.url && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); void downloadMedia(mediaInfo.url!); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void downloadMedia(mediaInfo.url!);
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                 >
                   <Download className="h-3.5 w-3.5" /> Baixar
@@ -1168,7 +1181,11 @@ function MessageBubbleImpl({
               {isAgent && canManage && !mediaInfo && hasText && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); setDraft(m.text); setEditing(true); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setDraft(m.text);
+                    setEditing(true);
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                 >
                   <Pencil className="h-3.5 w-3.5" /> Editar mensagem
@@ -1177,7 +1194,10 @@ function MessageBubbleImpl({
               {isAgent && canManage && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); setConfirmDelete("me"); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirmDelete("me");
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -1187,7 +1207,10 @@ function MessageBubbleImpl({
               {isAgent && canManage && !externalId && (
                 <button
                   type="button"
-                  onClick={() => { setMenuOpen(false); setConfirmDelete("everyone"); }}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirmDelete("everyone");
+                  }}
                   className="w-full text-left px-2.5 py-1.5 rounded hover:bg-accent inline-flex items-center gap-2 text-[var(--status-urgent)]"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -1211,7 +1234,9 @@ function MessageBubbleImpl({
           }}
           className={cn(
             "text-base leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 max-w-full select-none md:text-sm md:select-text transition-transform active:scale-[0.99]",
-            appearance === "atendimento" ? `at-bubble ${isAgent ? "at-bubble-out" : "at-bubble-in"} rounded-3xl px-4 py-2.5` : "rounded-lg px-3 py-2",
+            appearance === "atendimento"
+              ? `at-bubble ${isAgent ? "at-bubble-out" : "at-bubble-in"} rounded-3xl px-4 py-2.5`
+              : "rounded-lg px-3 py-2",
             isAgent
               ? cn(
                   "bg-primary text-primary-foreground",
@@ -1278,30 +1303,33 @@ function MessageBubbleImpl({
           <button
             type="button"
             onClick={() => replyCtx.start(m)}
-            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur shadow-sm text-foreground hover:bg-accent hover:text-accent-foreground transition-all md:opacity-60 md:group-hover:opacity-100 active:scale-95"
+            className="h-8 w-8 min-h-8 shrink-0 inline-flex max-sm:border-transparent max-sm:bg-transparent max-sm:shadow-none max-sm:text-muted-foreground items-center justify-center rounded-full border border-border bg-background/90 backdrop-blur shadow-sm text-foreground hover:bg-accent hover:text-accent-foreground transition-all md:opacity-60 md:group-hover:opacity-100 active:scale-95"
             aria-label="Responder mensagem"
             title="Responder mensagem"
           >
             <Reply className="h-4 w-4" />
           </button>
         )}
-        {!isAgent && !isDeleted && mediaInfo?.path && (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
-          <button
-            type="button"
-            onClick={() =>
-              setForwardTarget({
-                messageId: m.id,
-                kind: mediaInfo.kind as "image" | "video",
-                preview: { filename: mediaInfo.filename ?? null },
-              })
-            }
-            className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-            aria-label="Encaminhar mídia"
-            title="Encaminhar"
-          >
-            <Forward className="h-3.5 w-3.5" />
-          </button>
-        )}
+        {!isAgent &&
+          !isDeleted &&
+          mediaInfo?.path &&
+          (mediaInfo.kind === "image" || mediaInfo.kind === "video") && (
+            <button
+              type="button"
+              onClick={() =>
+                setForwardTarget({
+                  messageId: m.id,
+                  kind: mediaInfo.kind as "image" | "video",
+                  preview: { filename: mediaInfo.filename ?? null },
+                })
+              }
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+              aria-label="Encaminhar mídia"
+              title="Encaminhar"
+            >
+              <Forward className="h-3.5 w-3.5" />
+            </button>
+          )}
       </div>
       <ForwardMessageDialog
         open={forwardTarget !== null}
@@ -1356,9 +1384,7 @@ function MessageBubbleImpl({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="font-semibold mb-1">
-              {confirmDelete === "me"
-                ? "Apagar para mim?"
-                : "Apagar da conversa?"}
+              {confirmDelete === "me" ? "Apagar para mim?" : "Apagar da conversa?"}
             </div>
             <div className="text-sm text-muted-foreground mb-3">
               {confirmDelete === "me"

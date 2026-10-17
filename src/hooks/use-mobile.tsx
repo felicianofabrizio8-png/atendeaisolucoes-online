@@ -6,13 +6,27 @@ export function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
 
   React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
     const onChange = () => {
       setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     };
-    mql.addEventListener("change", onChange);
     setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    return () => mql.removeEventListener("change", onChange);
+    // Sem matchMedia (jsdom, navegadores muito antigos): cai no resize.
+    if (typeof window.matchMedia !== "function") {
+      window.addEventListener("resize", onChange);
+      return () => window.removeEventListener("resize", onChange);
+    }
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    // Safari < 14 só tem addListener/removeListener.
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    if (typeof mql.addListener === "function") {
+      mql.addListener(onChange);
+      return () => mql.removeListener(onChange);
+    }
+    window.addEventListener("resize", onChange);
+    return () => window.removeEventListener("resize", onChange);
   }, []);
 
   return !!isMobile;
