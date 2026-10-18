@@ -23,7 +23,7 @@ export function GoalEntryDialog({
         <DialogPrimitive.Overlay className="auth-dialog-overlay fixed inset-0 z-50 bg-black/70 backdrop-blur-[6px]" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="auth-dialog-content lq-black lq-panel lq-form fixed left-1/2 top-1/2 z-50 w-[calc(100vw-24px)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 p-6 text-white"
+          className="auth-dialog-content lq-black lq-panel lq-form lq-compact fixed left-1/2 top-1/2 z-50 w-[calc(100vw-24px)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 p-6 text-white"
         >
           <DialogPrimitive.Close aria-label="Fechar" className="lq-close absolute right-4 top-4">
             <X className="h-4 w-4" aria-hidden />

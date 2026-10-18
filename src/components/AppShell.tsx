@@ -23,6 +23,8 @@ import {
   Wand2,
   Bot,
   Target,
+  Pin,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
@@ -33,7 +35,13 @@ import {
   toggleSidebar,
 } from "@/lib/appearance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { loadRemote, refreshTeamScope, setRepoMode, subscribeRepo, getConversations } from "@/data/leadRepo";
+import {
+  loadRemote,
+  refreshTeamScope,
+  setRepoMode,
+  subscribeRepo,
+  getConversations,
+} from "@/data/leadRepo";
 import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -43,7 +51,17 @@ import { openSettings } from "@/lib/settings-dialog";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { AccessDenied } from "@/components/team/AccessDenied";
 import { NeuralIntelligencePanel } from "@/components/sidebar/NeuralIntelligencePanel";
-import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { MobileBottomNav, type BottomNavItem } from "@/components/layout/MobileBottomNav";
+import { InstallAppCard } from "@/components/layout/InstallAppCard";
+import {
+  DEFAULT_DOCK,
+  DOCK_MAX,
+  getDock,
+  getServerDock,
+  resetDock,
+  subscribeDock,
+  toggleDockRoute,
+} from "@/lib/mobile-dock";
 import { LumeLogo } from "@/components/brand/LumeLogo";
 
 type NavItem = {
@@ -65,6 +83,8 @@ type NavItem = {
     | "/onboarding"
     | "/runtime/observability";
   label: string;
+  /** Nome curto para a barra inferior do celular. */
+  short?: string;
   icon: typeof LayoutDashboard;
   badge?: number;
   adminOnly?: boolean;
@@ -76,22 +96,54 @@ type NavGroup = "Principal" | "Vendas" | "Marketing e IA" | "Sistema";
 const NAV_GROUPS: NavGroup[] = ["Principal", "Vendas", "Marketing e IA", "Sistema"];
 
 const nav: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, group: "Principal" },
-  { to: "/onboarding", label: "Primeiros passos", icon: Rocket, adminOnly: true, group: "Sistema" },
-  { to: "/inbox", label: "Caixa de atendimento", icon: MessageSquare, group: "Principal" },
+  { to: "/", label: "Dashboard", short: "Início", icon: LayoutDashboard, group: "Principal" },
+  {
+    to: "/onboarding",
+    label: "Primeiros passos",
+    short: "Passos",
+    icon: Rocket,
+    adminOnly: true,
+    group: "Sistema",
+  },
+  {
+    to: "/inbox",
+    label: "Caixa de atendimento",
+    short: "Caixa",
+    icon: MessageSquare,
+    group: "Principal",
+  },
   { to: "/atendimento", label: "Chat", icon: MessagesSquare, group: "Principal" },
   { to: "/agenda", label: "Agenda", icon: Calendar, group: "Principal" },
   { to: "/orcamentos", label: "Orçamentos", icon: FileText, group: "Vendas" },
   { to: "/campanhas", label: "Campanhas", icon: Megaphone, group: "Marketing e IA" },
-  { to: "/criativos", label: "Criativos IA", icon: Wand2, group: "Marketing e IA" },
-  { to: "/marketing", label: "Marketing IA", icon: Sparkles, group: "Marketing e IA" },
+  {
+    to: "/criativos",
+    label: "Criativos IA",
+    short: "Criativos",
+    icon: Wand2,
+    group: "Marketing e IA",
+  },
+  {
+    to: "/marketing",
+    label: "Marketing IA",
+    short: "Marketing",
+    icon: Sparkles,
+    group: "Marketing e IA",
+  },
   { to: "/produtos", label: "Produtos", icon: Package, group: "Vendas" },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3, group: "Vendas" },
   { to: "/metas", label: "Metas", icon: Target, group: "Vendas" },
   { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true, group: "Vendas" },
-  { to: "/ia", label: "IA de Atendimento", icon: Bot, group: "Marketing e IA" },
-  { to: "/saude", label: "Saúde do sistema", icon: Activity, group: "Sistema" },
-  { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true, group: "Sistema" },
+  { to: "/ia", label: "IA de Atendimento", short: "IA", icon: Bot, group: "Marketing e IA" },
+  { to: "/saude", label: "Saúde do sistema", short: "Saúde", icon: Activity, group: "Sistema" },
+  {
+    to: "/runtime/observability",
+    label: "Observabilidade",
+    short: "Observ.",
+    icon: Gauge,
+    adminOnly: true,
+    group: "Sistema",
+  },
 ];
 
 export function AppShell() {
@@ -101,6 +153,10 @@ export function AppShell() {
   const access = useTeamAccess();
   const [demoMode, setDemoMode] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Menu do celular em modo "Personalizar barra": tocar fixa/solta atalhos.
+  const [editingDock, setEditingDock] = useState(false);
+  const [dockNotice, setDockNotice] = useState<string | null>(null);
+  const dock = useSyncExternalStore(subscribeDock, getDock, getServerDock);
   const [unreadTotal, setUnreadTotal] = useState(0);
   // Mesma preferência de tema/cor/fonte: guardada por navegador e já aplicada
   // ao <html> antes da hidratação. Aqui o estado serve só para o que o CSS não
@@ -137,20 +193,31 @@ export function AppShell() {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  // Fechar o menu encerra a personalização.
+  useEffect(() => {
+    if (!mobileOpen) {
+      setEditingDock(false);
+      setDockNotice(null);
+    }
+  }, [mobileOpen]);
+
   // Quando logar, carrega dados reais e desativa demo. Quando deslogar/demo, volta pro mock.
   useEffect(() => {
     if (user && profile && access.access?.active) {
       window.localStorage.removeItem("atendeai.demo");
       setDemoMode(false);
-      if (access.can("conversations.read")) loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
+      if (access.can("conversations.read"))
+        loadRemote(profile.company_id).catch((e) => console.error("loadRemote failed", e));
       else setRepoMode("demo");
-      if (access.can("products.view")) loadProductsRemote(profile.company_id).catch((e) =>
-        console.error("loadProductsRemote failed", e),
-      );
+      if (access.can("products.view"))
+        loadProductsRemote(profile.company_id).catch((e) =>
+          console.error("loadProductsRemote failed", e),
+        );
       else setProductsMode("demo");
-      if (access.can("quotes.manage")) loadQuotesRemote(profile.company_id).catch((e) =>
-        console.error("loadQuotesRemote failed", e),
-      );
+      if (access.can("quotes.manage"))
+        loadQuotesRemote(profile.company_id).catch((e) =>
+          console.error("loadQuotesRemote failed", e),
+        );
       else setQuotesMode("demo");
     } else {
       setRepoMode("demo");
@@ -165,14 +232,21 @@ export function AppShell() {
     const refresh = async () => {
       if (running) return;
       running = true;
-      try { await refreshTeamScope(profile.company_id); }
-      catch (error) { console.error("team scope refresh failed", error); }
-      finally { running = false; }
+      try {
+        await refreshTeamScope(profile.company_id);
+      } catch (error) {
+        console.error("team scope refresh failed", error);
+      } finally {
+        running = false;
+      }
     };
     void refresh();
     const timer = window.setInterval(() => void refresh(), 15_000);
     window.addEventListener("focus", refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
   }, [profile, access.access]);
 
   // /login não usa o shell.
@@ -219,6 +293,32 @@ export function AppShell() {
       .filter((item) => item.group === group && ((!user && demoMode) || access.canOpen(item.to)))
       .map((item) => ({ item, order: launcherOrder++ })),
   })).filter((g) => g.items.length > 0);
+
+  // Barra inferior: os atalhos escolhidos, na ordem escolhida, só os permitidos.
+  // Se a permissão tirar quase tudo, volta ao padrão para nunca ficar vazia.
+  const canNavigate = (to: string) => (!user && demoMode) || access.canOpen(to);
+  const toDockItems = (routes: string[]): BottomNavItem[] =>
+    routes.flatMap((to) => {
+      const item = nav.find((candidate) => candidate.to === to);
+      return item && canNavigate(item.to)
+        ? [{ to: item.to, label: item.short ?? item.label, icon: item.icon }]
+        : [];
+    });
+  const pinnedDock = toDockItems(dock);
+  const dockItems = pinnedDock.length >= 2 ? pinnedDock : toDockItems(DEFAULT_DOCK);
+
+  const toggleDock = (to: string) => {
+    const pinned = dock.includes(to);
+    if (toggleDockRoute(to)) {
+      setDockNotice(null);
+      return;
+    }
+    setDockNotice(
+      pinned
+        ? "A barra precisa de pelo menos 2 atalhos."
+        : `A barra cabe ${DOCK_MAX} atalhos. Solte um para fixar outro.`,
+    );
+  };
 
   const SettingsButton = (
     <button
@@ -489,7 +589,11 @@ export function AppShell() {
             nas rotas em que a barra inferior não aparece (conversa aberta). */}
         <div className="md:hidden safe-top px-3 border-b border-border/70 flex items-center gap-2 bg-sidebar shrink-0">
           <div className="h-14 flex items-center gap-1 w-full">
-            <Link to="/" aria-label="Lume — início" className="flex items-center min-w-0 flex-1 pl-1">
+            <Link
+              to="/"
+              aria-label="Lume — início"
+              className="flex items-center min-w-0 flex-1 pl-1"
+            >
               <LumeLogo
                 variant="lockup"
                 aria-label="Lume"
@@ -503,19 +607,26 @@ export function AppShell() {
             >
               <Settings className="h-[18px] w-[18px]" />
             </button>
+            {/* Com conta, o avatar abre o Perfil; no modo demo, o menu. */}
             <button
-              onClick={() => setMobileOpen(true)}
-              aria-label="Abrir menu"
-              aria-expanded={mobileOpen}
+              onClick={() => (user ? openSettings("perfil") : setMobileOpen(true))}
+              aria-label={user ? "Abrir perfil" : "Abrir menu"}
+              aria-expanded={user ? undefined : mobileOpen}
               className="h-11 w-11 inline-flex items-center justify-center rounded-full active:bg-accent"
             >
               <span
                 className={cn(
-                  "h-8 w-8 rounded-full flex items-center justify-center text-[11px] font-semibold",
+                  "h-8 w-8 overflow-hidden rounded-full flex items-center justify-center text-[11px] font-semibold",
                   user ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
                 )}
               >
-                {user ? initials || "U" : "DM"}
+                {user && profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+                ) : user ? (
+                  initials || "U"
+                ) : (
+                  "DM"
+                )}
               </span>
             </button>
           </div>
@@ -532,7 +643,10 @@ export function AppShell() {
             className="mobile-launcher md:hidden max-h-[88dvh] rounded-t-[28px] border-sidebar-border bg-sidebar p-0 flex flex-col gap-0"
           >
             <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-            <div aria-hidden className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30" />
+            <div
+              aria-hidden
+              className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/30"
+            />
 
             <div className="flex items-center gap-3 px-5 pt-3 pb-4 pr-14">
               <div
@@ -554,6 +668,46 @@ export function AppShell() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[calc(16px+env(safe-area-inset-bottom))]">
+              {!editingDock && <InstallAppCard />}
+
+              <div className="dock-editor" data-editing={editingDock || undefined}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold leading-tight">
+                    {editingDock ? "Toque para fixar ou soltar" : "Barra inferior"}
+                  </p>
+                  <p
+                    className="mt-0.5 truncate text-[11.5px] text-muted-foreground"
+                    aria-live="polite"
+                  >
+                    {dockNotice ??
+                      (editingDock
+                        ? `${dock.length} de ${DOCK_MAX} atalhos · a ordem é a do número`
+                        : dockItems.map((item) => item.label).join(" · "))}
+                  </p>
+                </div>
+                {editingDock && (
+                  <button type="button" className="dock-editor-reset" onClick={() => resetDock()}>
+                    Padrão
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="dock-editor-btn"
+                  aria-pressed={editingDock}
+                  onClick={() => {
+                    setEditingDock((value) => !value);
+                    setDockNotice(null);
+                  }}
+                >
+                  {editingDock ? (
+                    <Check className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Pin className="h-4 w-4" aria-hidden />
+                  )}
+                  {editingDock ? "Pronto" : "Personalizar"}
+                </button>
+              </div>
+
               {launcherGroups.map(({ group, items }) => (
                 <section key={group} className="mb-4">
                   <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -563,8 +717,36 @@ export function AppShell() {
                     {items.map(({ item, order }) => {
                       const Icon = item.icon;
                       const active =
-                        item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
+                        item.to === "/"
+                          ? location.pathname === "/"
+                          : location.pathname.startsWith(item.to);
                       const badge = item.to === "/inbox" && unreadTotal > 0 ? unreadTotal : 0;
+                      const pinned = dock.includes(item.to);
+                      if (editingDock) {
+                        return (
+                          <button
+                            key={item.to}
+                            type="button"
+                            aria-pressed={pinned}
+                            onClick={() => toggleDock(item.to)}
+                            data-pinned={pinned || undefined}
+                            className="launcher-tile"
+                            style={{ "--i": order } as CSSProperties}
+                          >
+                            <span className="launcher-tile-icon">
+                              <Icon className="h-[22px] w-[22px]" aria-hidden />
+                              <span className="launcher-pin" aria-hidden>
+                                {pinned ? (
+                                  dock.indexOf(item.to) + 1
+                                ) : (
+                                  <Pin className="h-2.5 w-2.5" />
+                                )}
+                              </span>
+                            </span>
+                            <span className="launcher-tile-label">{item.label}</span>
+                          </button>
+                        );
+                      }
                       return (
                         <Link
                           key={item.to}
@@ -642,20 +824,22 @@ export function AppShell() {
         <div
           className={
             "app-content flex-1 min-w-0 min-h-0 flex flex-col md:pb-0 " +
-            (showBottomNav
-              ? "overflow-auto pb-[var(--mobile-dock-space)]"
-              : "overflow-hidden pb-0")
+            (showBottomNav ? "overflow-auto pb-[var(--mobile-dock-space)]" : "overflow-hidden pb-0")
           }
         >
-          {(!user && demoMode) || access.canOpen(location.pathname) ? <Outlet /> : <AccessDenied access={access} />}
+          {(!user && demoMode) || access.canOpen(location.pathname) ? (
+            <Outlet />
+          ) : (
+            <AccessDenied access={access} />
+          )}
         </div>
 
         {showBottomNav ? (
           <MobileBottomNav
+            items={dockItems}
             unreadTotal={unreadTotal}
             menuOpen={mobileOpen}
             onOpenMenu={() => setMobileOpen(true)}
-            canOpen={(to) => (!user && demoMode) || access.canOpen(to)}
           />
         ) : null}
       </main>

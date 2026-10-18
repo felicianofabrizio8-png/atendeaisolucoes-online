@@ -1,9 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import {
-  buildCardSlots,
-  type ResponsiveColumnMeta,
-} from "@/lib/responsive/table-model";
+import { buildCardSlots, type ResponsiveColumnMeta } from "@/lib/responsive/table-model";
 
 export interface ResponsiveColumn<T> extends ResponsiveColumnMeta {
   cell: (row: T) => ReactNode;
