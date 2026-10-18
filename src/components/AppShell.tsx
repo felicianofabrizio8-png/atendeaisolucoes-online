@@ -399,34 +399,50 @@ export function AppShell() {
     </nav>
   );
 
+  const Avatar = (
+    <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
+      {profile?.avatar_url ? (
+        <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initials || "U"
+      )}
+    </span>
+  );
+
   const FooterPanel = (
     <div className="border-t border-sidebar-border p-3">
       {user ? (
         <>
           <div className="sidebar-when-expanded flex items-center gap-2">
-            <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
-              {initials || "U"}
-            </div>
-            <div className="leading-tight min-w-0 flex-1">
-              <div className="text-sm font-medium truncate">
-                {profile?.display_name ?? user.email?.split("@")[0]}
+            <Link
+              to="/perfil"
+              title="Abrir perfil"
+              className="-m-1 flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1 transition-colors hover:bg-sidebar-accent"
+            >
+              {Avatar}
+              <div className="leading-tight min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">
+                  {profile?.display_name ?? user.email?.split("@")[0]}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {company?.name ?? "Carregando…"}
+                </div>
               </div>
-              <div className="text-[11px] text-muted-foreground truncate">
-                {company?.name ?? "Carregando…"}
-              </div>
-            </div>
+            </Link>
             {SettingsButton}
           </div>
 
           {/* No trilho, conta e ações empilham centralizadas — nenhum controle
               do rodapé fica inacessível quando a sidebar está minimizada. */}
           <div className="sidebar-when-collapsed flex-col items-center gap-2">
-            <div
-              className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary"
+            <Link
+              to="/perfil"
+              aria-label="Abrir perfil"
               title={profile?.display_name ?? user.email ?? undefined}
+              className="rounded-full transition-opacity hover:opacity-80"
             >
-              {initials || "U"}
-            </div>
+              {Avatar}
+            </Link>
             {SettingsButton}
             {SignOutButton}
           </div>
@@ -607,9 +623,9 @@ export function AppShell() {
             >
               <Settings className="h-[18px] w-[18px]" />
             </button>
-            {/* Com conta, o avatar abre o Perfil; no modo demo, o menu. */}
+            {/* Com conta, o avatar abre a tela de Perfil; no modo demo, o menu. */}
             <button
-              onClick={() => (user ? openSettings("perfil") : setMobileOpen(true))}
+              onClick={() => (user ? void navigate({ to: "/perfil" }) : setMobileOpen(true))}
               aria-label={user ? "Abrir perfil" : "Abrir menu"}
               aria-expanded={user ? undefined : mobileOpen}
               className="h-11 w-11 inline-flex items-center justify-center rounded-full active:bg-accent"

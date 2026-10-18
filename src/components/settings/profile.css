@@ -399,6 +399,65 @@
   aspect-ratio: 2.4 / 1;
 }
 
+/* Rota /perfil: a mesma edição numa tela própria. */
+.profile-page {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px 16px 0;
+}
+.profile-page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.profile-page-head h1 {
+  flex: 1;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+.profile-page-round {
+  display: grid;
+  height: 42px;
+  min-height: 42px;
+  width: 42px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  transition: background-color 160ms ease;
+}
+.profile-page-round:hover {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.profile-page .profile-editor {
+  padding-bottom: 32px;
+}
+.profile-page .profile-savebar {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .profile-page {
+    padding: 32px 32px 0;
+  }
+  .profile-page .profile-savebar {
+    margin-inline: 0;
+    border-radius: 18px 18px 0 0;
+  }
+}
+@media (max-width: 767px) {
+  .profile-page .profile-hero {
+    margin: 0 -16px 72px;
+  }
+  .profile-page .profile-banner {
+    border-radius: 0;
+    aspect-ratio: 2.4 / 1;
+  }
+}
+
 /* ==========================================================================
    Conta (AccountTab)
    ========================================================================== */

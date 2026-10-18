@@ -47,7 +47,8 @@ interface PendingImage {
 
 type Sheet = null | "avatar" | "banner";
 
-export function ProfileTab() {
+/** `asPage`: dentro da rota /perfil, que já tem o próprio cabeçalho. */
+export function ProfileTab({ asPage = false }: { asPage?: boolean } = {}) {
   const { user, profile, company, refreshProfile } = useAuth();
   const team = useTeamAccess();
 
@@ -169,9 +170,11 @@ export function ProfileTab() {
 
   return (
     <>
-      <div className="hidden md:block">
-        <SettingsTabHeader title="Perfil" />
-      </div>
+      {!asPage && (
+        <div className="hidden md:block">
+          <SettingsTabHeader title="Perfil" />
+        </div>
+      )}
 
       <div className={cn("profile-editor", dirty && "has-savebar")}>
         {/* ── Banner + foto ── */}

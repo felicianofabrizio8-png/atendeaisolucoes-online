@@ -59,6 +59,8 @@ export function pagePermission(path: string): Permission | "admin" | null {
   if (/^\/(configuracoes\/(coach|regras|recovery))/.test(path)) return "ai.manage";
   if (/^\/(configuracoes|onboarding)/.test(path)) return "settings.manage";
   if (path.startsWith("/metas")) return "goals.view";
+  // O próprio perfil: qualquer membro ativo.
+  if (path === "/perfil") return null;
   return "admin";
 }
 export function canOpenPage(access: TeamAccess | undefined, path: string): boolean {
@@ -100,7 +102,10 @@ export function apiPermission(path: string): Permission | "admin" {
   return "admin";
 }
 
-export const PERMISSION_GROUPS: Array<{ module: string; items: Array<{ key: Permission; hint: string }> }> = [
+export const PERMISSION_GROUPS: Array<{
+  module: string;
+  items: Array<{ key: Permission; hint: string }>;
+}> = [
   { module: "Painel", items: [{ key: "dashboard.view", hint: "Vê os números da empresa." }] },
   {
     module: "Atendimento",
