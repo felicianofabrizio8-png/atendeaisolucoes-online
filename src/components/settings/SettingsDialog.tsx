@@ -9,7 +9,9 @@ import {
   Plug,
   Search,
   ShieldCheck,
+  UserRound,
   Users,
+  KeyRound,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -26,12 +28,16 @@ import { AppearanceTab } from "./AppearanceTab";
 import { ServiceTab } from "./ServiceTab";
 import { ConnectionsTab } from "./ConnectionsTab";
 import { PrivacyTab } from "./PrivacyTab";
+import { ProfileTab } from "./ProfileTab";
+import { AccountTab } from "./AccountTab";
 import { SettingsMobile, type MobileSettingsItem } from "./SettingsMobile";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 /** Como cada seção aparece na lista do celular. */
 const MOBILE_META: Record<SettingsTab, Pick<MobileSettingsItem, "hint" | "tone" | "group">> = {
-  usuarios: { hint: "Equipe, convites e permissões", tone: "#4f46e5", group: "Conta" },
+  perfil: { hint: "Foto, banner, apelido e recado", tone: "#db2777", group: "Você" },
+  conta: { hint: "E-mail, telefone e empresa", tone: "#2563eb", group: "Você" },
+  usuarios: { hint: "Equipe, convites e permissões", tone: "#4f46e5", group: "Equipe" },
   aparencia: { hint: "Tema, cores e fonte", tone: "#7c3aed", group: "Preferências" },
   atendimento: {
     hint: "Respostas rápidas, SLA, motivos de perda",
@@ -49,6 +55,18 @@ const TABS: Array<{
   /** Termos extras usados pela busca. */
   keywords: string;
 }> = [
+  {
+    value: "perfil",
+    label: "Perfil",
+    icon: UserRound,
+    keywords: "foto avatar banner capa apelido nome recado bio",
+  },
+  {
+    value: "conta",
+    label: "Conta",
+    icon: KeyRound,
+    keywords: "email e-mail telefone celular empresa equipe função membro",
+  },
   {
     value: "usuarios",
     label: "Usuários e Permissões",
@@ -82,6 +100,8 @@ const TABS: Array<{
 ];
 
 const TAB_CONTENT: Record<SettingsTab, () => React.JSX.Element> = {
+  perfil: ProfileTab,
+  conta: AccountTab,
   usuarios: UsersTab,
   aparencia: AppearanceTab,
   atendimento: ServiceTab,
@@ -100,6 +120,8 @@ export function SettingsDialog() {
   const allowedTabs = TABS.filter(
     (t) =>
       t.value === "aparencia" ||
+      t.value === "perfil" ||
+      t.value === "conta" ||
       (t.value === "usuarios" ? access.isAdmin : access.can("settings.manage")),
   );
   const [query, setQuery] = useState("");

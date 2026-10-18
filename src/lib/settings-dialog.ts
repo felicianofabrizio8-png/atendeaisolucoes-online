@@ -3,7 +3,14 @@
 
 import { useSyncExternalStore } from "react";
 
-export type SettingsTab = "usuarios" | "aparencia" | "atendimento" | "conexoes" | "privacidade";
+export type SettingsTab =
+  | "perfil"
+  | "conta"
+  | "usuarios"
+  | "aparencia"
+  | "atendimento"
+  | "conexoes"
+  | "privacidade";
 
 /** `direct`: aberto já numa seção específica (o celular pula a lista). */
 type State = { open: boolean; tab: SettingsTab; direct: boolean };

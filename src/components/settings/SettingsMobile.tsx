@@ -9,6 +9,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/utils";
 import { closeSettings, setSettingsTab, type SettingsTab } from "@/lib/settings-dialog";
+import { bannerCss, initialsOf } from "@/lib/profile-media";
+import "./profile.css";
 
 export interface MobileSettingsItem {
   value: SettingsTab;
@@ -52,13 +54,6 @@ export function SettingsMobile({
   const groups = [...new Set(visible.map((item) => item.group))];
 
   const name = profile?.display_name ?? user?.email?.split("@")[0] ?? "Visitante";
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
-
   const open = (value: SettingsTab) => {
     setSettingsTab(value);
     setDetail(true);
@@ -83,15 +78,32 @@ export function SettingsMobile({
 
         <div className="settings-scroll">
           {user && (
-            <div className="settings-profile">
-              <span className="settings-avatar">{initials || "U"}</span>
-              <div className="min-w-0">
-                <p className="truncate text-[17px] font-semibold">{name}</p>
-                <p className="truncate text-[13px] text-muted-foreground">
-                  {[company?.name, user.email].filter(Boolean).join(" · ")}
-                </p>
-              </div>
-            </div>
+            <button
+              type="button"
+              className="settings-profile"
+              onClick={() => open("perfil")}
+              style={
+                profile?.banner_url
+                  ? undefined
+                  : ({
+                      "--profile-banner": bannerCss(profile?.banner_preset),
+                    } as React.CSSProperties)
+              }
+            >
+              {profile?.banner_url && (
+                <img src={profile.banner_url} alt="" className="settings-profile-banner" />
+              )}
+              <span className="settings-avatar">
+                {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : initialsOf(name)}
+              </span>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[17px] font-semibold">{name}</span>
+                <span className="block truncate text-[13px] opacity-80">
+                  {profile?.bio || [company?.name, user.email].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 opacity-70" />
+            </button>
           )}
 
           <label className="settings-search">
