@@ -71,49 +71,44 @@ export function CatalogAuditPanel({
   };
 
   return (
-    <section className="rounded-lg border border-amber-500/40 bg-amber-500/5">
+    <section className="lp-audit" data-open={open || undefined}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left"
+        aria-expanded={open}
+        className="lp-audit-head"
       >
-        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-        <span className="flex-1 text-xs font-semibold">
-          Qualidade do catálogo: {reports.length} produto{reports.length === 1 ? "" : "s"} com
-          informação que a IA não consegue confirmar
+        <span className="lp-audit-icon" aria-hidden="true">
+          <AlertTriangle />
         </span>
-        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        <span className="lp-audit-text">
+          <b>
+            {reports.length} produto{reports.length === 1 ? "" : "s"} para revisar
+          </b>
+          <small>Informações que a IA não consegue confirmar ao vender.</small>
+        </span>
+        {open ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
       </button>
       {open && (
-        <ul className="divide-y divide-border border-t border-border">
+        <ul className="lp-audit-list">
           {reports.map((report) => {
             const product = products.find((candidate) => candidate.id === report.productId);
             return (
-              <li key={report.productId} className="px-3 py-2 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="flex-1 text-xs font-semibold truncate">
-                    {report.productName}
-                  </span>
+              <li key={report.productId}>
+                <div className="lp-audit-row">
+                  <b>{report.productName}</b>
                   {report.suggestions.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => apply(report)}
-                      className="text-[11px] font-semibold rounded-md bg-primary text-primary-foreground px-2 py-1 hover:opacity-90"
-                    >
+                    <button type="button" onClick={() => apply(report)} className="lp-audit-apply">
                       Aplicar tipagem sugerida
                     </button>
                   )}
                   {product && (
-                    <button
-                      type="button"
-                      onClick={() => onEdit(product)}
-                      className="text-[11px] font-semibold rounded-md border border-border px-2 py-1 hover:bg-accent"
-                    >
+                    <button type="button" onClick={() => onEdit(product)} className="lp-audit-edit">
                       Editar
                     </button>
                   )}
                 </div>
-                <ul className="text-[11px] text-muted-foreground list-disc pl-4">
+                <ul className="lp-audit-issues">
                   {report.issues.map((issue, index) => (
                     <li key={index}>{issueText(issue)}</li>
                   ))}
