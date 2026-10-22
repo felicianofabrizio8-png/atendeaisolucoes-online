@@ -64,14 +64,13 @@ interface SheetContentProps
 
 /** Classes aplicadas só abaixo de 640px para transformar o drawer em tela cheia. */
 const MOBILE_FULLSCREEN =
-  "max-sm:inset-0 max-sm:h-[100dvh] max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:p-4";
+  "max-sm:inset-0 max-sm:h-[100dvh] max-sm:w-full max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:p-4 max-sm:pt-[calc(1rem+env(safe-area-inset-top))] max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))]";
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = "right", className, children, mobileFullscreen, ...props }, ref) => {
-  const fullscreen =
-    mobileFullscreen ?? (side === "left" || side === "right");
+  const fullscreen = mobileFullscreen ?? (side === "left" || side === "right");
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -82,7 +81,11 @@ const SheetContent = React.forwardRef<
       >
         <SheetPrimitive.Close
           aria-label="Fechar"
-          className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary sm:right-4 sm:top-4 sm:h-auto sm:w-auto"
+          className={cn(
+            "absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-md opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary sm:right-4 sm:top-4 sm:h-auto sm:w-auto",
+            // Tela cheia no app instalado: o X fica abaixo do notch.
+            fullscreen && "max-sm:top-[calc(0.75rem+env(safe-area-inset-top))]",
+          )}
         >
           <X className="h-5 w-5 sm:h-4 sm:w-4" />
           <span className="sr-only">Fechar</span>

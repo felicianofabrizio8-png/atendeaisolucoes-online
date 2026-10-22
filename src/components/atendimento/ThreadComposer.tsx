@@ -1,5 +1,5 @@
 import { useEffect, type FormEvent, type RefObject } from "react";
-import { Mic, Send, Smile, Sparkles, X } from "lucide-react";
+import { Loader2, Mic, Send, Smile, Sparkles, X } from "lucide-react";
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from "emoji-picker-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MediaSendPanel, QuickRepliesButton } from "@/components/inbox/composer/ComposerWidgets";
@@ -210,7 +210,7 @@ export function ThreadComposer({
               placeholder={placeholder}
               // text-base (16px) impede o zoom do Safari ao focar; min-w-0 deixa
               // o campo encolher em vez de empurrar os botões para fora.
-              className="block max-h-40 min-h-[36px] min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-2 text-base leading-snug outline-none placeholder:font-semibold placeholder:text-muted-foreground disabled:opacity-60 sm:text-sm"
+              className="block max-h-40 min-h-[36px] min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-2 text-base leading-snug outline-none placeholder:text-muted-foreground disabled:opacity-60 sm:text-sm"
             />
 
             <button
@@ -221,12 +221,13 @@ export function ThreadComposer({
               title={
                 canSuggest ? "Sugerir resposta com IA" : "Sugestão com IA disponível no WhatsApp"
               }
-              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="at-suggest inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Sparkles className="h-4 w-4" />
-              <span className="hidden md:inline">
-                {suggesting ? "Gerando..." : "Sugerir com IA"}
-              </span>
+              {suggesting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
             </button>
 
             {showMic ? (

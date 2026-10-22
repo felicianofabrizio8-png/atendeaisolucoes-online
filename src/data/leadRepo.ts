@@ -558,10 +558,28 @@ export async function refreshTeamScope(companyId: string) {
   }
   if (generation !== realtimeGeneration || realtimeCompanyId !== companyId) return;
   const checked = new Set(checkedIds);
-  remoteLeads = remoteLeads.filter((lead) => !checked.has(lead.id) || visible.has(lead.id))
-    .map((lead) => visible.has(lead.id) ? { ...lead, assignedTo: visible.get(lead.id) ?? undefined } : lead);
-  const allowedLeads = new Set(remoteLeads.map((lead) => lead.id));
+  // Roda a cada 15s: só recria listas, reconstrói o índice e notifica quando
+  // algo mudou de fato — senão a Caixa e o Chat re-renderizavam à toa.
+  let changed = false;
+  const nextLeads: Lead[] = [];
+  for (const lead of remoteLeads) {
+    if (!checked.has(lead.id)) {
+      nextLeads.push(lead);
+    } else if (!visible.has(lead.id)) {
+      changed = true;
+    } else {
+      const assignedTo = visible.get(lead.id) ?? undefined;
+      if (lead.assignedTo === assignedTo) nextLeads.push(lead);
+      else {
+        changed = true;
+        nextLeads.push({ ...lead, assignedTo });
+      }
+    }
+  }
+  const allowedLeads = new Set(nextLeads.map((lead) => lead.id));
   const removed = remoteConversations.filter((conversation) => !allowedLeads.has(conversation.leadId));
+  if (!changed && removed.length === 0) return;
+  remoteLeads = nextLeads;
   remoteConversations = remoteConversations.filter((conversation) => allowedLeads.has(conversation.leadId));
   const removedIds = new Set(removed.map((conversation) => conversation.id));
   remoteMessages = remoteMessages.filter((message) => !removedIds.has(message.conversationId));

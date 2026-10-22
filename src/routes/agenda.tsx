@@ -88,7 +88,6 @@ import {
   type AgendaView,
   type ScopeFilter,
 } from "@/components/agenda/agenda-model";
-import "@/components/agenda/agenda.css";
 
 export const Route = createFileRoute("/agenda")({
   component: AgendaPage,

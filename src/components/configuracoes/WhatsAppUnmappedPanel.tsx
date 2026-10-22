@@ -53,7 +53,9 @@ export function WhatsAppUnmappedPanel() {
 
   useEffect(() => {
     void load();
-    const id = window.setInterval(load, 30_000);
+    const id = window.setInterval(() => {
+      if (!document.hidden) void load();
+    }, 30_000);
     return () => window.clearInterval(id);
   }, [load]);
 
@@ -79,8 +81,8 @@ export function WhatsAppUnmappedPanel() {
           </div>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Existem mensagens chegando para um número do seu Business Manager que ainda{" "}
-            <strong>não está conectado</strong> à Lume. Conecte esse número como uma nova
-            integração WhatsApp, ou peça para o cliente usar o número oficialmente divulgado.
+            <strong>não está conectado</strong> à Lume. Conecte esse número como uma nova integração
+            WhatsApp, ou peça para o cliente usar o número oficialmente divulgado.
           </p>
         </div>
         <button

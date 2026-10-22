@@ -69,16 +69,14 @@ export function AppearanceTab() {
 
   return (
     <>
-      <SettingsTabHeader title="Aparência" description="Tema, cor de destaque e fonte do painel" />
+      <SettingsTabHeader title="Aparência" />
 
       <div className="space-y-8">
         <section>
-          <h3 className="text-sm font-semibold mb-1">Tema</h3>
-          <p className="text-xs text-muted-foreground mb-4">
-            Escolha as cores de fundo e das superfícies.
-          </p>
+          <h3 className="text-sm font-semibold mb-3">Tema</h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Três quadradinhos lado a lado em qualquer largura. */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {THEME_OPTIONS.map((opt) => {
               const active = theme === opt.value;
               const p = THEME_PREVIEW[opt.value];
@@ -88,33 +86,40 @@ export function AppearanceTab() {
                   type="button"
                   onClick={() => setTheme(opt.value)}
                   aria-pressed={active}
+                  title={opt.description}
                   className={cn(
-                    "rounded-lg border p-2 text-left transition-colors",
+                    "min-w-0 rounded-xl border p-1.5 sm:p-2 text-left transition-colors",
                     active
                       ? "border-primary ring-1 ring-primary"
                       : "border-border hover:border-muted-foreground/50",
                   )}
                 >
                   <div
-                    className="h-20 rounded-md overflow-hidden flex"
+                    className="aspect-square sm:aspect-[4/3] rounded-lg overflow-hidden flex"
                     style={{ background: p.bg, border: `1px solid ${p.border}` }}
                   >
                     <div
                       className="w-1/4 h-full"
                       style={{ background: p.sidebar, borderRight: `1px solid ${p.border}` }}
                     />
-                    <div className="flex-1 p-2 space-y-1.5">
+                    <div className="flex-1 min-w-0 p-1.5 sm:p-2 space-y-1.5">
                       <div
-                        className="h-7 rounded p-1.5 space-y-1"
+                        className="rounded p-1 sm:p-1.5 space-y-1"
                         style={{ background: p.card, border: `1px solid ${p.border}` }}
                       >
                         <div className="h-1 w-3/4 rounded-full" style={{ background: p.line }} />
                         <div className="h-1 w-1/2 rounded-full" style={{ background: p.line }} />
                       </div>
-                      <div className="h-2.5 w-10 rounded-sm bg-primary" />
+                      <div
+                        className="rounded p-1 sm:p-1.5 space-y-1"
+                        style={{ background: p.card, border: `1px solid ${p.border}` }}
+                      >
+                        <div className="h-1 w-2/3 rounded-full" style={{ background: p.line }} />
+                      </div>
+                      <div className="h-2 w-1/2 rounded-sm bg-primary" />
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center gap-1.5">
+                  <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                     <span
                       className={cn(
                         "h-4 w-4 rounded-full border grid place-items-center shrink-0",
@@ -125,9 +130,11 @@ export function AppearanceTab() {
                     >
                       {active && <Check className="h-2.5 w-2.5" />}
                     </span>
-                    <span className="text-xs font-semibold">{opt.label}</span>
+                    <span className="text-xs font-semibold truncate">{opt.label}</span>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">{opt.description}</p>
+                  <p className="hidden sm:block mt-0.5 px-0.5 text-[11px] text-muted-foreground">
+                    {opt.description}
+                  </p>
                 </button>
               );
             })}

@@ -19,6 +19,7 @@ import { Route as RelatoriosRouteImport } from './routes/relatorios'
 import { Route as ProdutosRouteImport } from './routes/produtos'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
+import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as OrcamentosRouteImport } from './routes/orcamentos'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as MetasRouteImport } from './routes/metas'
@@ -184,6 +185,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const PrivacidadeRoute = PrivacidadeRouteImport.update({
   id: '/privacidade',
   path: '/privacidade',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrcamentosRoute = OrcamentosRouteImport.update({
@@ -808,6 +814,7 @@ export interface FileRoutesByFullPath {
   '/metas': typeof MetasRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
+  '/perfil': typeof PerfilRoute
   '/privacidade': typeof PrivacidadeRoute
   '/privacy': typeof PrivacyRoute
   '/produtos': typeof ProdutosRoute
@@ -932,6 +939,7 @@ export interface FileRoutesByTo {
   '/metas': typeof MetasRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
+  '/perfil': typeof PerfilRoute
   '/privacidade': typeof PrivacidadeRoute
   '/privacy': typeof PrivacyRoute
   '/produtos': typeof ProdutosRoute
@@ -1058,6 +1066,7 @@ export interface FileRoutesById {
   '/metas': typeof MetasRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/orcamentos': typeof OrcamentosRoute
+  '/perfil': typeof PerfilRoute
   '/privacidade': typeof PrivacidadeRoute
   '/privacy': typeof PrivacyRoute
   '/produtos': typeof ProdutosRoute
@@ -1185,6 +1194,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/onboarding'
     | '/orcamentos'
+    | '/perfil'
     | '/privacidade'
     | '/privacy'
     | '/produtos'
@@ -1309,6 +1319,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/onboarding'
     | '/orcamentos'
+    | '/perfil'
     | '/privacidade'
     | '/privacy'
     | '/produtos'
@@ -1434,6 +1445,7 @@ export interface FileRouteTypes {
     | '/metas'
     | '/onboarding'
     | '/orcamentos'
+    | '/perfil'
     | '/privacidade'
     | '/privacy'
     | '/produtos'
@@ -1560,6 +1572,7 @@ export interface RootRouteChildren {
   MetasRoute: typeof MetasRoute
   OnboardingRoute: typeof OnboardingRouteWithChildren
   OrcamentosRoute: typeof OrcamentosRoute
+  PerfilRoute: typeof PerfilRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   PrivacyRoute: typeof PrivacyRoute
   ProdutosRoute: typeof ProdutosRoute
@@ -1728,6 +1741,13 @@ declare module '@tanstack/react-router' {
       path: '/privacidade'
       fullPath: '/privacidade'
       preLoaderRoute: typeof PrivacidadeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orcamentos': {
@@ -2575,6 +2595,7 @@ const rootRouteChildren: RootRouteChildren = {
   MetasRoute: MetasRoute,
   OnboardingRoute: OnboardingRouteWithChildren,
   OrcamentosRoute: OrcamentosRoute,
+  PerfilRoute: PerfilRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   PrivacyRoute: PrivacyRoute,
   ProdutosRoute: ProdutosRoute,

@@ -12,7 +12,14 @@ import {
 const attendant: TeamAccess = { active: true, role: "atendente", permissions: DEFAULT_ATTENDANT };
 describe("team permission boundaries", () => {
   it("limits attendants to operational screens", () => {
-    for (const path of ["/atendimento", "/inbox/example", "/agenda", "/orcamentos", "/produtos"])
+    for (const path of [
+      "/atendimento",
+      "/inbox/example",
+      "/agenda",
+      "/orcamentos",
+      "/produtos",
+      "/perfil",
+    ])
       expect(canOpenPage(attendant, path)).toBe(true);
     for (const path of [
       "/",
@@ -43,17 +50,22 @@ describe("team permission boundaries", () => {
   });
 });
 
-
 describe("metas: permissões", () => {
   it("rota e API das metas", () => {
     expect(pagePermission("/metas")).toBe("goals.view");
     expect(apiPermission("/api/goals/ask")).toBe("goals.view");
   });
   it("funcionário vê metas por padrão, mas não gerencia", () => {
-    const access = { active: true, role: "atendente" as const, permissions: [...DEFAULT_ATTENDANT] };
+    const access = {
+      active: true,
+      role: "atendente" as const,
+      permissions: [...DEFAULT_ATTENDANT],
+    };
     expect(can(access, "goals.view")).toBe(true);
     expect(canManageGoals(access)).toBe(false);
-    expect(canManageGoals({ ...access, permissions: [...DEFAULT_ATTENDANT, "goals.manage"] })).toBe(true);
+    expect(canManageGoals({ ...access, permissions: [...DEFAULT_ATTENDANT, "goals.manage"] })).toBe(
+      true,
+    );
     expect(canManageGoals({ ...access, role: "admin" })).toBe(true);
   });
   it("aparece na tela de permissões com explicação", () => {

@@ -19,6 +19,13 @@ export interface Profile {
   company_id: string;
   display_name: string | null;
   email: string | null;
+  created_at?: string | null;
+  /** Campos do perfil personalizável (20261017180000); ausentes antes da migração. */
+  avatar_url?: string | null;
+  banner_url?: string | null;
+  banner_preset?: string | null;
+  bio?: string | null;
+  phone?: string | null;
 }
 
 export interface Company {
@@ -57,11 +64,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     try {
-      const { data: prof } = await supabase
+      // Tenta os campos do perfil personalizável; sem a migração, cai no básico.
+      const extended = await supabase
         .from("profiles")
-        .select("id, company_id, display_name, email")
+        .select(
+          "id, company_id, display_name, email, created_at, avatar_url, banner_url, banner_preset, bio, phone",
+        )
         .eq("id", uid)
         .maybeSingle();
+      const prof: Profile | null = extended.error
+        ? (
+            await supabase
+              .from("profiles")
+              .select("id, company_id, display_name, email, created_at")
+              .eq("id", uid)
+              .maybeSingle()
+          ).data
+        : (extended.data as Profile | null);
       if (prof) {
         setProfile(prof);
         const { data: comp } = await supabase

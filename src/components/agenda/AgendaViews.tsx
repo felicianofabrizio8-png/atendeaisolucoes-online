@@ -12,6 +12,9 @@ import {
   TYPE_LABEL,
   type AgendaEvent,
 } from "./agenda-model";
+// CSS da tela importado aqui (e não no arquivo da rota): assim ele vai junto
+// do código da tela, e não no pacote inicial de todas as páginas.
+import "./agenda.css";
 
 const HOUR_PX = 56;
 const SNAP_MIN = 15;

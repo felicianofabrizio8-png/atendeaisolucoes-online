@@ -1,63 +1,33 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   listProducts,
   subscribeProducts,
   createProduct,
-  updateProduct,
   deleteProduct,
   getProductsCompanyId,
   listProductCategories,
   type Product,
 } from "@/data/products";
-import { formatBRL } from "@/data/mock";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  FileText,
-  Package,
-  Tag,
-  Plus,
-  Pencil,
-  Trash2,
-  X,
-  Upload,
-  ImageIcon,
-  ArrowLeft,
-  ArrowRight,
-  Loader2,
-  Camera,
-  Search,
-  Copy,
-  Eye,
-} from "lucide-react";
-import { compressImage, isMobileDevice } from "@/lib/image-compress";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { productMatches, normalizeSearch } from "@/lib/product-search";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { productMatches } from "@/lib/product-search";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { SmartImage } from "@/components/SmartImage";
-import { motion } from "framer-motion";
-import {
-  parseIncludedItems,
-  parseOptionalCatalogNumber,
-  parseVariants,
-  categoryRequiresDimensions,
-  hasCompleteProductDimensions,
-} from "@/lib/product-catalog-fields";
-import {
-  attributeRowsFromSpecifications,
-  attributeRowsToSpecifications,
-  auditProductFacts,
-  factKeyFromLabel,
-  normalizeProductFacts,
-  type AttributeRow,
-  type AttributeRowError,
-} from "@/lib/catalog-facts";
-import {
-  ProductAttributesField,
-  type AttributeSuggestion,
-} from "@/components/products/ProductAttributesField";
+import { attributeRowsFromSpecifications, factKeyFromLabel } from "@/lib/catalog-facts";
+import type { AttributeSuggestion } from "@/components/products/ProductAttributesField";
 import { CatalogAuditPanel } from "@/components/products/CatalogAuditPanel";
+import { ConfirmDeleteModal, ProductFormModal } from "@/components/products/ProductFormModal";
+import { ProductDetailSheet } from "@/components/products/ProductDetailSheet";
+import {
+  ProductsDesktop,
+  type CatalogViewProps,
+  type ProductSort,
+  type QuickFilter,
+} from "@/components/products/ProductsCatalog";
+import { ProductsMobile } from "@/components/products/ProductsMobile";
+import type { ProductActions } from "@/components/products/ProductCard";
+import { displayPrice, hasPromo } from "@/components/products/product-view";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createFileRoute("/produtos")({
   // Regressão pós-update: SSR desta rota estava causando HTTPError 500 no worker.
@@ -83,14 +53,19 @@ function useProducts(): Product[] {
 function ProductsPage() {
   const access = useTeamAccess();
   const canEdit = access.can("products.manage");
+  const canQuote = access.can("quotes.manage");
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const products = useProducts();
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
+  // Painel aberto guarda só o id: edições feitas em outro lugar aparecem na hora.
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  // Mobile: categoria aberta em grade. `null` = todas, uma faixa deslizante por categoria.
-  const [openCategory, setOpenCategory] = useState<string | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
+  const [quick, setQuick] = useState<QuickFilter>("todos");
+  const [sort, setSort] = useState<ProductSort>("padrao");
   const [dimensionRequiredCategories, setDimensionRequiredCategories] = useState<string[]>([]);
 
   useEffect(() => {
@@ -110,196 +85,134 @@ function ProductsPage() {
   const categories = useMemo(() => listProductCategories(products), [products]);
   const attributeSuggestions = useMemo(() => collectAttributeSuggestions(products), [products]);
 
-  const filtered = useMemo(() => {
-    return products.filter((p) => productMatches(p, query, categories));
-  }, [products, query, categories]);
+  // Busca + filtro rápido valem para tudo; a categoria escolhida filtra por cima.
+  const searched = useMemo(
+    () =>
+      products.filter(
+        (p) =>
+          productMatches(p, query, categories) &&
+          (quick === "todos" ||
+            (quick === "promo" && hasPromo(p)) ||
+            (quick === "semFoto" && !p.images?.length)),
+      ),
+    [products, query, categories, quick],
+  );
 
-  const grouped = useMemo(() => {
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of searched) counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
+    return [...counts.entries()].map(([name, count]) => ({ category: name, count }));
+  }, [searched]);
+
+  // Categoria escolhida que sumiu (renomeada, filtro rápido): volta para "Todas".
+  useEffect(() => {
+    if (category !== null && !products.some((p) => p.category === category)) setCategory(null);
+  }, [category, products]);
+
+  const visible = useMemo(
+    () =>
+      sortProducts(
+        searched.filter((p) => category === null || p.category === category),
+        sort,
+      ),
+    [searched, category, sort],
+  );
+
+  const groups = useMemo(() => {
     const map = new Map<string, Product[]>();
-    for (const p of filtered) {
+    for (const p of visible) {
       const arr = map.get(p.category) ?? [];
       arr.push(p);
       map.set(p.category, arr);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [visible]);
+
+  const viewing = viewingId ? (products.find((p) => p.id === viewingId) ?? null) : null;
+
+  const quote = (p?: Product) =>
+    navigate(
+      p
+        ? { to: "/orcamentos", search: { new: "1", suggestedProductId: p.id } }
+        : { to: "/orcamentos", search: {} },
+    );
+
+  const duplicate = (p: Product) => {
+    void createProduct({
+      name: `${p.name} (cópia)`,
+      model: p.model,
+      sku: undefined,
+      category: p.category,
+      description: p.description,
+      lengthM: p.lengthM,
+      widthM: p.widthM,
+      depthM: p.depthM,
+      capacityL: p.capacityL,
+      shape: p.shape,
+      specifications: p.specifications,
+      includedItems: p.includedItems,
+      variants: p.variants,
+      price: p.price,
+      promoPrice: p.promoPrice,
+      notes: p.notes,
+      images: p.images ?? [],
+    }).then(() => toast.success("Produto duplicado"));
+  };
+
+  const actionsFor = (p: Product): ProductActions => ({
+    onOpen: () => setViewingId(p.id),
+    onQuote: canQuote ? () => quote(p) : undefined,
+    onEdit: canEdit ? () => setEditing(p) : undefined,
+    onDuplicate: canEdit ? () => duplicate(p) : undefined,
+    onDelete: canEdit ? () => setConfirmDelete(p) : undefined,
+  });
+
+  const view: CatalogViewProps = {
+    products,
+    visible,
+    groups,
+    categoryCounts,
+    query,
+    onQuery: setQuery,
+    category,
+    onCategory: setCategory,
+    quick,
+    onQuick: setQuick,
+    sort,
+    onSort: setSort,
+    canEdit,
+    canQuote,
+    onCreate: () => setCreating(true),
+    onQuoteAny: () => quote(),
+    actionsFor,
+    audit: canEdit && !query.trim() && (
+      <CatalogAuditPanel products={products} onEdit={setEditing} />
+    ),
+  };
 
   return (
-    <div className="flex-1 overflow-y-auto safe-bottom">
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 h-14 px-3 md:px-6 border-b border-border flex items-center gap-2 md:gap-3">
-        <Package className="h-4 w-4 text-primary shrink-0" />
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold truncate">Catálogo de produtos</h1>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {query.trim()
-              ? `${filtered.length} resultado${filtered.length === 1 ? "" : "s"}`
-              : `${products.length} produtos`}
-          </p>
-        </div>
-        {canEdit && <><button
-          onClick={() => setCreating(true)}
-          aria-label="Novo produto"
-          className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-1.5 hover:opacity-90"
-        >
-          <Plus className="h-3.5 w-3.5" /> Novo produto
-        </button>
-        <button
-          onClick={() => setCreating(true)}
-          aria-label="Novo produto"
-          className="md:hidden h-11 w-11 inline-flex items-center justify-center rounded-md bg-primary text-primary-foreground hover:opacity-90"
-        >
-          <Plus className="h-5 w-5" />
-        </button></>}
-      </header>
+    <>
+      {isMobile ? <ProductsMobile {...view} /> : <ProductsDesktop {...view} />}
 
-      <div className="p-3 md:p-6 space-y-4 md:space-y-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por nome, categoria…"
-            className="w-full h-11 md:h-10 pl-9 pr-10 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          {query && (
-            <button
-              onClick={() => setQuery("")}
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
-              aria-label="Limpar busca"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
-        {canEdit && !query.trim() && <CatalogAuditPanel products={products} onEdit={setEditing} />}
-
-        {products.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center">
-            <Package className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm font-semibold">Nenhum produto cadastrado</p>
-            <p className="text-xs text-muted-foreground mt-1">Toque em "+" para começar.</p>
-          </div>
-        )}
-
-        {query.trim() && filtered.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center">
-            <Search className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm font-semibold">Não encontramos produtos para sua pesquisa.</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Tente outro termo como "SPA", "6x3" ou "aquecedor".
-            </p>
-          </div>
-        )}
-
-        {/* Mobile: chips de categoria. "Todas" mostra uma faixa deslizante por
-            categoria (o catálogo inteiro cabe em poucas telas); escolher uma
-            categoria abre os produtos dela em grade. */}
-        {grouped.length > 1 && (
-          <div className="md:hidden -mx-3 flex gap-2 overflow-x-auto px-3 scrollbar-none" role="tablist" aria-label="Categorias">
-            {[null, ...grouped.map(([category]) => category)].map((category) => {
-              const selected = openCategory === category;
-              return (
-                <button
-                  key={category ?? "__all"}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setOpenCategory(category)}
-                  style={{ minHeight: 34 }}
-                  className={cn(
-                    "shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition-colors",
-                    selected
-                      ? "border-transparent bg-foreground text-background"
-                      : "border-border text-muted-foreground",
-                  )}
-                >
-                  {category === null ? "Todas" : category || "Sem categoria"}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {grouped
-          .filter(([category]) => openCategory === null || category === openCategory)
-          .map(([category, items]) => (
-          <section key={category} className={cn(openCategory !== null && "max-md:-mt-1")}>
-            <div className="mb-3 flex items-center justify-between gap-2 px-1">
-              <h2 className="text-xs uppercase tracking-wide text-muted-foreground">
-                {category || "Sem categoria"}
-                <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70 md:hidden">· {items.length}</span>
-              </h2>
-              {openCategory === null && items.length > 2 && grouped.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setOpenCategory(category)}
-                  style={{ minHeight: 0 }}
-                  className="md:hidden text-xs font-medium text-primary"
-                >
-                  Ver todos
-                </button>
-              )}
-            </div>
-            <div
-              className={cn(
-                "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4",
-                openCategory === null && grouped.length > 1 && "m-rail",
-              )}
-              style={{ "--m-rail-item": "46%", "--m-rail-gutter": "12px" } as React.CSSProperties}
-            >
-              {items.map((p, idx) => (
-                <ProductCard
-                  key={p.id}
-                  product={p}
-                  query={query}
-                  index={idx}
-                  canEdit={canEdit}
-                  canQuote={access.can("quotes.manage")}
-                  onEdit={() => setEditing(p)}
-                  onDelete={() => setConfirmDelete(p)}
-                  onDuplicate={() => {
-                    void createProduct({
-                      name: `${p.name} (cópia)`,
-                      model: p.model,
-                      sku: undefined,
-                      category: p.category,
-                      description: p.description,
-                      lengthM: p.lengthM,
-                      widthM: p.widthM,
-                      depthM: p.depthM,
-                      capacityL: p.capacityL,
-                      shape: p.shape,
-                      specifications: p.specifications,
-                      includedItems: p.includedItems,
-                      variants: p.variants,
-                      price: p.price,
-                      promoPrice: p.promoPrice,
-                      notes: p.notes,
-                      images: p.images ?? [],
-                    }).then(() => toast.success("Produto duplicado"));
-                  }}
-                  onQuote={() =>
-                    navigate({
-                      to: "/orcamentos",
-                      search: { new: "1", suggestedProductId: p.id },
-                    })
-                  }
-                />
-              ))}
-            </div>
-          </section>
-          ))}
-
-        {access.can("quotes.manage") && !query.trim() && products.length > 0 && (
-          <div className="pt-2">
-            <Link to="/orcamentos" search={{}} className="text-xs text-primary hover:underline">
-              → Criar orçamento com estes produtos
-            </Link>
-          </div>
-        )}
-      </div>
+      {/* O painel some enquanto o formulário ou a exclusão estão abertos (o
+          diálogo modal bloquearia cliques neles) e volta atualizado depois. */}
+      {viewing && !creating && !editing && !confirmDelete && (
+        <ProductDetailSheet
+          product={viewing}
+          onClose={() => setViewingId(null)}
+          onQuote={canQuote ? () => quote(viewing) : undefined}
+          onEdit={canEdit ? () => setEditing(viewing) : undefined}
+          onDuplicate={
+            canEdit
+              ? () => {
+                  duplicate(viewing);
+                  setViewingId(null);
+                }
+              : undefined
+          }
+          onDelete={canEdit ? () => setConfirmDelete(viewing) : undefined}
+        />
+      )}
 
       {canEdit && (creating || editing) && (
         <ProductFormModal
@@ -320,21 +233,22 @@ function ProductsPage() {
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => {
             deleteProduct(confirmDelete.id);
+            if (viewingId === confirmDelete.id) setViewingId(null);
             setConfirmDelete(null);
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
-/** Número digitado ou null (para avisos ao vivo, sem bloquear a digitação). */
-function parseLooseNumber(value: string): number | null {
-  try {
-    return parseOptionalCatalogNumber(value) ?? null;
-  } catch {
-    return null;
-  }
+function sortProducts(items: Product[], sort: ProductSort): Product[] {
+  if (sort === "padrao") return items;
+  const sorted = [...items];
+  if (sort === "nome") sorted.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  if (sort === "menor") sorted.sort((a, b) => displayPrice(a) - displayPrice(b));
+  if (sort === "maior") sorted.sort((a, b) => displayPrice(b) - displayPrice(a));
+  return sorted;
 }
 
 /** Rótulo → tipo/unidade mais frequentes nas características da empresa. */
@@ -358,847 +272,4 @@ function collectAttributeSuggestions(products: Product[]): AttributeSuggestion[]
   return [...byLabel.values()]
     .map((entry) => entry.suggestion)
     .sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
-}
-
-function highlightMatch(text: string, query: string): React.ReactNode {
-  const q = query.trim();
-  if (!q) return text;
-  const nText = normalizeSearch(text);
-  const nQuery = normalizeSearch(q);
-  const idx = nText.indexOf(nQuery);
-  if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark className="bg-yellow-200 dark:bg-yellow-500/40 text-inherit rounded-sm px-0.5">
-        {text.slice(idx, idx + q.length)}
-      </mark>
-      {text.slice(idx + q.length)}
-    </>
-  );
-}
-
-interface ProductCardProps {
-  canEdit: boolean;
-  canQuote: boolean;
-  product: Product;
-  query: string;
-  index: number;
-  onEdit: () => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  onQuote: () => void;
-}
-
-function ProductCard({
-  canEdit,
-  canQuote,
-  product,
-  query,
-  index,
-  onEdit,
-  onDelete,
-  onDuplicate,
-  onQuote,
-}: ProductCardProps) {
-  const hasPromo = product.promoPrice && product.promoPrice < product.price;
-  const cover = product.images?.[0];
-  const displayPrice = hasPromo ? product.promoPrice! : product.price;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: Math.min(index * 0.02, 0.2), ease: "easeOut" }}
-      whileHover={{ y: -4 }}
-      className="group relative flex flex-col rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-lg hover:border-primary/40 transition-all duration-200"
-    >
-      <div className="relative w-full bg-muted/40" style={{ aspectRatio: "1 / 1" }}>
-        {cover ? (
-          <SmartImage
-            src={cover}
-            alt={product.name}
-            wrapperClassName="w-full h-full"
-            aspectRatio="1/1"
-            thumbWidth={480}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-            <ImageIcon className="h-8 w-8 opacity-40" />
-          </div>
-        )}
-
-        <div className="absolute top-2 left-2">
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide rounded-full bg-background/85 backdrop-blur px-2 py-0.5 text-foreground border border-border/60">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Ativo
-          </span>
-        </div>
-
-        {hasPromo && (
-          <div className="absolute top-2 right-2">
-            <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-[var(--status-won)] text-[var(--status-won-foreground)] px-2 py-0.5 shadow-sm">
-              Promo
-            </span>
-          </div>
-        )}
-
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end justify-center gap-1.5 p-2.5">
-          {canQuote && <CardIconButton label="Criar orçamento" onClick={onQuote}>
-            <Eye className="h-3.5 w-3.5" />
-          </CardIconButton>}
-          {canEdit && <><CardIconButton label="Editar" onClick={onEdit}>
-            <Pencil className="h-3.5 w-3.5" />
-          </CardIconButton>
-          <CardIconButton label="Duplicar" onClick={onDuplicate}>
-            <Copy className="h-3.5 w-3.5" />
-          </CardIconButton>
-          <CardIconButton label="Excluir" onClick={onDelete} destructive>
-            <Trash2 className="h-3.5 w-3.5" />
-          </CardIconButton></>}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5 p-3">
-        <h3
-          className="text-sm font-semibold leading-snug line-clamp-2 min-h-[2.5rem]"
-          title={product.name}
-        >
-          {highlightMatch(product.name, query)}
-        </h3>
-        <div className="flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium rounded-md bg-secondary text-secondary-foreground px-1.5 py-0.5 truncate max-w-full">
-            <Tag className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate">{product.category}</span>
-          </span>
-        </div>
-        <div className="flex items-baseline gap-2 pt-0.5">
-          <span className="text-base font-bold text-foreground">{formatBRL(displayPrice)}</span>
-          {hasPromo && (
-            <span className="text-[11px] text-muted-foreground line-through">
-              {formatBRL(product.price)}
-            </span>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function CardIconButton({
-  children,
-  onClick,
-  label,
-  destructive,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  label: string;
-  destructive?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className={cn(
-        "h-8 w-8 inline-flex items-center justify-center rounded-full bg-background/95 backdrop-blur border border-border/60 shadow-sm text-foreground hover:scale-110 transition-transform",
-        destructive &&
-          "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive",
-        !destructive && "hover:bg-primary hover:text-primary-foreground hover:border-primary",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ProductFormModal({
-  product,
-  dimensionRequiredCategories,
-  categories,
-  attributeSuggestions,
-  onClose,
-}: {
-  product: Product | null;
-  dimensionRequiredCategories: string[];
-  categories: string[];
-  attributeSuggestions: AttributeSuggestion[];
-  onClose: () => void;
-}) {
-  const isEdit = !!product;
-  const [name, setName] = useState(product?.name ?? "");
-  const [model, setModel] = useState(product?.model ?? "");
-  const [sku, setSku] = useState(product?.sku ?? "");
-  const [category, setCategory] = useState(product?.category ?? "");
-  const [price, setPrice] = useState<string>(product ? String(product.price) : "");
-  const [promoPrice, setPromoPrice] = useState<string>(
-    product?.promoPrice ? String(product.promoPrice) : "",
-  );
-  const [description, setDescription] = useState(product?.description ?? "");
-  const [lengthM, setLengthM] = useState(product?.lengthM != null ? String(product.lengthM) : "");
-  const [widthM, setWidthM] = useState(product?.widthM != null ? String(product.widthM) : "");
-  const [depthM, setDepthM] = useState(product?.depthM != null ? String(product.depthM) : "");
-  const [capacityL, setCapacityL] = useState(
-    product?.capacityL != null ? String(product.capacityL) : "",
-  );
-  const [shape, setShape] = useState(product?.shape ?? "");
-  const [attributeRows, setAttributeRows] = useState<AttributeRow[]>(() =>
-    attributeRowsFromSpecifications(product?.specifications),
-  );
-  const [attributeErrors, setAttributeErrors] = useState<Partial<Record<number, AttributeRowError>>>(
-    {},
-  );
-  const [includedItems, setIncludedItems] = useState((product?.includedItems ?? []).join("\n"));
-  const [variants, setVariants] = useState(JSON.stringify(product?.variants ?? [], null, 2));
-  const [notes, setNotes] = useState(product?.notes ?? "");
-  const [images, setImages] = useState<string[]>(product?.images ?? []);
-  const [error, setError] = useState<string | null>(null);
-  // Medida/quantidade escrita só na descrição/observações: a Vendedora não a
-  // confirma (aviso, não bloqueia).
-  const freeTextWarnings = useMemo(() => {
-    const attributes = attributeRowsToSpecifications(attributeRows).specifications;
-    return auditProductFacts({
-      id: product?.id ?? "draft",
-      name: name || "draft",
-      description,
-      notes,
-      lengthM: parseLooseNumber(lengthM),
-      widthM: parseLooseNumber(widthM),
-      depthM: parseLooseNumber(depthM),
-      capacityL: parseLooseNumber(capacityL),
-      specifications: attributes,
-      price: 1,
-    })
-      .issues.filter((issue) => issue.code === "fact_only_in_free_text")
-      .map((issue) => issue.detail)
-      .filter((detail): detail is string => Boolean(detail));
-  }, [attributeRows, product?.id, name, description, notes, lengthM, widthM, depthM, capacityL]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const priceNum = Number(price.replace(",", "."));
-    if (!name.trim()) {
-      setError("Informe o nome do produto.");
-      return;
-    }
-    if (!Number.isFinite(priceNum) || priceNum <= 0) {
-      setError("Informe um preço válido.");
-      return;
-    }
-    const promoNum = promoPrice ? Number(promoPrice.replace(",", ".")) : undefined;
-    if (promoNum !== undefined && (!Number.isFinite(promoNum) || promoNum <= 0)) {
-      setError("Preço promocional inválido.");
-      return;
-    }
-    const attributes = attributeRowsToSpecifications(attributeRows);
-    setAttributeErrors(
-      Object.fromEntries(attributes.issues.map((issue) => [issue.index, issue.error])),
-    );
-    if (attributes.issues.length > 0) {
-      setError("Revise as características destacadas.");
-      return;
-    }
-    let structured;
-    try {
-      structured = {
-        lengthM: parseOptionalCatalogNumber(lengthM),
-        widthM: parseOptionalCatalogNumber(widthM),
-        depthM: parseOptionalCatalogNumber(depthM),
-        capacityL: parseOptionalCatalogNumber(capacityL),
-        specifications: attributes.specifications,
-        includedItems: parseIncludedItems(includedItems),
-        variants: parseVariants(variants),
-      };
-    } catch (parseError) {
-      const reason = parseError instanceof Error ? parseError.message : "";
-      setError(
-        reason === "catalog_specifications_invalid"
-          ? "Especificações devem ser um objeto JSON válido."
-          : reason === "catalog_variants_invalid"
-            ? "Variantes devem ser uma lista JSON de objetos."
-            : "Medidas e capacidade devem ser números não negativos.",
-      );
-      return;
-    }
-    if (
-      categoryRequiresDimensions(category, dimensionRequiredCategories) &&
-      !hasCompleteProductDimensions(structured)
-    ) {
-      setError("Comprimento, largura e profundidade são obrigatórios para esta categoria.");
-      return;
-    }
-    // Característica com o mesmo nome de um campo acima e valor diferente.
-    const conflict = normalizeProductFacts({
-      name: name.trim(),
-      price: priceNum,
-      shape: shape.trim() || null,
-      ...structured,
-    }).conflicts[0];
-    if (conflict) {
-      setError(
-        `"${conflict.label}" está com ${conflict.attributeValue} nas características e ${conflict.fieldValue} no campo principal.`,
-      );
-      return;
-    }
-    const emptyValue = isEdit ? null : undefined;
-    const payload = {
-      name: name.trim(),
-      model: model.trim() || emptyValue,
-      sku: sku.trim() || emptyValue,
-      category,
-      price: priceNum,
-      promoPrice: promoNum,
-      description: description.trim() || undefined,
-      lengthM: structured.lengthM ?? emptyValue,
-      widthM: structured.widthM ?? emptyValue,
-      depthM: structured.depthM ?? emptyValue,
-      capacityL: structured.capacityL ?? emptyValue,
-      shape: shape.trim() || emptyValue,
-      specifications: structured.specifications,
-      includedItems: structured.includedItems,
-      variants: structured.variants,
-      notes: notes.trim() || undefined,
-      images,
-    };
-    if (isEdit && product) {
-      updateProduct(product.id, payload);
-    } else {
-      createProduct(payload);
-    }
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch md:items-center justify-center md:p-4">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-card border-0 md:border border-border md:rounded-lg shadow-lg w-full md:max-w-2xl max-h-[100dvh] md:max-h-[90vh] overflow-y-auto safe-top safe-bottom"
-      >
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-sm font-semibold">{isEdit ? "Editar produto" : "Novo produto"}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-3">
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Nome
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex.: Piscina de fibra 6x3"
-              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              autoFocus
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Modelo (opcional)
-              </label>
-              <input
-                type="text"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="Ex.: Caribe 6"
-                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                SKU (opcional)
-              </label>
-              <input
-                type="text"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="Ex.: CAR-6X3-AZ"
-                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Categoria
-            </label>
-            <input
-              type="text"
-              list="product-categories"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="Ex.: Sofás, Refrigeradores, Serviços"
-              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <datalist id="product-categories">
-              {categories.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Preço (R$)
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="0,00"
-                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Promo (opcional)
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={promoPrice}
-                onChange={(e) => setPromoPrice(e.target.value)}
-                placeholder="0,00"
-                className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-              Dimensões e capacidade (opcionais)
-            </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[
-                ["Comprimento (m)", lengthM, setLengthM],
-                ["Largura (m)", widthM, setWidthM],
-                ["Profundidade (m)", depthM, setDepthM],
-                ["Capacidade (L)", capacityL, setCapacityL],
-              ].map(([label, value, setter]) => (
-                <label key={label as string} className="text-[11px] text-muted-foreground">
-                  {label as string}
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={value as string}
-                    onChange={(e) => (setter as (next: string) => void)(e.target.value)}
-                    placeholder="Opcional"
-                    className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Formato real (opcional)
-            </label>
-            <input
-              type="text"
-              value={shape}
-              onChange={(e) => setShape(e.target.value)}
-              placeholder="Ex.: quadrada, retangular, redonda"
-              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              Informe o formato como ele é; o valor não será convertido para outro formato.
-            </p>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Descrição
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Detalhes do produto…"
-              className="mt-1 w-full px-3 py-2 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-            />
-            {freeTextWarnings.length > 0 && (
-              <p className="mt-1 text-[10px] text-amber-700">
-                {freeTextWarnings.join(", ")} só no texto: cadastre como característica para a IA
-                poder confirmar.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Itens inclusos (opcional)
-            </label>
-            <textarea
-              value={includedItems}
-              onChange={(e) => setIncludedItems(e.target.value)}
-              rows={3}
-              placeholder={"Um item por linha\nFiltro\nBomba"}
-              className="mt-1 w-full px-3 py-2 font-mono text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-
-          <ProductAttributesField
-            rows={attributeRows}
-            onChange={setAttributeRows}
-            errors={attributeErrors}
-            suggestions={attributeSuggestions}
-          />
-
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Variantes/cores JSON (opcional)
-              <textarea
-                value={variants}
-                onChange={(e) => setVariants(e.target.value)}
-                rows={6}
-                spellCheck={false}
-                className="mt-1 w-full px-3 py-2 font-mono text-xs normal-case rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-            </label>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Observações (opcional)
-            </label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ex.: Inclui escada inox"
-              className="mt-1 w-full h-11 md:h-9 px-3 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-
-          <ProductImagesField images={images} onChange={setImages} />
-
-          {error && (
-            <div className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className="sticky bottom-0 bg-card flex items-center justify-end gap-2 p-3 md:p-4 border-t border-border safe-bottom">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md border border-border bg-background h-11 md:h-auto md:px-3 md:py-1.5 hover:bg-accent"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md bg-primary text-primary-foreground h-11 md:h-auto md:px-3 md:py-1.5 hover:opacity-90"
-          >
-            {isEdit ? "Salvar" : "Cadastrar"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function ConfirmDeleteModal({
-  product,
-  onClose,
-  onConfirm,
-}: {
-  product: Product;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-lg shadow-lg w-full max-w-sm">
-        <div className="p-4 border-b border-border">
-          <h2 className="text-sm font-semibold">Excluir produto?</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            "{product.name}" será removido do catálogo. Essa ação não pode ser desfeita.
-          </p>
-        </div>
-        <div className="flex items-center justify-end gap-2 p-3 md:p-4">
-          <button
-            onClick={onClose}
-            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md border border-border bg-background h-11 md:h-auto md:px-3 md:py-1.5 hover:bg-accent"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 md:flex-none text-sm md:text-xs font-semibold rounded-md bg-destructive text-destructive-foreground h-11 md:h-auto md:px-3 md:py-1.5 hover:opacity-90 inline-flex items-center justify-center gap-1.5"
-          >
-            <Trash2 className="h-3.5 w-3.5" /> Excluir
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProductImagesField({
-  images,
-  onChange,
-}: {
-  images: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const galleryRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  // Local blob previews appended optimistically while uploading
-  const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
-  const [dragOver, setDragOver] = useState(false);
-  const isMobile = useMemo(() => isMobileDevice(), []);
-
-  const handleFiles = async (files: FileList | File[] | null) => {
-    if (!files) return;
-    const list = Array.from(files as ArrayLike<File>);
-    if (list.length === 0) return;
-    const companyId = getProductsCompanyId();
-    if (!companyId) {
-      toast.error("Carregue uma empresa antes de enviar fotos.");
-      return;
-    }
-
-    // Optimistic local previews for instant feedback
-    const previewUrls = list
-      .filter((f) => f.type.startsWith("image/"))
-      .map((f) => URL.createObjectURL(f));
-    setPendingPreviews((p) => [...p, ...previewUrls]);
-
-    setUploading(true);
-    setProgress({ done: 0, total: list.length });
-    const uploaded: string[] = [];
-    try {
-      let done = 0;
-      for (const file of list) {
-        if (!file.type.startsWith("image/")) {
-          toast.error(`Arquivo ignorado (não é imagem): ${file.name}`);
-          done++;
-          setProgress({ done, total: list.length });
-          continue;
-        }
-        try {
-          const compressed = await compressImage(file);
-          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-          const { error } = await supabase.storage.from("product-images").upload(path, compressed, {
-            cacheControl: "31536000",
-            upsert: false,
-            contentType: compressed.type || "image/jpeg",
-          });
-          if (error) {
-            console.error("PRODUCT_IMAGE_UPLOAD_ERROR", error);
-            const msg = /quota/i.test(error.message)
-              ? "Limite de armazenamento da empresa atingido. Remova imagens antigas ou contate o admin."
-              : `Falha ao enviar ${file.name}: ${error.message}`;
-            toast.error(msg);
-          } else {
-            const { getPublicImageUrl } = await import("@/lib/storage");
-            uploaded.push(getPublicImageUrl(path));
-          }
-        } catch (e) {
-          console.error("PRODUCT_IMAGE_COMPRESS_ERROR", e);
-          toast.error(`Falha ao processar ${file.name}`);
-        }
-        done++;
-        setProgress({ done, total: list.length });
-      }
-      if (uploaded.length) {
-        onChange([...images, ...uploaded]);
-        toast.success(`${uploaded.length} foto(s) adicionada(s)`);
-      }
-    } finally {
-      // Release object URLs
-      previewUrls.forEach((u) => URL.revokeObjectURL(u));
-      setPendingPreviews((p) => p.filter((u) => !previewUrls.includes(u)));
-      setUploading(false);
-      setProgress(null);
-      if (galleryRef.current) galleryRef.current.value = "";
-      if (cameraRef.current) cameraRef.current.value = "";
-    }
-  };
-
-  const remove = (idx: number) => {
-    onChange(images.filter((_, i) => i !== idx));
-  };
-
-  const move = (idx: number, dir: -1 | 1) => {
-    const next = [...images];
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[idx], next[j]] = [next[j], next[idx]];
-    onChange(next);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer?.files?.length) {
-      handleFiles(e.dataTransfer.files);
-    }
-  };
-
-  return (
-    <div>
-      <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-        Fotos do produto
-      </label>
-      <div className="mt-1 space-y-2">
-        {(images.length > 0 || pendingPreviews.length > 0) && (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {images.map((url, idx) => (
-              <div
-                key={url + idx}
-                className="relative group aspect-square rounded-md overflow-hidden border border-border bg-muted touch-manipulation"
-              >
-                <SmartImage
-                  src={url}
-                  alt={`Foto ${idx + 1}`}
-                  aspectRatio="1/1"
-                  wrapperClassName="w-full h-full"
-                />
-
-                {/* Always-visible action bar on mobile, hover on desktop */}
-                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 p-1 bg-gradient-to-t from-black/70 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  <button
-                    type="button"
-                    onClick={() => move(idx, -1)}
-                    disabled={idx === 0}
-                    className="p-1.5 rounded bg-background/90 hover:bg-background disabled:opacity-30"
-                    title="Mover para esquerda"
-                  >
-                    <ArrowLeft className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => move(idx, 1)}
-                    disabled={idx === images.length - 1}
-                    className="p-1.5 rounded bg-background/90 hover:bg-background disabled:opacity-30"
-                    title="Mover para direita"
-                  >
-                    <ArrowRight className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(idx)}
-                    className="p-1.5 rounded bg-destructive text-destructive-foreground hover:opacity-90"
-                    title="Remover"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-                {idx === 0 && (
-                  <span className="absolute top-1 left-1 text-[9px] font-semibold bg-primary text-primary-foreground rounded px-1.5 py-0.5">
-                    CAPA
-                  </span>
-                )}
-              </div>
-            ))}
-            {pendingPreviews.map((url) => (
-              <div
-                key={url}
-                className="relative aspect-square rounded-md overflow-hidden border border-border bg-muted"
-              >
-                <img src={url} alt="" className="w-full h-full object-cover opacity-60" />
-                <div className="absolute inset-0 flex items-center justify-center bg-background/40">
-                  <Loader2 className="h-4 w-4 animate-spin text-foreground" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <input
-          ref={galleryRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-        <input
-          ref={cameraRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => handleFiles(e.target.files)}
-        />
-
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          className={cn(
-            "rounded-md border border-dashed transition-colors",
-            dragOver ? "border-primary bg-primary/5" : "border-border bg-background",
-          )}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2">
-            {isMobile && (
-              <button
-                type="button"
-                onClick={() => cameraRef.current?.click()}
-                disabled={uploading}
-                className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground px-3 py-3 hover:opacity-90 disabled:opacity-60"
-              >
-                <Camera className="h-3.5 w-3.5" />
-                Tirar foto
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => galleryRef.current?.click()}
-              disabled={uploading}
-              className={cn(
-                "inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-md border border-border bg-background px-3 py-3 hover:bg-accent disabled:opacity-60",
-                !isMobile && "sm:col-span-2",
-              )}
-            >
-              {uploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : images.length > 0 ? (
-                <Upload className="h-3.5 w-3.5" />
-              ) : (
-                <ImageIcon className="h-3.5 w-3.5" />
-              )}
-              {uploading && progress
-                ? `Enviando ${progress.done}/${progress.total}…`
-                : isMobile
-                  ? "Escolher da galeria"
-                  : images.length > 0
-                    ? "Adicionar mais fotos (ou arraste aqui)"
-                    : "Enviar fotos do produto (ou arraste aqui)"}
-            </button>
-          </div>
-        </div>
-        <p className="text-[10px] text-muted-foreground">
-          A primeira foto é a capa. Imagens são comprimidas automaticamente para envio rápido no
-          WhatsApp.
-        </p>
-      </div>
-    </div>
-  );
 }

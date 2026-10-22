@@ -10,12 +10,16 @@ export function CustomerTierBadge({
   history,
   size = "md",
   className,
+  hideNew = false,
 }: {
   history: CustomerHistory;
   size?: "sm" | "md";
   className?: string;
+  /** Na fila, "Novo" em quase toda linha não diferencia ninguém: só os demais selos. */
+  hideNew?: boolean;
 }) {
   const info = classifyCustomer(history);
+  if (hideNew && info.tier === "novo") return null;
 
   return (
     <span

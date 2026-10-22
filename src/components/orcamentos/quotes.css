@@ -2014,8 +2014,18 @@ button.lq-stat:hover .lq-stat-arrow {
     border-radius: 0;
     border: 0;
   }
+  /* App instalado (barra de status translúcida): o topo começa abaixo do notch. */
   .lq-form-head {
-    padding: 22px 20px 0;
+    padding: calc(22px + env(safe-area-inset-top)) 20px 0;
+  }
+  /* Diálogos curtos (lançar progresso) continuam cartões, não tela cheia. */
+  .lq-form.lq-compact {
+    height: auto;
+    border: 1px solid rgb(255 255 255 / 0.1);
+    border-radius: 28px;
+  }
+  .lq-sheet {
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
   .lq-form-body {
     padding: 20px 20px 24px;

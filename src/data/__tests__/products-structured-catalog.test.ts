@@ -29,7 +29,7 @@ const productsSource = readFileSync(
   "utf8",
 );
 const productsRouteSource = readFileSync(
-  fileURLToPath(new URL("../../routes/produtos.tsx", import.meta.url)),
+  fileURLToPath(new URL("../../components/products/ProductFormModal.tsx", import.meta.url)),
   "utf8",
 );
 

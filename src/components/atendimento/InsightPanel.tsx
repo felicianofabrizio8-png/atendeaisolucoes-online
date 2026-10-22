@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ConversationAiChat } from "./ConversationAiChat";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { Check, Copy, Sparkles } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listProducts, subscribeProducts } from "@/data/products";
 import { classifyCustomer, describeHistory } from "@/lib/customer-loyalty";
@@ -204,13 +204,8 @@ function SegmentedToggle({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => vo
 function PanelHeading({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div>
-      <h3 className="at-panel-title text-[30px] font-extrabold leading-none tracking-tight">
-        {title}
-      </h3>
-      <p className="mt-1.5 flex items-center gap-1 text-[13px] font-bold text-muted-foreground">
-        {subtitle}
-        <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--primary)" }} />
-      </p>
+      <h3 className="at-panel-title">{title}</h3>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">{subtitle}</p>
     </div>
   );
 }
@@ -258,12 +253,10 @@ function Field({
   return (
     <div className="at-fact" data-field={label}>
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[13px] font-bold">{label}</span>
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
         {badge ??
           (tag && value ? (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {tag}
-            </span>
+            <span className="text-[10.5px] font-medium text-muted-foreground/80">{tag}</span>
           ) : null)}
       </div>
       <button
@@ -320,6 +313,28 @@ function InfoTab({
       }),
     [lead, conversation, messages, catalog, followup?.nextFollowupAt],
   );
+  // Campos vazios não ocupam caixas de "não informado": viram uma lista curta.
+  const pairFacts = (
+    [
+      ["Interesse", facts.interest],
+      ["Modelo/medida", facts.model],
+      ["Valor apresentado", facts.presentedValue],
+      ["Pagamento", facts.payment],
+    ] as const
+  ).filter(([, fact]) => !!fact);
+  const missing = (
+    [
+      ["Cidade/UF", facts.location],
+      ["Interesse", facts.interest],
+      ["Modelo/medida", facts.model],
+      ["Valor", facts.presentedValue],
+      ["Pagamento", facts.payment],
+      ["Prazo", facts.timing],
+      ["Próxima ação", facts.nextAction],
+    ] as const
+  )
+    .filter(([, fact]) => !fact)
+    .map(([label]) => label);
 
   return (
     <div className="at-info-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
@@ -327,32 +342,42 @@ function InfoTab({
 
       <Field label="Nome" value={lead.name} badge={<CustomerTierBadge history={history} />} />
       <Field label="Telefone" value={lead.phone ?? lead.handle} />
-      <Field label="Cidade/UF" fact={facts.location} />
+      {facts.location && <Field label="Cidade/UF" fact={facts.location} />}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Interesse" fact={facts.interest} />
-        <Field label="Modelo/medida" fact={facts.model} />
-        <Field label="Valor apresentado" fact={facts.presentedValue} />
-        <Field label="Pagamento" fact={facts.payment} />
-      </div>
+      {pairFacts.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          {pairFacts.map(([label, fact]) => (
+            <Field key={label} label={label} fact={fact} />
+          ))}
+        </div>
+      )}
 
-      <Field label="Prazo/intenção" fact={facts.timing} />
+      {facts.timing && <Field label="Prazo/intenção" fact={facts.timing} />}
       <Field
         label="Resumo"
         multiline
         value={summary ?? facts.summary}
         emptyText="Ainda não há dados comerciais na conversa."
       />
-      <Field label="Próxima ação" fact={facts.nextAction} />
+      {facts.nextAction && <Field label="Próxima ação" fact={facts.nextAction} />}
+      {missing.length > 0 && (
+        <div className="at-missing">
+          <p>Ainda sem informação</p>
+          <div>
+            {missing.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
+          </div>
+          <small>Aparece aqui quando o cliente contar na conversa ou no cadastro.</small>
+        </div>
+      )}
       {followup && (
         <div className="rounded-2xl border border-border bg-secondary/30 p-3.5">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-              Follow-up
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Follow-up</p>
             <span
               className={cn(
-                "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                "rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
                 followup.bucket === "overdue"
                   ? "bg-destructive/10 text-destructive"
                   : "bg-secondary text-muted-foreground",
@@ -364,17 +389,17 @@ function InfoTab({
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
             <div>
               <dt className="text-muted-foreground">Motivo</dt>
-              <dd className="mt-0.5 font-semibold">{followupReasonLabel(followup.reason)}</dd>
+              <dd className="mt-0.5 font-medium">{followupReasonLabel(followup.reason)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Tentativa</dt>
-              <dd className="mt-0.5 font-semibold">
+              <dd className="mt-0.5 font-medium">
                 {followup.attempts} / {followup.maxAttempts}
               </dd>
             </div>
             <div className="col-span-2">
               <dt className="text-muted-foreground">Próximo contato</dt>
-              <dd className="mt-0.5 font-semibold">
+              <dd className="mt-0.5 font-medium">
                 {followup.nextFollowupAt
                   ? new Date(followup.nextFollowupAt).toLocaleString("pt-BR")
                   : "Sem data programada"}
@@ -387,11 +412,9 @@ function InfoTab({
       <ConversationQuotes leadId={lead.id} />
 
       <div className="mb-2 rounded-2xl border border-border p-3.5">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-          Relacionamento
-        </p>
+        <p className="mb-2 text-xs font-medium text-muted-foreground">Relacionamento</p>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold" style={{ color: tier.color }}>
+          <span className="text-sm font-semibold" style={{ color: tier.color }}>
             {tier.emoji} {tier.label}
           </span>
         </div>
@@ -421,11 +444,11 @@ function ConversationQuotes({ leadId }: { leadId: string }) {
 
   return (
     <div data-testid="conversation-quotes" className="space-y-2">
-      <p className="text-[13px] font-bold">
+      <p className="text-xs font-medium text-muted-foreground">
         Orçamentos{mine.length > 0 ? ` (${mine.length})` : ""}
       </p>
       {mine.length === 0 ? (
-        <p className="rounded-2xl border border-border bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           Nenhum orçamento para este cliente. Crie pelo menu ⋯ da conversa.
         </p>
       ) : (

@@ -9,7 +9,7 @@ import {
 } from "react";
 import { ArrowLeft, Bot, Hand, Loader2, Lock, RotateCw } from "lucide-react";
 import { toast } from "sonner";
-import { ConversationOwner } from "@/components/team/ConversationOwner";
+import { ConversationOwner, ConversationOwnerChip } from "@/components/team/ConversationOwner";
 import { useLeadAssignment } from "@/hooks/useLeadAssignment";
 import { cn } from "@/lib/utils";
 import { timeAgo, type Message } from "@/data/mock";
@@ -360,6 +360,8 @@ export function ChatThread({
   };
 
   let lastDay = "";
+  const ago = timeAgo(conversation.lastMessageAt);
+  const activeLabel = ago === "agora" ? "Ativo agora" : `Ativo há ${ago}`;
   const channelLabel =
     lead.channel === "whatsapp"
       ? "WhatsApp"
@@ -387,25 +389,26 @@ export function ChatThread({
             <ArrowLeft className="h-5 w-5" />
           </button>
         )}
-        <ContactAvatar name={lead.name} hue={hue} size={52} />
+        <ContactAvatar
+          name={lead.name}
+          hue={hue}
+          size={40}
+          channel={lead.channel}
+          online={Date.now() - new Date(conversation.lastMessageAt).getTime() < 24 * 3_600_000}
+        />
+        {/* Nome e uma linha curta. O canal já está no selo do avatar; cidade,
+            produto e o resto ficam no painel Info. */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-[17px] font-bold leading-tight">{lead.name}</h2>
-            {/* No celular o selo desce para a linha de baixo: lado a lado com
-                o nome ele deixava só "What…" visível. */}
-            <CustomerTierBadge history={history} size="sm" className="max-sm:hidden" />
+            <h2 className="truncate leading-tight">{lead.name}</h2>
+            <CustomerTierBadge history={history} size="sm" className="shrink-0 max-sm:hidden" />
           </div>
-          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
-            <CustomerTierBadge history={history} size="sm" className="shrink-0 sm:hidden" />
-            <span className="truncate">
-              {channelLabel}
-              {conversation.detectedCity
-                ? ` · ${conversation.detectedCity}/${conversation.detectedState ?? ""}`
-                : ""}
-              {` · ativo ${timeAgo(conversation.lastMessageAt)} atrás`}
-              {communicationClosed ? " · encerrada" : ""}
+          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            <span className="truncate" title={channelLabel}>
+              {communicationClosed ? "Encerrada" : activeLabel}
             </span>
-          </p>
+            {!simulated && <ConversationOwnerChip leadId={lead.id} />}
+          </div>
         </div>
         {!simulated && (
           <ConversationActions
@@ -427,20 +430,20 @@ export function ChatThread({
         )}
         {actions}
       </header>
-      {!simulated && <ConversationOwner leadId={lead.id} />}
+      {!simulated && <ConversationOwner leadId={lead.id} onlyWhenBlocked />}
 
       {/* IA pediu humano: é a única faixa que merece interromper a leitura. */}
       {!simulated && conversation.aiStatus === "aguardando_humano" && (
-        <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 sm:mx-5">
-          <Hand className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <p className="min-w-0 flex-1 text-xs font-semibold text-amber-700 dark:text-amber-300">
-            A IA pediu atendimento humano nesta conversa.
-          </p>
+        <div className="at-banner" data-tone="warn">
+          <span className="at-banner-icon" aria-hidden="true">
+            <Hand className="h-4 w-4" />
+          </span>
+          <p className="min-w-0 flex-1 text-xs font-semibold">A IA pediu um humano aqui.</p>
           <button
             type="button"
             onClick={() => void takeOver()}
             disabled={takingOver}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-600 px-3 py-1 text-[11px] font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
+            className="at-banner-primary"
           >
             {takingOver && <Loader2 className="h-3 w-3 animate-spin" />}
             Assumir
@@ -450,10 +453,10 @@ export function ChatThread({
             onClick={() => void release()}
             disabled={releasing}
             data-testid="release-to-ai"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-600/50 px-3 py-1 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-500/10 disabled:opacity-60 dark:text-amber-300"
+            className="at-banner-ghost"
           >
             {releasing && <Loader2 className="h-3 w-3 animate-spin" />}
-            Devolver para a IA
+            Devolver à IA
           </button>
         </div>
       )}
@@ -462,20 +465,22 @@ export function ChatThread({
       {!simulated &&
         conversation.aiStatus !== "aguardando_humano" &&
         (conversation.aiStatus === "assumido_humano" || Boolean(conversation.humanTakeoverAt)) && (
-          <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl border border-border bg-muted/50 px-3 py-2 sm:mx-5">
-            <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <p className="min-w-0 flex-1 text-xs font-semibold text-muted-foreground">
-              Atendimento humano: a IA está pausada nesta conversa.
+          <div className="at-banner" data-tone="human">
+            <span className="at-banner-icon" aria-hidden="true">
+              <Bot className="h-4 w-4" />
+            </span>
+            <p className="min-w-0 flex-1 text-xs font-semibold">
+              IA pausada — você está no atendimento.
             </p>
             <button
               type="button"
               onClick={() => void release()}
               disabled={releasing}
               data-testid="release-to-ai"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[11px] font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+              className="at-banner-primary"
             >
               {releasing && <Loader2 className="h-3 w-3 animate-spin" />}
-              Devolver para a IA
+              Devolver à IA
             </button>
           </div>
         )}
@@ -515,10 +520,6 @@ export function ChatThread({
                   {thread.loadingOlder && <Loader2 className="h-3 w-3 animate-spin" />}
                   Carregar mensagens anteriores
                 </button>
-              ) : messages.length > 0 ? (
-                <span className="my-2 self-center text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                  Início da conversa
-                </span>
               ) : null}
 
               {messages.map((message) => {
@@ -528,14 +529,12 @@ export function ChatThread({
                 return (
                   <div key={message.id} className="contents">
                     {showDay && (
-                      <div className="my-3 self-center rounded-full bg-secondary/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {day}
+                      <div className="at-day my-3 self-center">
+                        <span>{day}</span>
                       </div>
                     )}
                     {message.role === "system" ? (
-                      <div className="my-2 self-center rounded-full bg-secondary/70 px-3 py-1 text-[11px] text-muted-foreground">
-                        {message.text}
-                      </div>
+                      <div className="at-system my-2 self-center">{message.text}</div>
                     ) : (
                       <MessageBubble m={message} canManage={!locked} appearance="atendimento" />
                     )}
@@ -568,7 +567,7 @@ export function ChatThread({
         {sendFailure && (
           <div
             role="alert"
-            className="mb-2 flex flex-wrap items-center gap-2 rounded-2xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            className="at-send-failure mb-2 flex flex-wrap items-center gap-2 rounded-2xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
           >
             {sendFailure.requiresTemplate && <Lock className="h-3.5 w-3.5 shrink-0" />}
             <span className="min-w-0 flex-1">{sendFailure.message}</span>
@@ -588,7 +587,12 @@ export function ChatThread({
             Envio simulado neste ambiente — a mensagem não chegou ao cliente.
           </p>
         )}
-        {sending && <p className="mb-2 text-xs text-muted-foreground">Enviando...</p>}
+        {sending && (
+          <p className="at-sending mb-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            Enviando...
+          </p>
+        )}
       </div>
 
       <ThreadComposer

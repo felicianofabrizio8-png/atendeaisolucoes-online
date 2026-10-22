@@ -1,4 +1,12 @@
-import { Children, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  Children,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +47,9 @@ export function MobileRail({
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const first = el.firstElementChild as HTMLElement | null;
-        const step = first ? first.offsetWidth + parseFloat(getComputedStyle(el).columnGap || "0") : el.clientWidth;
+        const step = first
+          ? first.offsetWidth + parseFloat(getComputedStyle(el).columnGap || "0")
+          : el.clientWidth;
         setIndex(Math.max(0, Math.min(count - 1, Math.round(el.scrollLeft / Math.max(1, step)))));
       });
     };

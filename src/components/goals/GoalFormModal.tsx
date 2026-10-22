@@ -133,10 +133,13 @@ export function GoalFormModal({
         <DialogPrimitive.Overlay className="auth-dialog-overlay fixed inset-0 z-50 bg-black/70 backdrop-blur-[6px]" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="auth-dialog-content lq-black lq-panel lq-form fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-24px)] w-[calc(100vw-24px)] max-w-[560px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-6 text-white outline-none max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none sm:p-8"
+          className="auth-dialog-content lq-black lq-panel lq-form fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-24px)] w-[calc(100vw-24px)] max-w-[560px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-6 text-white outline-none max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:pt-[calc(1.5rem+env(safe-area-inset-top))] max-sm:pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:p-8"
         >
           <span className="lq-panel-glow" aria-hidden="true" />
-          <DialogPrimitive.Close aria-label="Fechar" className="lq-close absolute right-4 top-4">
+          <DialogPrimitive.Close
+            aria-label="Fechar"
+            className="lq-close absolute right-4 top-4 max-sm:top-[calc(1rem+env(safe-area-inset-top))]"
+          >
             <X className="h-4 w-4" aria-hidden />
           </DialogPrimitive.Close>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-200/70">

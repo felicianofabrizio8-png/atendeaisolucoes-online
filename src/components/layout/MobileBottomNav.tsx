@@ -1,5 +1,5 @@
-import { Link, useLocation } from "@tanstack/react-router";
-import { LayoutDashboard, MessagesSquare, Megaphone, Calendar, LayoutGrid } from "lucide-react";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { LayoutGrid, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 /**
@@ -21,28 +21,62 @@ export function useHideMobileNav(active: boolean) {
   }, [active]);
 }
 
-type BottomNavItem = {
-  to: "/" | "/atendimento" | "/marketing" | "/agenda";
+/** Destino da barra — escolhido pela pessoa (ver `@/lib/mobile-dock`). */
+export type BottomNavItem = {
+  to: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: LucideIcon;
 };
 
-const ITEMS: BottomNavItem[] = [
-  { to: "/", label: "Início", icon: LayoutDashboard },
-  { to: "/atendimento", label: "Chat", icon: MessagesSquare },
-  { to: "/marketing", label: "Marketing", icon: Megaphone },
-  { to: "/agenda", label: "Agenda", icon: Calendar },
-];
-
 interface Props {
+  /** Atalhos na ordem escolhida (já filtrados pela permissão). */
+  items: BottomNavItem[];
   /** Não-lidas agregadas — exibidas sobre o ícone do Chat. */
   unreadTotal?: number;
   /** Abre o menu completo. */
   onOpenMenu: () => void;
   /** Se o menu completo está aberto — a bolha vai para o botão Menu. */
   menuOpen?: boolean;
-  /** Mesma regra de acesso da sidebar (inclui o modo demo). */
-  canOpen: (path: string) => boolean;
+}
+
+/**
+ * Cada tela é um pedaço de código separado, baixado só no primeiro toque —
+ * era isso que dava o atraso. Com o app ocioso, baixa de antemão as telas da
+ * barra (uma por vez, para não disputar a rede com os dados da tela atual).
+ * Respeita a economia de dados do aparelho.
+ */
+function usePreloadDockRoutes(paths: string[]) {
+  const router = useRouter();
+  const key = paths.join("|");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (conn?.saveData) return;
+    let cancelled = false;
+    const idle = (cb: () => void) => {
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(cb, { timeout: 2500 });
+      } else {
+        setTimeout(cb, 600);
+      }
+    };
+    const queue = key.split("|").filter(Boolean);
+    const next = () => {
+      const to = queue.shift();
+      if (!to || cancelled) return;
+      router
+        // Destinos vêm da lista de navegação do app (rotas que existem).
+        .preloadRoute({ to: to as "/" })
+        .catch(() => undefined)
+        .finally(() => !cancelled && idle(next));
+    };
+    // Espera a tela atual assentar antes de começar.
+    const start = window.setTimeout(() => idle(next), 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(start);
+    };
+  }, [router, key]);
 }
 
 const isActive = (pathname: string, to: string) =>
@@ -61,11 +95,11 @@ const isActive = (pathname: string, to: string) =>
  * Rotas que não estão na barra acendem o botão Menu: o usuário sempre sabe
  * onde está, mesmo dentro de uma página do menu completo.
  */
-export function MobileBottomNav({ unreadTotal = 0, onOpenMenu, menuOpen = false, canOpen }: Props) {
+export function MobileBottomNav({ items, unreadTotal = 0, onOpenMenu, menuOpen = false }: Props) {
   const location = useLocation();
   const [pending, setPending] = useState<number | null>(null);
 
-  const items = ITEMS.filter((item) => canOpen(item.to));
+  usePreloadDockRoutes(items.map((item) => item.to));
   const menuIndex = items.length;
   const slots = items.length + 1;
 
@@ -76,8 +110,15 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu, menuOpen = false,
   const current = menuOpen ? menuIndex : (pending ?? (routeIndex === -1 ? menuIndex : routeIndex));
 
   return (
-    <nav aria-label="Navegação principal" data-testid="mobile-bottom-nav" className="mobile-dock md:hidden">
-      <ul className="mobile-dock-bar" style={{ gridTemplateColumns: `repeat(${slots}, minmax(0, 1fr))` }}>
+    <nav
+      aria-label="Navegação principal"
+      data-testid="mobile-bottom-nav"
+      className="mobile-dock md:hidden"
+    >
+      <ul
+        className="mobile-dock-bar"
+        style={{ gridTemplateColumns: `repeat(${slots}, minmax(0, 1fr))` }}
+      >
         {/* Trilho da bolha: tem a largura de uma coluna e anda de coluna em
             coluna. translateX em % é relativo à própria largura = 1 coluna. */}
         <span
@@ -94,11 +135,11 @@ export function MobileBottomNav({ unreadTotal = 0, onOpenMenu, menuOpen = false,
         {items.map((item, index) => {
           const Icon = item.icon;
           const active = index === current;
-          const badge = item.to === "/atendimento" ? unreadTotal : 0;
+          const badge = item.to === "/atendimento" || item.to === "/inbox" ? unreadTotal : 0;
           return (
             <li key={item.to} className="relative min-w-0">
               <Link
-                to={item.to}
+                to={item.to as "/"}
                 aria-current={isActive(location.pathname, item.to) ? "page" : undefined}
                 onPointerDown={() => setPending(index)}
                 onClick={() => setPending(index)}

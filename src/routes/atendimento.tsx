@@ -9,10 +9,10 @@ import { useAtendimentoData, type AtendimentoContact } from "@/hooks/useAtendime
 import { useAtendimentoFollowup } from "@/hooks/useAtendimentoFollowup";
 import { computeStats, STAT_DEFINITIONS } from "@/lib/atendimento/stats";
 import { StatCarousel, StatStrip } from "@/components/atendimento/StatCarousel";
-import { ConversationRail } from "@/components/atendimento/ConversationRail";
+import { ConversationRail, type RailSort } from "@/components/atendimento/ConversationRail";
+import { computeAttention, type Attention } from "@/lib/atendimento/attention";
 import { ChatThread } from "@/components/atendimento/ChatThread";
 import { InsightPanel } from "@/components/atendimento/InsightPanel";
-import "@/components/atendimento/atendimento.css";
 import { useHideMobileNav } from "@/components/layout/MobileBottomNav";
 
 export const Route = createFileRoute("/atendimento")({
@@ -53,6 +53,28 @@ function useIsCompact(): boolean | null {
   return compact;
 }
 
+const SORT_KEY = "lume.chat.sort";
+
+function readSort(): RailSort {
+  try {
+    return window.localStorage.getItem(SORT_KEY) === "prioridade" ? "prioridade" : "recentes";
+  } catch {
+    return "recentes";
+  }
+}
+
+/** Relógio de minuto: espera, janela e prioridade andam sem recarregar. */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (!document.hidden) setNow(Date.now());
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
 function AtendimentoPage() {
   const [forceSimulated, setForceSimulated] = useState(false);
   const { contacts, isSimulated, status, error } = useAtendimentoData({ forceSimulated });
@@ -65,21 +87,46 @@ function AtendimentoPage() {
   useHideMobileNav(!!selectedId);
   const [query, setQuery] = useState("");
   const [statFilter, setStatFilter] = useState<string | null>(null);
+  // Ordem da fila: "Recentes" (como sempre foi) ou "Prioridade" (fila inteligente).
+  const [sort, setSortState] = useState<RailSort>("recentes");
+  useEffect(() => setSortState(readSort()), []);
+  const setSort = (next: RailSort) => {
+    setSortState(next);
+    try {
+      window.localStorage.setItem(SORT_KEY, next);
+    } catch {
+      // Sem armazenamento: vale até recarregar.
+    }
+  };
+  const now = useMinuteClock();
   // O texto do composer mora aqui, e não dentro do ChatThread, só para o
   // painel de IA conseguir carregar uma sugestão nele ("Usar no chat").
   const [draft, setDraft] = useState("");
 
   const stats = useMemo(
-    () => computeStats(contacts, Date.now(), atendimentoFollowup.byConversation),
-    [atendimentoFollowup.byConversation, contacts],
+    () => computeStats(contacts, now, atendimentoFollowup.byConversation),
+    [atendimentoFollowup.byConversation, contacts, now],
   );
+
+  const attention = useMemo(() => {
+    const map = new Map<string, Attention>();
+    for (const c of contacts) {
+      map.set(
+        c.conversation.id,
+        computeAttention(
+          { ...c, followup: atendimentoFollowup.byConversation.get(c.conversation.id) },
+          now,
+        ),
+      );
+    }
+    return map;
+  }, [atendimentoFollowup.byConversation, contacts, now]);
 
   const visible = useMemo(() => {
     const def = STAT_DEFINITIONS.find((d) => d.key === statFilter);
-    const now = Date.now();
     const q = query.trim().toLowerCase();
 
-    return contacts.filter((c) => {
+    const filtered = contacts.filter((c) => {
       if (
         def &&
         !def.match(
@@ -103,7 +150,26 @@ function AtendimentoPage() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [atendimentoFollowup.byConversation, contacts, statFilter, query]);
+    if (sort !== "prioridade") return filtered;
+    // Mesma pontuação do mapa acima (sort do JS é estável nos empates).
+    const score = (c: AtendimentoContact) => attention.get(c.conversation.id)?.score ?? 0;
+    return [...filtered].sort((a, b) => score(b) - score(a));
+  }, [atendimentoFollowup.byConversation, attention, contacts, statFilter, query, sort, now]);
+
+  // Alt+↑/↓ troca de conversa sem tirar a mão do teclado (inclusive digitando).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+      if (visible.length === 0) return;
+      event.preventDefault();
+      const index = visible.findIndex((c) => c.conversation.id === selectedId);
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      const next = index === -1 ? 0 : Math.min(visible.length - 1, Math.max(0, index + step));
+      setSelectedId(visible[next].conversation.id);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visible, selectedId]);
 
   // No desktop mantemos sempre uma conversa aberta — painel de atendimento
   // vazio não serve para nada. No compacto a lista é a primeira tela, então
@@ -143,18 +209,6 @@ function AtendimentoPage() {
             selectedId ? "hidden" : "flex",
           )}
         >
-          <StatCarousel
-            stats={stats}
-            activeKey={statFilter}
-            onSelect={setStatFilter}
-            className="max-md:hidden"
-          />
-          <StatStrip
-            stats={stats}
-            activeKey={statFilter}
-            onSelect={setStatFilter}
-            className="md:hidden"
-          />
           <div className="min-h-0 flex-1">
             <ConversationRail
               contacts={visible}
@@ -165,6 +219,26 @@ function AtendimentoPage() {
               activeFilterLabel={activeStat ? `${activeStat.label}: ${activeStat.count}` : null}
               onClearFilter={() => setStatFilter(null)}
               followupByConversation={atendimentoFollowup.byConversation}
+              attention={attention}
+              sort={sort}
+              onSortChange={setSort}
+              metrics={
+                <>
+                  <StatCarousel
+                    stats={stats}
+                    activeKey={statFilter}
+                    onSelect={setStatFilter}
+                    className="max-md:hidden"
+                  />
+                  {/* Celular: o cartão giratório não cabe; as filas viram pílulas. */}
+                  <StatStrip
+                    stats={stats}
+                    activeKey={statFilter}
+                    onSelect={setStatFilter}
+                    className="md:hidden"
+                  />
+                </>
+              }
               statusChip={
                 // Só é interruptor quando existe base real para alternar; com
                 // a empresa vazia o rótulo é apenas informativo.
@@ -179,13 +253,16 @@ function AtendimentoPage() {
                         ? "Voltar para as conversas reais da empresa"
                         : "Ver a tela com clientes de exemplo, sem expor dados reais"
                   }
+                  aria-label={isSimulated ? "Clientes simulados" : "Ver exemplos"}
                   className={cn(
-                    "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[10px] font-bold text-muted-foreground transition-colors disabled:cursor-default",
+                    "at-demo-toggle",
                     !(isSimulated && !forceSimulated) && "hover:text-foreground",
                   )}
+                  data-on={isSimulated || undefined}
                 >
-                  <FlaskConical className="h-3 w-3" />
-                  {isSimulated ? "Clientes simulados" : "Ver exemplos"}
+                  <FlaskConical className="h-3.5 w-3.5" />
+                  {/* Ligado vira etiqueta; desligado é só o ícone, sem poluir a fila. */}
+                  {isSimulated && <span>Simulados</span>}
                 </button>
               }
             />

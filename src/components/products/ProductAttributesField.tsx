@@ -49,8 +49,8 @@ export interface AttributeSuggestion {
   unit: string;
 }
 
-const inputClass =
-  "w-full h-11 md:h-9 px-2 text-base md:text-sm rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring";
+// Mesmo campo dos formulários pretos (Orçamentos, Metas): `.lq-form .quote-form-input`.
+const inputClass = "quote-form-input";
 
 export function ProductAttributesField({
   rows,
@@ -75,14 +75,15 @@ export function ProductAttributesField({
     const adopt = known && !row.value.trim() && !row.unit.trim();
     update(index, adopt ? { label, type: known.type, unit: known.unit } : { label });
   };
+  const unused = suggestions.filter(
+    (suggestion) =>
+      !rows.some((row) => factKeyFromLabel(row.label) === factKeyFromLabel(suggestion.label)),
+  );
   return (
-    <div>
-      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-        Características (opcional)
-      </p>
-      <p className="text-[10px] text-muted-foreground mb-2">
-        Tudo o que a Vendedora pode afirmar sobre o produto: medidas, material, potência, tamanho,
-        duração… A IA só usa o que estiver aqui ou nos campos acima.
+    <div className="lp-attrs">
+      <p className="lq-hint lp-attrs-intro">
+        Medidas, material, potência, tamanho, duração… A Vendedora só afirma o que estiver aqui ou
+        nos campos das outras etapas.
       </p>
       <datalist id="product-attribute-labels">
         {suggestions.map((suggestion) => (
@@ -94,76 +95,100 @@ export function ProductAttributesField({
           <option key={unit} value={unit} />
         ))}
       </datalist>
-      <div className="space-y-2">
-        {rows.map((row, index) => (
-          <div key={index} className="rounded-md border border-border p-2 space-y-2">
-            <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-2">
-              <input
-                type="text"
-                list="product-attribute-labels"
-                aria-label="Característica"
-                value={row.label}
-                onChange={(e) => changeLabel(index, e.target.value)}
-                placeholder="Ex.: Largura, Material, Voltagem"
-                className={inputClass}
-              />
-              <select
-                aria-label="Tipo"
-                value={row.type}
-                onChange={(e) => update(index, { type: e.target.value as AttributeType })}
-                className={inputClass}
-              >
-                {ATTRIBUTE_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {ATTRIBUTE_TYPE_LABELS[type]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                aria-label="Valor"
-                value={row.value}
-                onChange={(e) => update(index, { value: e.target.value })}
-                placeholder={PLACEHOLDERS[row.type]}
-                className={inputClass}
-              />
-              {UNIT_TYPES.includes(row.type) && (
+      {rows.length > 0 && (
+        <div className="lp-attr-rows">
+          {rows.map((row, index) => (
+            <div key={index} className="lp-attr-row" data-error={errors[index] ? true : undefined}>
+              <div className="lp-attr-line">
                 <input
                   type="text"
-                  list="product-attribute-units"
-                  aria-label="Unidade"
-                  value={row.unit}
-                  onChange={(e) => update(index, { unit: e.target.value })}
-                  placeholder="Unidade"
-                  className={`${inputClass} max-w-[7rem]`}
+                  list="product-attribute-labels"
+                  aria-label="Característica"
+                  value={row.label}
+                  onChange={(e) => changeLabel(index, e.target.value)}
+                  placeholder="Ex.: Largura, Material, Voltagem"
+                  className={inputClass}
                 />
+                <select
+                  aria-label="Tipo"
+                  value={row.type}
+                  onChange={(e) => update(index, { type: e.target.value as AttributeType })}
+                  className={inputClass}
+                >
+                  {ATTRIBUTE_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {ATTRIBUTE_TYPE_LABELS[type]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="lp-attr-line lp-attr-value">
+                <input
+                  type="text"
+                  aria-label="Valor"
+                  value={row.value}
+                  onChange={(e) => update(index, { value: e.target.value })}
+                  placeholder={PLACEHOLDERS[row.type]}
+                  className={inputClass}
+                />
+                {UNIT_TYPES.includes(row.type) && (
+                  <input
+                    type="text"
+                    list="product-attribute-units"
+                    aria-label="Unidade"
+                    value={row.unit}
+                    onChange={(e) => update(index, { unit: e.target.value })}
+                    placeholder="Unidade"
+                    className={`${inputClass} lp-attr-unit`}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => onChange(rows.filter((_, current) => current !== index))}
+                  aria-label="Remover característica"
+                  className="lq-icon"
+                  data-danger
+                >
+                  <Trash2 aria-hidden="true" />
+                </button>
+              </div>
+              {errors[index] && (
+                <p className="lp-attr-error">
+                  {ATTRIBUTE_ROW_ERROR_MESSAGES[errors[index] as AttributeRowError]}
+                </p>
               )}
-              <button
-                type="button"
-                onClick={() => onChange(rows.filter((_, current) => current !== index))}
-                aria-label="Remover característica"
-                className="h-11 md:h-9 w-11 md:w-9 shrink-0 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
             </div>
-            {errors[index] && (
-              <p className="text-[11px] text-destructive">
-                {ATTRIBUTE_ROW_ERROR_MESSAGES[errors[index] as AttributeRowError]}
-              </p>
-            )}
-          </div>
+          ))}
+        </div>
+      )}
+      <div className="lq-extra-actions lp-attr-add">
+        <button
+          type="button"
+          onClick={() => onChange([...rows, { label: "", type: "text", value: "", unit: "" }])}
+        >
+          <Plus aria-hidden="true" /> Adicionar característica
+        </button>
+        {/* Atalhos: rótulos já usados em outros produtos, com o mesmo tipo e unidade. */}
+        {unused.slice(0, 6).map((suggestion) => (
+          <button
+            key={suggestion.label}
+            type="button"
+            onClick={() =>
+              onChange([
+                ...rows,
+                {
+                  label: suggestion.label,
+                  type: suggestion.type,
+                  value: "",
+                  unit: suggestion.unit,
+                },
+              ])
+            }
+          >
+            <Plus aria-hidden="true" /> {suggestion.label}
+          </button>
         ))}
       </div>
-      <button
-        type="button"
-        onClick={() => onChange([...rows, { label: "", type: "text", value: "", unit: "" }])}
-        className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold rounded-md border border-border px-3 py-1.5 hover:bg-accent"
-      >
-        <Plus className="h-3.5 w-3.5" /> Adicionar característica
-      </button>
     </div>
   );
 }
