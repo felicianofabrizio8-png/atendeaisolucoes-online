@@ -45,6 +45,10 @@ import {
 } from "@/data/quickReplies";
 import { cn } from "@/lib/utils";
 
+// Rastro de depuração só no desenvolvimento: em produção não vai para o console.
+// eslint-disable-next-line no-console
+const debugLog: (...args: unknown[]) => void = import.meta.env.DEV ? console.log : () => {};
+
 type FormState = {
   id: string | null;
   name: string;
@@ -138,16 +142,16 @@ export function QuickRepliesSection() {
       const previousValidUntil = items.find((item) => item.id === form.id)?.valid_until ?? "";
       if (form.validUntil !== previousValidUntil) payload.valid_until = form.validUntil || null;
       if (form.id) {
-        console.log("QUICK_REPLY_UPDATE_ATTEMPT", { id: form.id, company_id: companyId, name: form.name });
+        debugLog("QUICK_REPLY_UPDATE_ATTEMPT", { id: form.id, company_id: companyId, name: form.name });
         const saved = await updateQuickReply(companyId, form.id, payload);
-        console.log("QUICK_REPLY_UPDATE_SUCCESS", { id: saved.id, company_id: saved.company_id, name: saved.name });
+        debugLog("QUICK_REPLY_UPDATE_SUCCESS", { id: saved.id, company_id: saved.company_id, name: saved.name });
       } else {
-        console.log("QUICK_REPLY_CREATE_ATTEMPT", { company_id: companyId, name: form.name });
+        debugLog("QUICK_REPLY_CREATE_ATTEMPT", { company_id: companyId, name: form.name });
         const saved = await createQuickReply(companyId, {
           ...payload,
           sort_order: items.length,
         });
-        console.log("QUICK_REPLY_CREATE_SUCCESS", { id: saved.id, company_id: saved.company_id, name: saved.name });
+        debugLog("QUICK_REPLY_CREATE_SUCCESS", { id: saved.id, company_id: saved.company_id, name: saved.name });
       }
       setShowForm(false);
       setForm(EMPTY_FORM);
@@ -171,9 +175,9 @@ export function QuickRepliesSection() {
   const toggleActive = async (q: QuickReply) => {
     if (!companyId) return;
     try {
-      console.log("QUICK_REPLY_UPDATE_ATTEMPT", { id: q.id, company_id: companyId, active: !q.active });
+      debugLog("QUICK_REPLY_UPDATE_ATTEMPT", { id: q.id, company_id: companyId, active: !q.active });
       const saved = await updateQuickReply(companyId, q.id, { active: !q.active });
-      console.log("QUICK_REPLY_UPDATE_SUCCESS", { id: saved.id, company_id: saved.company_id, active: saved.active });
+      debugLog("QUICK_REPLY_UPDATE_SUCCESS", { id: saved.id, company_id: saved.company_id, active: saved.active });
       await reload();
     } catch (e) {
       const info = errorInfo(e);
@@ -191,9 +195,9 @@ export function QuickRepliesSection() {
     if (!companyId) return;
     if (!confirm(`Excluir "${q.name}"?`)) return;
     try {
-      console.log("QUICK_REPLY_DELETE_ATTEMPT", { id: q.id, company_id: companyId, name: q.name });
+      debugLog("QUICK_REPLY_DELETE_ATTEMPT", { id: q.id, company_id: companyId, name: q.name });
       await deleteQuickReply(companyId, q.id);
-      console.log("QUICK_REPLY_DELETE_SUCCESS", { id: q.id, company_id: companyId, name: q.name });
+      debugLog("QUICK_REPLY_DELETE_SUCCESS", { id: q.id, company_id: companyId, name: q.name });
       await reload();
       toast.success("Excluído");
     } catch (e) {

@@ -46,7 +46,7 @@ import { loadProductsRemote, setProductsMode } from "@/data/products";
 import { loadQuotesRemote, setQuotesMode } from "@/data/quotes";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { NotificationBridge } from "@/components/NotificationBridge";
-import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { LazySettingsDialog } from "@/components/settings/LazySettingsDialog";
 import { openSettings } from "@/lib/settings-dialog";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { AccessDenied } from "@/components/team/AccessDenied";
@@ -241,11 +241,20 @@ export function AppShell() {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 15_000);
+    // Em segundo plano (aba oculta, app minimizado no celular) não consulta;
+    // ao voltar, `visibilitychange`/`focus` atualizam na hora.
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refresh();
+    }, 15_000);
+    const onVisible = () => {
+      if (!document.hidden) void refresh();
+    };
     window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [profile, access.access]);
 
@@ -557,7 +566,7 @@ export function AppShell() {
   return (
     <div className="flex h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-background text-foreground">
       <NotificationBridge />
-      <SettingsDialog />
+      <LazySettingsDialog />
 
       {/* Sidebar desktop — participa do layout (flex), nunca sobrepõe o
           conteúdo. `main` é flex-1, então minimizar devolve a largura para a

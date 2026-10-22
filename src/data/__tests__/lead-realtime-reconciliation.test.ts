@@ -22,7 +22,9 @@ const mock = vi.hoisted(() => ({
 function resultFor(table: string, filters: Record<string, unknown>, single: boolean) {
   const rows = table === "leads" ? mock.leads : mock.conversations;
   const filtered = rows.filter((row) =>
-    Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value),
+    Object.entries(filters).every(([key, value]) =>
+      Array.isArray(value) ? value.includes(row[key]) : row[key] === value,
+    ),
   );
   const error = mock.errors[table] ?? null;
   return single ? { data: filtered[0] ?? null, error } : { data: filtered, error };
@@ -32,7 +34,10 @@ function query(table: string) {
   const filters: Record<string, unknown> = {};
   const builder = {
     select: vi.fn(() => builder),
-    in: vi.fn((key: string, values: unknown[]) => { filters[key] = values; return builder; }),
+    in: vi.fn((key: string, values: unknown[]) => {
+      filters[key] = values;
+      return builder;
+    }),
     eq: vi.fn((key: string, value: unknown) => {
       filters[key] = value;
       return builder;
@@ -174,6 +179,25 @@ describe("leadRepo — reconciliação de Realtime", () => {
     expect(repo.getMessagesFor("conv-1")).toHaveLength(0);
     expect(repo.getMessagesFor("conv-2")).toHaveLength(1);
     expect(repo.getLeadById("lead-2")?.assignedTo).toBe("user-b");
+  });
+  it("não recria listas nem notifica quando a checagem periódica não muda nada", async () => {
+    mock.leads = [{ ...lead(), assigned_to: "user-a" }, lead("lead-2")];
+    mock.conversations = [conversation(), conversation("conv-2", "lead-2")];
+    mock.messages = [message(), message("msg-2", "conv-2")];
+    const repo = await load();
+    // Primeira checagem normaliza o estado; a partir daí nada muda no banco.
+    await repo.refreshTeamScope(companyId);
+    const leadBefore = repo.getLeadById("lead-1");
+    const conversationBefore = repo.getConversationById("conv-1");
+    const listener = vi.fn();
+    const unsubscribe = repo.subscribeRepo(listener);
+    await repo.refreshTeamScope(companyId);
+    unsubscribe();
+    expect(listener).not.toHaveBeenCalled();
+    expect(repo.getLeadById("lead-1")).toBe(leadBefore);
+    expect(repo.getConversationById("conv-1")).toBe(conversationBefore);
+    expect(repo.getLeadById("lead-1")?.assignedTo).toBe("user-a");
+    expect(repo.getMessagesFor("conv-2")).toHaveLength(1);
   });
   it("preserva o bump imediato quando conversation e lead já estão carregados", async () => {
     mock.leads = [lead()];

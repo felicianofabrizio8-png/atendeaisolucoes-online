@@ -6,6 +6,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { safeErrorMessage, summarizeHttp } from "@/lib/audit/sanitize";
 
+// Rastro de depuração só no desenvolvimento: em produção não vai para o console.
+// eslint-disable-next-line no-console
+const debugLog: (...args: unknown[]) => void = import.meta.env.DEV ? console.log : () => {};
+
 export type ChannelType = "whatsapp" | "instagram" | "facebook";
 
 export interface Integration {
@@ -76,7 +80,7 @@ export async function listIntegrations(_companyId: string): Promise<Integration[
       "id, company_id, channel, display_name, active, external_account_id, account_metadata, has_access_token, has_webhook_secret, last_synced_at, last_error, token_expires_at",
     )
     .order("created_at", { ascending: true });
-  console.log("[listIntegrations] response", { count: data?.length ?? 0, hasError: !!error });
+  debugLog("[listIntegrations] response", { count: data?.length ?? 0, hasError: !!error });
   if (error) {
     console.error("[listIntegrations] Supabase error", safeErrorMessage(error.message));
     throw new Error(
@@ -131,7 +135,7 @@ export interface SaveWhatsAppInput {
 export async function upsertWhatsAppIntegration(
   input: SaveWhatsAppInput,
 ): Promise<Integration> {
-  console.log("[upsertWhatsAppIntegration] start", {
+  debugLog("[upsertWhatsAppIntegration] start", {
     companyId: input.companyId,
     phoneNumberId: input.phoneNumberId,
     displayName: input.displayName,
@@ -159,7 +163,7 @@ export async function upsertWhatsAppIntegration(
     updated?: boolean;
     row?: SafeRow;
   };
-  console.log("[upsertWhatsAppIntegration] server response", {
+  debugLog("[upsertWhatsAppIntegration] server response", {
     id: json.id,
     created: json.created,
     updated: json.updated,

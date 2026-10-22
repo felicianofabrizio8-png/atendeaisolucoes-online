@@ -1,30 +1,70 @@
-/* Visual do Atendimento 2.0. Escopo local: Inbox e regras comerciais permanecem iguais. */
+/*
+ * Chat (Atendimento) — mesmo sistema visual de Dashboard, Marketing IA, Agenda e
+ * Orçamentos: superfícies do tema com aura violeta → orquídea, vidro, rótulos
+ * mono, títulos editoriais e pílulas. Escopo local: a Caixa de atendimento e as
+ * regras comerciais continuam iguais.
+ *
+ * Tokens:
+ *   --at-violet/--at-orchid/--at-lilac  acentos da Lume
+ *   --at-panel / --at-raised / --at-edge  superfícies das colunas e dos cartões
+ *   --at-lime                            não lidas (o único verde-limão da tela)
+ */
 .lume-atendimento {
+  --at-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --at-violet: #7731e7;
+  --at-orchid: #c352ff;
+  --at-lilac: #b594ff;
+  --at-blue: #4652f2;
   --at-purple: #a55cff;
-  --at-lilac: #e4baff;
   --at-lime: #c3f75d;
+  --at-urgent: #ff8f87;
+  --at-warn: #f2b766;
+  --at-hot: #ff8a5c;
+  --at-panel: var(--card);
   --at-surface: var(--card);
-  --at-edge: var(--border);
-  --at-soft: var(--secondary);
-  --at-field: var(--background);
+  --at-raised: color-mix(in oklab, var(--foreground) 5%, var(--card));
+  --at-edge: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --at-edge-strong: color-mix(in oklab, var(--foreground) 18%, transparent);
+  --at-soft: var(--at-raised);
+  --at-field: color-mix(in oklab, var(--foreground) 3%, var(--background));
   --at-ink: var(--foreground);
-  --at-selected: linear-gradient(115deg, #792bdd35, var(--at-surface));
+  --at-muted: var(--muted-foreground);
+  --at-selected: linear-gradient(
+    115deg,
+    color-mix(in oklab, var(--at-violet) 26%, transparent),
+    color-mix(in oklab, var(--at-violet) 6%, var(--at-panel)) 70%
+  );
   color: var(--foreground);
   background: var(--background);
 }
-/* Os tokens globais acompanham a preferência salva; só o tema Preto usa #000. */
 :root.black .lume-atendimento {
-  --at-surface: #000;
-  --at-edge: #ffffff24;
-  --at-soft: #111;
-  --at-field: #0c0c0c;
-  --at-selected: linear-gradient(115deg, #792bdd35, #140d1c);
+  --at-panel: #0b0a0f;
+  --at-surface: #0b0a0f;
+  --at-raised: #15131b;
+  --at-edge: #ffffff17;
+  --at-edge-strong: #ffffff2b;
+  --at-field: #0f0e13;
 }
 :root.light .lume-atendimento {
+  --at-violet: #6d28d9;
+  --at-orchid: #a43be6;
+  --at-lilac: #6d28d9;
   --at-purple: #793bdf;
-  --at-lilac: #793bdf;
-  --at-selected: linear-gradient(115deg, #792bdd14, var(--at-surface));
+  --at-urgent: #b42318;
+  --at-warn: #9a5a00;
+  --at-hot: #c2410c;
+  --at-lime: #4d7c0f;
 }
+.lume-atendimento ::selection {
+  background: color-mix(in oklab, var(--at-orchid) 40%, transparent);
+}
+.lume-atendimento .at-mono {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--at-muted);
+}
+
+/* ───────────────────────── Colunas ───────────────────────── */
 .lume-atendimento .at-workspace {
   gap: 12px;
   padding: 12px;
@@ -32,98 +72,369 @@
 .lume-atendimento .at-queue,
 .lume-atendimento .at-conversation,
 .lume-atendimento .at-sidebar {
+  position: relative;
+  isolation: isolate;
   border: 1px solid var(--at-edge);
   border-radius: 28px;
-  background: var(--at-surface);
+  background: var(--at-panel);
   overflow: hidden;
 }
+/* Luz da conversa: um halo violeta no alto e um eco azul embaixo, como nos
+   cartões de destaque do Dashboard e do Marketing. */
+.lume-atendimento .at-conversation::before {
+  content: "";
+  position: absolute;
+  inset: -30% -20% auto 35%;
+  z-index: -1;
+  height: 70%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--at-violet) 16%, transparent),
+    transparent
+  );
+  pointer-events: none;
+}
+.lume-atendimento .at-conversation::after {
+  content: "";
+  position: absolute;
+  inset: auto 40% -35% -25%;
+  z-index: -1;
+  height: 60%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--at-blue) 9%, transparent),
+    transparent
+  );
+  pointer-events: none;
+}
 .lume-atendimento .at-queue {
-  padding: 12px;
+  padding: 14px;
 }
 .lume-atendimento .at-sidebar {
   padding: 18px;
 }
+
+/* ───────────────────────── Métricas ───────────────────────── */
+/* Cartão-arte: focos de luz desfocados sobre preto, como as referências da
+   marca. Tudo é recortado pelo próprio cartão — nenhuma luz vaza da borda. */
 .lume-atendimento .at-stat-surface {
-  border: 1px solid #ffffff26;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border-radius: 24px;
-  box-shadow: inset 0 1px 0 #ffffff0d;
+  background: #07060c;
+  /* Recorte real do desfoque em todos os navegadores (Safari ignora o
+     overflow com border-radius em camadas com filter sem isto). */
+  clip-path: inset(0 round 24px);
+  transform: translateZ(0);
 }
-.lume-atendimento .at-stat-surface > button {
-  justify-content: flex-end;
-  padding: 48px 22px 20px;
-  min-height: 192px;
-}
+/* Contorno de vidro por cima da arte: fio fino + brilho na aresta de cima. */
 .lume-atendimento .at-stat-surface::after {
   content: "";
   position: absolute;
-  pointer-events: none;
-  width: 180px;
-  height: 180px;
-  border: 1px solid #ffffff20;
-  border-radius: 50%;
-  right: -76px;
-  bottom: -80px;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
   box-shadow:
-    0 0 0 22px #ffffff05,
-    0 0 0 44px #ffffff04;
+    inset 0 0 0 1px #ffffff12,
+    inset 0 1px 0 #ffffff1c;
+  pointer-events: none;
+}
+.lume-atendimento .at-stat-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transform: scale(1.08);
+  transition:
+    opacity 900ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 1400ms var(--at-ease);
+  pointer-events: none;
+}
+.lume-atendimento .at-stat-art[data-on] {
+  opacity: 1;
+  transform: scale(1);
+}
+.lume-atendimento .at-stat-art > span {
+  position: absolute;
+  border-radius: 50%;
+}
+/* Respiração lenta da arte ativa: viva, mas sem chamar atenção. */
+.lume-atendimento .at-stat-art[data-on] > span:nth-child(odd) {
+  animation: at-stat-drift 14s ease-in-out infinite alternate;
+}
+.lume-atendimento .at-stat-art[data-on] > span:nth-child(even) {
+  animation: at-stat-drift 18s ease-in-out -6s infinite alternate-reverse;
+}
+@keyframes at-stat-drift {
+  to {
+    translate: 3% -4%;
+  }
+}
+/* Véu à esquerda: garante leitura do número sobre qualquer arte. */
+.lume-atendimento .at-stat-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, #07060c99, transparent 58%),
+    linear-gradient(180deg, #07060c66, transparent 40%);
+  pointer-events: none;
+}
+/* Grão de filme por cima da luz: tira o aspecto "cru" do gradiente. */
+.lume-atendimento .at-stat-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.16;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+.lume-atendimento .at-stat-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  min-height: 132px;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 36px 20px 16px;
+  border-radius: 24px;
+  color: #fff;
+  text-align: left;
+  outline: none;
+}
+.lume-atendimento .at-stat-body:focus-visible {
+  box-shadow: inset 0 0 0 2px #ffffffb3;
+}
+.lume-atendimento .at-stat-body[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1.5px #ffffffd9;
+}
+.lume-atendimento .at-stat-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .lume-atendimento .at-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: #ffffffb8;
+}
+.lume-atendimento .at-stat-filtering {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ffffff26;
+  backdrop-filter: blur(8px);
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.02em;
   color: #fff;
 }
 .lume-atendimento .at-stat-number {
-  margin-top: 10px;
-  font-size: clamp(56px, 4.5vw, 72px);
-  font-weight: 650;
-  letter-spacing: -0.06em;
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.055em;
+  text-shadow: 0 2px 24px #0000004d;
 }
+/* Régua no topo, ao centro. */
+.lume-atendimento .at-stat-bars {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  translate: -50% 0;
+}
+.lume-atendimento .at-stat-bars button {
+  display: grid;
+  height: 20px;
+  min-height: 20px;
+  place-items: center;
+  padding: 0 2.5px;
+}
+.lume-atendimento .at-stat-bars button > span {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ffffff38;
+  transition:
+    width 0.5s var(--at-ease),
+    background-color 0.3s ease;
+}
+.lume-atendimento .at-stat-bars button:hover > span {
+  background: #ffffff80;
+}
+.lume-atendimento .at-stat-bars button > span[data-on] {
+  width: 30px;
+  background: #ffffff38;
+}
+.lume-atendimento .at-stat-bars i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  border-radius: inherit;
+  background: #fff;
+  box-shadow: 0 0 8px #ffffff80;
+}
+.lume-atendimento .at-stat-strip {
+  margin-top: -2px;
+}
+
+/* ───────────────────────── Fila ───────────────────────── */
 .lume-atendimento .at-rail-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 6px 0;
+  gap: 12px;
+  padding: 4px 4px 2px 6px;
 }
 .lume-atendimento .at-rail-heading h1 {
-  font-size: 19px;
+  font-size: 26px;
   font-weight: 600;
-  letter-spacing: -0.03em;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
-.lume-atendimento .at-rail-heading > span {
-  display: grid;
+/* Contagem da fila como um cartãozinho de vidro ao lado do título. */
+.lume-atendimento .at-count {
+  display: inline-grid;
+  min-width: 44px;
+  height: 34px;
   place-items: center;
-  min-width: 26px;
-  height: 24px;
-  padding-inline: 6px;
-  border: 1px solid #a678e640;
-  border-radius: 999px;
-  background: var(--at-soft);
-  color: var(--at-ink);
-  font-size: 11px;
+  padding: 0 12px;
+  border: 1px solid var(--at-edge);
+  border-radius: 12px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--foreground) 5%, transparent), transparent), var(--at-field);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--foreground) 6%, transparent);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+.lume-atendimento .at-demo-toggle {
+  display: inline-flex;
+  height: 26px;
+  min-width: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--at-edge);
+  border-radius: 999px;
+  color: var(--at-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.2s var(--at-ease);
+}
+.lume-atendimento .at-demo-toggle[data-on] {
+  border-color: color-mix(in oklab, var(--at-lilac) 40%, transparent);
+  color: var(--at-lilac);
+}
+.lume-atendimento .at-demo-toggle:disabled {
+  cursor: default;
+}
 .lume-atendimento .at-search input {
+  height: 42px;
   border: 1px solid var(--at-edge);
   background: var(--at-field);
-  font-size: 12px;
-  height: 42px;
+  font-size: 13px;
   transition:
     border-color 200ms,
     box-shadow 200ms,
     background 200ms;
 }
 .lume-atendimento .at-search input:focus {
-  border-color: #a97bf570;
-  box-shadow: 0 0 0 3px #9755e810;
+  border-color: color-mix(in oklab, var(--at-lilac) 50%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--at-lilac) 12%, transparent);
+}
+.lume-atendimento .at-search-clear {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--at-muted);
+}
+.lume-atendimento .at-search-clear:hover {
+  background: var(--at-raised);
+  color: var(--at-ink);
+}
+.lume-atendimento .at-rail-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lume-atendimento .at-sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 3px 3px 9px;
+  border: 1px solid var(--at-edge);
+  border-radius: 999px;
+  background: var(--at-field);
+}
+.lume-atendimento .at-sort-icon {
+  width: 13px;
+  height: 13px;
+  margin-right: 3px;
+  color: var(--at-muted);
+}
+.lume-atendimento .at-sort button {
+  position: relative;
+  isolation: isolate;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  color: var(--at-muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: color 0.2s var(--at-ease);
+}
+.lume-atendimento .at-sort button[aria-checked="true"] {
+  color: var(--at-ink);
+}
+.lume-atendimento .at-sort-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  background: var(--at-raised);
+  box-shadow: inset 0 0 0 1px var(--at-edge-strong);
+}
+.lume-atendimento .at-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklab, var(--at-lilac) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--at-violet) 14%, transparent);
+  font-size: 11.5px;
+  font-weight: 600;
 }
 .lume-atendimento .at-rail ul {
-  gap: 6px;
+  gap: 4px;
 }
 .lume-atendimento .at-contact {
   position: relative;
   border: 1px solid transparent;
-  padding: 12px 10px;
+  padding: 11px 10px;
   border-radius: 18px;
   transition:
     background 220ms,
@@ -132,16 +443,45 @@
 }
 .lume-atendimento .at-contact:hover {
   border-color: var(--at-edge);
-  background: var(--at-soft);
+  background: var(--at-raised);
 }
 .lume-atendimento .at-contact[aria-current="true"] {
-  border-color: #a55cff70;
+  border-color: color-mix(in oklab, var(--at-lilac) 42%, transparent);
   background: var(--at-selected);
 }
 .lume-atendimento .at-avatar > span:first-child {
   box-shadow:
     inset 0 1px 1px #ffffff38,
-    0 0 0 3px var(--at-surface);
+    0 0 0 3px var(--at-panel);
+}
+.lume-atendimento .at-avatar-channel {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--at-panel);
+  box-shadow: 0 0 0 2px var(--at-panel);
+  color: var(--at-muted);
+}
+.lume-atendimento .at-avatar-channel svg {
+  width: 12px;
+  height: 12px;
+}
+.lume-atendimento .at-avatar-channel[data-channel="whatsapp"][data-online] {
+  color: #25d366;
+  box-shadow:
+    0 0 0 2px var(--at-panel),
+    0 0 10px #25d36666;
+}
+.lume-atendimento .at-avatar-channel[data-channel="instagram"] {
+  color: #e1306c;
+}
+.lume-atendimento .at-avatar-channel[data-channel="facebook"] {
+  color: #4d8cf5;
 }
 .lume-atendimento .at-unread {
   min-width: 19px;
@@ -150,91 +490,251 @@
   color: #18200b;
   text-align: center;
 }
+:root.light .lume-atendimento .at-unread {
+  color: #fff;
+}
+.lume-atendimento .at-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.lume-atendimento .at-signals > span {
+  --tone: var(--at-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--tone) 13%, transparent);
+  color: var(--tone);
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.lume-atendimento .at-signals > span[data-tone="urgent"] {
+  --tone: var(--at-urgent);
+}
+.lume-atendimento .at-signals > span[data-tone="warn"] {
+  --tone: var(--at-warn);
+}
+.lume-atendimento .at-signals > span[data-tone="hot"] {
+  --tone: var(--at-hot);
+}
+.lume-atendimento .at-signals i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.lume-atendimento .at-signals svg {
+  width: 10px;
+  height: 10px;
+}
+/* ───────────────────────── Conversa ───────────────────────── */
 .lume-atendimento .at-thread {
-  background: var(--at-surface);
+  background: transparent;
 }
 .lume-atendimento .at-thread-header {
-  min-height: 88px;
+  min-height: 66px;
   border-bottom: 1px solid var(--at-edge);
-  margin-bottom: 12px;
-  background: var(--at-surface);
+  margin-bottom: 6px;
+  background: color-mix(in oklab, var(--at-panel) 70%, transparent);
+  backdrop-filter: blur(16px);
 }
 .lume-atendimento .at-thread-header h2 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
 }
 .lume-atendimento .at-thread-header > .at-avatar > span:first-child {
-  width: 44px !important;
-  height: 44px !important;
-  font-size: 16px !important;
+  width: 40px !important;
+  height: 40px !important;
+  font-size: 14px !important;
 }
+
+/* Faixas de IA / humano */
+.lume-atendimento .at-banner {
+  --tone: var(--at-lilac);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 6px;
+  padding: 5px 6px 5px 5px;
+  border: 1px solid color-mix(in oklab, var(--tone) 30%, transparent);
+  border-radius: 18px;
+  background: radial-gradient(ellipse at 0% 50%, color-mix(in oklab, var(--tone) 14%, transparent), transparent 70%), var(--at-raised);
+  color: var(--at-ink);
+  animation: at-rise 0.3s var(--at-ease) both;
+}
+.lume-atendimento .at-banner[data-tone="warn"] {
+  --tone: var(--at-warn);
+}
+.lume-atendimento .at-banner[data-tone="human"] {
+  --tone: var(--at-lilac);
+}
+.lume-atendimento .at-banner-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--tone) 18%, transparent);
+  color: var(--tone);
+}
+.lume-atendimento .at-banner-primary,
+.lume-atendimento .at-banner-ghost {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    filter 0.2s var(--at-ease),
+    background-color 0.2s var(--at-ease);
+}
+.lume-atendimento .at-banner-primary {
+  background: var(--foreground);
+  color: var(--background);
+}
+.lume-atendimento .at-banner-primary:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+.lume-atendimento .at-banner-ghost {
+  border: 1px solid var(--at-edge-strong);
+  color: var(--at-ink);
+}
+.lume-atendimento .at-banner-ghost:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+:is(.lume-atendimento .at-banner-primary, .lume-atendimento .at-banner-ghost):disabled {
+  opacity: 0.55;
+}
+
+/* Mensagens */
 .lume-atendimento .at-messages {
   padding-top: 4px;
   scrollbar-gutter: stable;
+  scrollbar-color: var(--at-edge-strong) transparent;
+  scrollbar-width: thin;
+}
+.lume-atendimento .at-day {
+  display: flex;
+  justify-content: center;
+}
+.lume-atendimento .at-day span {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  color: var(--at-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.lume-atendimento .at-system {
+  max-width: 85%;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in oklab, var(--at-lilac) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--at-violet) 8%, var(--at-panel));
+  color: var(--at-muted);
+  font-size: 11.5px;
+  text-align: center;
 }
 .lume-atendimento .at-bubble {
   border-radius: 20px;
-  box-shadow: 0 2px 6px #00000006;
 }
 .lume-atendimento .at-bubble-in {
-  background: var(--at-soft);
+  background: color-mix(in oklab, var(--at-raised) 92%, transparent);
   border: 1px solid var(--at-edge);
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: 7px;
+  backdrop-filter: blur(8px);
 }
 .lume-atendimento .at-bubble-out {
-  background: linear-gradient(125deg, #793bdf, #5825ab);
+  background:
+    radial-gradient(ellipse at 100% 0%, #c352ff55, transparent 60%),
+    linear-gradient(135deg, #7c3aed, #5525b8);
   color: #fff;
-  border: 1px solid #b98cff38;
-  border-bottom-right-radius: 6px;
+  border: 1px solid #c4a2ff3d;
+  border-bottom-right-radius: 7px;
 }
+.lume-atendimento .at-sending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Composer */
 .lume-atendimento .at-composer {
-  padding-top: 14px;
-  background: var(--at-surface);
+  padding-top: 12px;
+  background: linear-gradient(180deg, transparent, var(--at-panel) 40%);
 }
 .lume-atendimento .at-composer-pill {
-  border-radius: 28px;
-  border-color: var(--at-edge);
-  background: var(--at-soft);
+  border-radius: 26px;
+  border-color: var(--at-edge-strong);
+  background: var(--at-raised);
+  box-shadow:
+    0 14px 34px -22px #000,
+    inset 0 1px 0 color-mix(in oklab, var(--foreground) 6%, transparent);
   transition:
     border-color 220ms,
     box-shadow 220ms;
 }
 .lume-atendimento .at-composer-pill:focus-within {
-  border-color: #a878e55c;
-  box-shadow: 0 0 0 3px #9755e80a;
+  border-color: color-mix(in oklab, var(--at-lilac) 50%, transparent);
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--at-lilac) 10%, transparent),
+    0 14px 34px -22px #000;
 }
 .lume-atendimento .at-composer-pill button.bg-primary {
-  background: var(--at-purple);
+  background: linear-gradient(135deg, #8b5cf6, #b44cf5);
   color: #fff;
 }
+
+/* Sugerir com IA: só o ícone, em lilás; o texto mora no tooltip. */
+.lume-atendimento .at-suggest {
+  color: var(--at-lilac);
+}
+.lume-atendimento .at-suggest:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--at-lilac) 14%, transparent);
+}
+
+/* ───────────────────────── Painel Info / Lume ───────────────────────── */
 .lume-atendimento .at-insight {
-  gap: 20px;
+  gap: 18px;
   padding-left: 0;
 }
 .lume-atendimento .at-tabs {
   width: 100%;
-  background: var(--at-soft);
+  flex-shrink: 0;
+  isolation: isolate;
+  background: var(--at-field);
   border: 1px solid var(--at-edge);
-  padding: 5px;
+  padding: 4px;
 }
+/* Mesma pílula neutra do seletor de ordenação: um só idioma de segmentado. */
 .lume-atendimento .at-tabs > span {
-  background: var(--foreground);
-  border: 1px solid var(--foreground);
-  box-shadow: none;
-}
-.lume-atendimento .at-tabs button {
-  width: 50%;
-  font-size: 12px;
-}
-.lume-atendimento .at-tabs button[aria-selected="true"] {
-  color: var(--background);
+  z-index: 0;
+  background: var(--at-raised);
+  box-shadow: inset 0 0 0 1px var(--at-edge-strong);
 }
 .lume-atendimento .at-tabs button {
   display: inline-flex;
-  justify-content: center;
+  width: 50%;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  font-size: 12.5px;
+}
+.lume-atendimento .at-tabs button[aria-selected="true"] {
+  color: var(--at-ink);
 }
 .at-tab-content {
   display: flex;
@@ -243,16 +743,13 @@
   min-width: 0;
 }
 .lume-atendimento .at-panel-title {
-  font-size: 23px;
+  font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.045em;
-}
-.lume-atendimento .at-panel-title + p {
-  font-size: 11px;
-  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
 }
 .lume-atendimento .at-info-scroll {
-  gap: 18px;
+  gap: 16px;
 }
 .lume-atendimento .at-fact {
   min-width: 0;
@@ -264,29 +761,70 @@
 .lume-atendimento .at-fact > div > span {
   overflow-wrap: anywhere;
 }
+.lume-atendimento .at-fact > div > span:first-child {
+  color: var(--at-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
 .lume-atendimento .at-fact[data-field="Resumo"] .at-info-field {
-  background: radial-gradient(ellipse at 100% 100%, #793bdf18, transparent 80%), var(--at-field);
-  border-color: #be8cff50;
+  background:
+    radial-gradient(ellipse at 100% 100%, color-mix(in oklab, var(--at-violet) 20%, transparent), transparent 75%),
+    var(--at-field);
+  border-color: color-mix(in oklab, var(--at-lilac) 35%, transparent);
   line-height: 1.7;
 }
 .lume-atendimento .at-fact[data-field="Próxima ação"] .at-info-field {
-  border-color: #c3f75d50;
-  background: radial-gradient(ellipse at 0% 100%, #c3f75d18, transparent 80%), var(--at-field);
+  border-color: color-mix(in oklab, var(--at-lime) 32%, transparent);
+  background:
+    radial-gradient(ellipse at 0% 100%, color-mix(in oklab, var(--at-lime) 14%, transparent), transparent 80%),
+    var(--at-field);
+}
+.lume-atendimento .at-missing {
+  padding: 12px 14px;
+  border: 1px dashed var(--at-edge-strong);
+  border-radius: 16px;
+}
+.lume-atendimento .at-missing > p {
+  color: var(--at-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.lume-atendimento .at-missing > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.lume-atendimento .at-missing > div > span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--at-raised);
+  color: var(--at-muted);
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.lume-atendimento .at-missing > small {
+  display: block;
+  margin-top: 8px;
+  color: var(--at-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.8;
 }
 .lume-atendimento .at-info-field {
-  border-radius: 15px;
+  border-radius: 16px;
   background: var(--at-field);
   border-color: var(--at-edge);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 12.5px;
+  font-weight: 450;
 }
 .lume-atendimento .at-info-field:hover {
-  background: color-mix(in srgb, var(--at-soft), #ac77f4 6%);
-  border-color: #a678e64a;
+  background: color-mix(in oklab, var(--at-raised), var(--at-violet) 5%);
+  border-color: color-mix(in oklab, var(--at-lilac) 30%, transparent);
 }
 .lume-atendimento .at-info-scroll > div:has(> .at-info-field) > div > span:first-child,
 .lume-atendimento .at-info-scroll .grid > div > div > span:first-child {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
   color: var(--muted-foreground);
 }
@@ -305,11 +843,11 @@
     color 200ms;
 }
 .lume-atendimento .at-ai-chat > div:last-child button:hover:not(:disabled) {
-  background: #9760e51a;
-  border-color: #b594ff66;
+  background: color-mix(in oklab, var(--at-violet) 12%, transparent);
+  border-color: color-mix(in oklab, var(--at-lilac) 45%, transparent);
 }
 .lume-atendimento.at-insight-sheet {
-  background: var(--at-surface);
+  background: var(--at-panel);
   border-color: var(--at-edge);
   border-radius: 28px 0 0 28px;
   padding-top: 64px;
@@ -319,9 +857,10 @@
   border-radius: 50%;
   padding: 8px;
 }
-/* Portais de configurações e menus usam o tema global, sem sobrescrever seus botões. */
+
+/* ───────────────────────── Movimento ───────────────────────── */
 .lume-atendimento :is(.at-queue, .at-conversation, .at-sidebar) {
-  animation: at-panel-enter 180ms ease-out;
+  animation: at-panel-enter 220ms var(--at-ease);
 }
 @keyframes at-panel-enter {
   from {
@@ -330,6 +869,17 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+@keyframes at-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes at-pulse {
+  50% {
+    opacity: 0.35;
   }
 }
 @supports (interpolate-size: allow-keywords) {
@@ -345,62 +895,68 @@
     height: auto;
   }
 }
+
+/* ───────────────────────── Responsivo ───────────────────────── */
 @media (min-width: 1280px) {
   .lume-atendimento .at-workspace {
-    grid-template-columns: clamp(264px, 22vw, 320px) minmax(0, 1fr) clamp(280px, 24vw, 360px);
+    grid-template-columns: clamp(272px, 22vw, 330px) minmax(0, 1fr) clamp(280px, 24vw, 360px);
   }
 }
 @media (max-width: 1279px) {
   .lume-atendimento .at-queue {
     padding: 16px;
   }
-  .lume-atendimento .at-stat > .at-stat-surface > button {
-    height: clamp(150px, 23dvh, 200px);
-  }
 }
-/* Métricas em pílulas (celular). O fundo é o mesmo gradiente do cartão
-   giratório, então cada situação mantém a sua cor. */
+/* Métricas em pílulas (celular): vidro neutro + ponto com a cor da métrica.
+   Ativa, a pílula acende na cor dela. */
 .lume-atendimento .at-stat-pill {
-  position: relative;
   display: inline-flex;
   flex-shrink: 0;
-  min-height: 40px;
+  min-height: 38px;
   align-items: center;
-  gap: 7px;
-  overflow: hidden;
+  gap: 8px;
   border-radius: 999px;
-  border: 1px solid #ffffff1f;
-  padding: 0 14px 0 6px;
-  background: var(--pill-bg), #07070b;
-  color: #fff;
+  border: 1px solid var(--at-edge);
+  padding: 0 6px 0 13px;
+  background: var(--at-field);
+  color: var(--at-ink);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition:
     transform 160ms ease,
-    box-shadow 160ms ease;
+    background-color 200ms ease,
+    border-color 200ms ease;
 }
 .lume-atendimento .at-stat-pill:active {
   transform: scale(0.96);
 }
-.lume-atendimento .at-stat-pill[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px #fff;
+.lume-atendimento .at-stat-pill > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pill-accent);
+  box-shadow: 0 0 8px var(--pill-accent);
 }
-.lume-atendimento .at-stat-pill-count {
-  display: inline-flex;
-  min-width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  padding: 0 7px;
-  background: #00000059;
-  font-size: 13px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+.lume-atendimento .at-stat-pill[aria-pressed="true"] {
+  border-color: color-mix(in oklab, var(--pill-accent) 55%, transparent);
+  background: color-mix(in oklab, var(--pill-accent) 16%, var(--at-field));
 }
 .lume-atendimento .at-stat-pill-label {
   font-size: 12.5px;
+  font-weight: 500;
+}
+.lume-atendimento .at-stat-pill-count {
+  display: inline-flex;
+  min-width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 8px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  font-size: 12px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 640px) {
@@ -418,23 +974,40 @@
   }
   .lume-atendimento .at-queue {
     gap: 12px;
-    padding: 12px 12px 0;
+    padding: 14px 12px 0;
+  }
+  .lume-atendimento .at-rail-heading h1 {
+    font-size: 30px;
   }
   .lume-atendimento .at-thread-header {
     gap: 8px;
     padding-inline: 10px;
-    min-height: 78px;
+    min-height: 60px;
+    margin-bottom: 4px;
   }
   .lume-atendimento .at-thread-header h2 {
-    font-size: 15px;
+    font-size: 15.5px;
   }
   .lume-atendimento .at-thread-header > .at-avatar > span:first-child {
-    width: 34px !important;
-    height: 34px !important;
+    width: 36px !important;
+    height: 36px !important;
     font-size: 13px !important;
   }
   .lume-atendimento .at-thread-header > .at-avatar {
     margin-right: 2px;
+  }
+  .lume-atendimento .at-banner {
+    margin-inline: 12px;
+    flex-wrap: wrap;
+  }
+  .lume-atendimento .at-banner > p {
+    flex-basis: calc(100% - 44px);
+  }
+  .lume-atendimento .at-banner-primary,
+  .lume-atendimento .at-banner-ghost {
+    flex: 1;
+    justify-content: center;
+    height: 34px;
   }
   .lume-atendimento.at-insight-sheet {
     border-radius: 0;
@@ -458,15 +1031,16 @@
   /* Estrela da Lume no topo da conversa: abre direto o chat com a IA. */
   .lume-atendimento .at-lume-star {
     border-color: transparent;
-    background: linear-gradient(135deg, #6d45d6, #9b7bf0);
+    background: linear-gradient(135deg, #6d45d6, #c352ff);
     color: #fff;
+    box-shadow: 0 8px 20px -10px #c352ff;
   }
 }
 @media (max-width: 639px) {
   /* Folha Info/Lume no celular: o seletor sobe para a linha do X e encolhe,
      liberando altura para a conversa com a IA. */
   .lume-atendimento.at-insight-sheet {
-    padding-top: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top));
   }
   .lume-atendimento.at-insight-sheet .at-tabs {
     align-self: flex-start;

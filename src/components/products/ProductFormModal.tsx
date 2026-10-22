@@ -46,6 +46,7 @@ import {
 } from "@/lib/catalog-facts";
 import { ProductAttributesField, type AttributeSuggestion } from "./ProductAttributesField";
 import "@/components/orcamentos/quotes.css";
+import "./products.css";
 
 /** Número digitado ou null (para avisos ao vivo, sem bloquear a digitação). */
 function parseLooseNumber(value: string): number | null {

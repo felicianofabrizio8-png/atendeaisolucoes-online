@@ -1,0 +1,173 @@
+/*
+ * Janela de 24h do WhatsApp (WhatsappWindowAlert) — Chat e Caixa de atendimento.
+ * Uma linha só acima do composer: ícone, frase curta, régua do tempo e, quando
+ * precisa, um botão pequeno. Segue o tema do app. `--ww-left` = fração que resta.
+ */
+.ww {
+  --ww-accent: #7fdca0;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin: 0 8px 8px;
+  padding: 4px 4px 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--foreground);
+  font-size: 12px;
+}
+@media (min-width: 768px) {
+  .ww {
+    margin-inline: 12px;
+  }
+}
+.ww[data-tone="soon"] {
+  --ww-accent: #f2b766;
+  border-color: color-mix(in oklab, var(--ww-accent) 28%, transparent);
+  background: color-mix(in oklab, var(--ww-accent) 7%, transparent);
+}
+.ww[data-tone="closed"] {
+  --ww-accent: #c9a8ff;
+  border-color: color-mix(in oklab, #b594ff 26%, transparent);
+  background:
+    radial-gradient(ellipse at 0% 50%, rgb(119 49 231 / 0.16), transparent 55%),
+    color-mix(in oklab, var(--foreground) 4%, var(--card));
+}
+:root.light .ww {
+  --ww-accent: #1d7a43;
+}
+:root.light .ww[data-tone="soon"] {
+  --ww-accent: #9a5a00;
+}
+:root.light .ww[data-tone="closed"] {
+  --ww-accent: #6a34c7;
+}
+.ww-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ww-accent);
+}
+.ww[data-tone="closed"] .ww-icon,
+.ww[data-tone="soon"] .ww-icon {
+  background: color-mix(in oklab, var(--ww-accent) 16%, transparent);
+}
+.ww-icon svg {
+  width: 13px;
+  height: 13px;
+}
+.ww-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ww-accent);
+}
+.ww-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ww-accent);
+  opacity: 0;
+  animation: ww-ping 2.4s ease-out infinite;
+}
+.ww-line {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ww-line b {
+  flex-shrink: 0;
+  font-weight: 650;
+}
+.ww-line span {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+}
+.ww-track {
+  position: relative;
+  display: block;
+  width: clamp(48px, 14%, 120px);
+  height: 4px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.ww-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--ww-left, 0) * 100%);
+  border-radius: inherit;
+  background: var(--ww-accent);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--ww-accent) 60%, transparent);
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ww-btn {
+  display: inline-flex;
+  height: 28px;
+  min-height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--ww-accent);
+  color: #0b0b0c;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    filter 0.2s ease,
+    transform 0.16s ease;
+}
+.ww-btn:hover {
+  filter: brightness(1.08);
+}
+.ww-btn:active {
+  transform: scale(0.96);
+}
+.ww-btn svg {
+  width: 13px;
+  height: 13px;
+}
+.ww[data-tone="closed"] .ww-btn {
+  background: linear-gradient(135deg, #8b5cf6, #c352ff);
+  color: #fff;
+}
+:root.light .ww[data-tone="soon"] .ww-btn {
+  color: #fff;
+}
+@media (max-width: 480px) {
+  .ww-track {
+    display: none;
+  }
+}
+@keyframes ww-ping {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.6);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ww-dot::after {
+    animation: none;
+  }
+  .ww-track i {
+    transition: none;
+  }
+}

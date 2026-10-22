@@ -28,8 +28,6 @@ import type { ProductActions } from "@/components/products/ProductCard";
 import { displayPrice, hasPromo } from "@/components/products/product-view";
 import { useTeamAccess } from "@/hooks/useTeamAccess";
 import { useIsMobile } from "@/hooks/use-mobile";
-import "@/components/orcamentos/quotes.css";
-import "@/components/products/products.css";
 
 export const Route = createFileRoute("/produtos")({
   // Regressão pós-update: SSR desta rota estava causando HTTPError 500 no worker.

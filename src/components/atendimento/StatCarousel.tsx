@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { StatSnapshot } from "@/lib/atendimento/stats";
+import type { ArtLayer, StatSnapshot } from "@/lib/atendimento/stats";
 
 const ROTATION_MS = 7000;
 
 /**
- * Cartão de métricas com fundos que se transformam entre os indicadores.
+ * Cartão de métricas com artes de luz que se transformam entre os indicadores.
  *
  * Troca de métrica a cada 7s no mesmo cartão. Decisões que valem
  * comentário:
- * - Os gradientes CSS permanecem montados e só a opacidade muda. Assim
- *   a cor flui entre métricas sem deslocar o cartão nem recalcular layout.
+ * - As artes permanecem montadas e só opacidade/escala mudam. Assim a luz
+ *   flui entre métricas sem deslocar o cartão nem recalcular layout.
  * - O relógio pausa no hover, no foco do teclado e quando a aba está oculta.
  *   Nada pior do que voltar para a aba e o cartão ter passado 40 vezes.
  * - `prefers-reduced-motion` desliga a transição (vira corte seco) mas mantém a
@@ -73,7 +73,7 @@ export function StatCarousel({
 
   return (
     <div
-      className={cn("at-stat @container/stat-card min-w-0 shrink-0 select-none", className)}
+      className={cn("at-stat min-w-0 shrink-0 select-none", className)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -89,72 +89,44 @@ export function StatCarousel({
         }
       }}
     >
-      <div className="at-stat-surface relative overflow-hidden rounded-[28px] bg-[#07070b]">
+      <div className="at-stat-surface">
+        {/* Todas as artes ficam montadas; só a ativa aparece. A troca é um
+            cruzamento lento de opacidade e escala, então a luz "se
+            transforma" de uma métrica na outra em vez de piscar. */}
         {stats.map((stat, i) => (
-          <span
-            key={stat.key}
-            aria-hidden="true"
-            className={cn(
-              "at-stat-gradient pointer-events-none absolute inset-0 origin-center",
-              reduceMotion ? "transition-none" : "transition-opacity duration-500 ease-out",
-              i === currentIndex ? "opacity-100" : "opacity-0",
-            )}
-            style={{ background: stat.gradient }}
-          />
+          <StatArt key={stat.key} layers={stat.art} active={i === currentIndex} />
         ))}
-        {/* Luz leve sobre os fundos coloridos, sem imagem ou troca de cartão. */}
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(120% 80% at 15% 0%, rgba(255,255,255,0.07), transparent 58%)",
-          }}
-        />
+        <span aria-hidden="true" className="at-stat-veil" />
+        <span aria-hidden="true" className="at-stat-grain" />
+
+        {/* Só o essencial: o nome da fila e o número. A explicação longa
+            mora no tooltip — no cartão ela competia com o número. */}
         <button
           type="button"
           onClick={() => onSelect(selected ? null : current.key)}
           title={`${current.caption} — clique para filtrar a fila`}
-          className={cn(
-            "group relative flex h-[clamp(112px,20dvh,168px)] w-full min-w-0 flex-col justify-center rounded-[28px] px-4 pb-3 pt-10 text-left outline-none xl:h-[clamp(132px,24dvh,200px)] xl:px-5 xl:pb-4",
-            "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70",
-            selected && "ring-2 ring-inset ring-white/80",
-          )}
+          aria-pressed={selected}
+          className="at-stat-body"
         >
           <span
             key={current.key}
-            className="relative"
+            className="at-stat-main"
             style={
-              reduceMotion ? undefined : { animation: "atendimento-stat-content 180ms ease-out" }
+              reduceMotion
+                ? undefined
+                : { animation: "atendimento-stat-content 420ms cubic-bezier(0.22, 1, 0.36, 1)" }
             }
           >
-            <span className="at-stat-label block text-base font-bold leading-none text-white drop-shadow-sm @min-[280px]/stat-card:text-xl">
+            <span className="at-stat-label">
               {current.label}
+              {selected && <span className="at-stat-filtering">filtrando</span>}
             </span>
-            <span className="at-stat-number mt-1 block text-[48px] font-extrabold leading-[0.9] tracking-tight text-white tabular-nums drop-shadow @min-[280px]/stat-card:text-[64px]">
-              {current.count}
-            </span>
-            <span className="at-stat-caption mt-3 block max-w-[24ch] text-[11px] leading-relaxed text-white/80">
-              {current.caption}
-            </span>
+            <span className="at-stat-number tabular-nums">{current.count}</span>
           </span>
-          {selected && (
-            <span className="absolute right-3 top-10 rounded-full border border-white/30 bg-black px-2 py-0.5 text-[10px] font-semibold text-white">
-              filtrando
-            </span>
-          )}
         </button>
 
-        {/* Indicadores dentro do cartão, no topo e centralizados. A barra do
-            slide ativo enche em 7s — é ela que comunica o ritmo da troca e o
-            estado de pausa (a animação congela no hover), então não sobra
-            nenhum rótulo de texto para explicar isso.
-
-            O <button> é só a área de toque, porque o app impõe 44px de altura
-            mínima em telas pequenas; quem desenha o traço é o <span> dentro.
-            O container é pointer-events-none para não roubar o clique do
-            cartão nos vãos entre as barras. */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center gap-1.5 px-4 pt-2.5">
+        {/* Régua no topo: o traço ativo enche em 7s e congela no hover. */}
+        <div className="at-stat-bars">
           {stats.map((stat, i) => (
             <button
               key={stat.key}
@@ -162,22 +134,11 @@ export function StatCarousel({
               aria-label={`Ver métrica ${stat.label}`}
               aria-current={i === currentIndex}
               onClick={() => go(i)}
-              className="pointer-events-auto flex h-6 items-center py-2"
             >
-              {/* Traço curto — menor que a faixa de antes, mas com proporção
-                  bem longe de um ponto (20x5). */}
-              <span
-                className={cn(
-                  "block h-[5px] w-5 overflow-hidden rounded-full shadow-sm transition-colors duration-300",
-                  // Trilho claro, não escuro: o cartão agora é preto e um
-                  // trilho preto sumiria dentro dele.
-                  i === currentIndex ? "bg-white/20" : "bg-white/35 hover:bg-white/60",
-                )}
-              >
+              <span data-on={i === currentIndex || undefined}>
                 {i === currentIndex && (
-                  <span
+                  <i
                     key={`${currentIndex}-${tick}`}
-                    className="block h-full rounded-full bg-white"
                     style={
                       reduceMotion
                         ? { width: "100%" }
@@ -197,11 +158,38 @@ export function StatCarousel({
   );
 }
 
+/** Focos de luz desfocados de uma métrica (ver `ArtLayer`). */
+function StatArt({ layers, active }: { layers: ArtLayer[]; active: boolean }) {
+  return (
+    <span aria-hidden="true" className="at-stat-art" data-on={active || undefined}>
+      {layers.map((layer, i) => (
+        <span
+          key={i}
+          style={{
+            left: `${layer.x}%`,
+            top: `${layer.y}%`,
+            width: layer.w,
+            height: layer.h,
+            opacity: layer.opacity,
+            filter: `blur(${layer.blur}px)`,
+            transform: `translate(-50%, -50%) rotate(${layer.rotate ?? 0}deg)`,
+            ...(layer.ring
+              ? { border: `${layer.ring}px solid ${layer.color}` }
+              : { background: layer.color }),
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 /**
  * Versão de celular das métricas: uma faixa de contadores compactos que
  * desliza na horizontal. O cartão giratório ocupava metade da tela e
  * empurrava a lista de conversas para o pé da página; aqui cada métrica
  * custa uma pílula, todas ficam à vista e o toque continua filtrando a fila.
+ * As pílulas são neutras, com o ponto de cor da métrica: a arte inteira fica
+ * para o cartão grande.
  */
 export function StatStrip({
   stats,
@@ -234,10 +222,11 @@ export function StatStrip({
             title={stat.caption}
             onClick={() => onSelect(active ? null : stat.key)}
             className="at-stat-pill"
-            style={{ ["--pill-bg" as string]: stat.gradient }}
+            style={{ ["--pill-accent" as string]: stat.accent }}
           >
-            <span className="at-stat-pill-count">{stat.count}</span>
+            <i aria-hidden="true" />
             <span className="at-stat-pill-label">{stat.label}</span>
+            <span className="at-stat-pill-count">{stat.count}</span>
           </button>
         );
       })}

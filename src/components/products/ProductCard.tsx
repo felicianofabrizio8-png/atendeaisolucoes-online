@@ -15,6 +15,10 @@ import {
   hasPromo,
   productInitials,
 } from "./product-view";
+// CSS da tela importado aqui (e não no arquivo da rota): assim ele vai junto
+// do código da tela, e não no pacote inicial de todas as páginas.
+import "@/components/orcamentos/quotes.css";
+import "./products.css";
 
 export interface ProductActions {
   onOpen: () => void;
