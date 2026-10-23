@@ -12,16 +12,18 @@ const { updates, inserts, state } = vi.hoisted(() => ({
 
 function conversationsChain() {
   const record = { values: {} as Record<string, unknown>, filters: [] as Array<[string, unknown]> };
+  let isUpdate = false;
   const c: any = {
-    update: (values: Record<string, unknown>) => ((record.values = values), c),
+    update: (values: Record<string, unknown>) => ((record.values = values), (isUpdate = true), c),
     eq: (col: string, v: unknown) => (record.filters.push([col, v]), c),
     select: () => c,
+    // Só gravações entram em `updates`; leituras (conferência de posse) não.
     maybeSingle: async () => {
-      updates.push(record);
+      if (isUpdate) updates.push(record);
       return state.updateResult;
     },
     then: (ok: any) => {
-      updates.push(record);
+      if (isUpdate) updates.push(record);
       return Promise.resolve({ data: null, error: null }).then(ok);
     },
   };
@@ -39,6 +41,14 @@ const client: any = {
         ),
       };
     }
+    if (table === "company_settings") {
+      const c: any = {
+        select: () => c,
+        eq: () => c,
+        maybeSingle: async () => ({ data: { ai_auto_reply_scope: "geral", ai_auto_reply_enabled: true }, error: null }),
+      };
+      return c;
+    }
     if (table === "profiles") {
       const c: any = {
         select: () => c,
@@ -49,6 +59,8 @@ const client: any = {
     }
     throw new Error(`unexpected table ${table}`);
   },
+  // Papel de atendimento do usuário (checagem de papel da rota).
+  rpc: async () => ({ data: true, error: null }),
   auth: { getUser: async () => ({ data: { user: { id: "user-a" } }, error: null }) },
 };
 
@@ -73,8 +85,9 @@ describe("releaseConversationToAi", () => {
     expect(updates[0].values).toEqual({
       ai_status: null,
       human_takeover_at: null,
-      ai_handling: false,
     });
+    // O lock fica com o turno em andamento (evita turno paralelo e resposta duplicada).
+    expect(updates[0].values).not.toHaveProperty("ai_handling");
     expect(updates[0].filters).toContainEqual(["company_id", "company-a"]);
     expect(updates[0].filters).toContainEqual(["id", "conv-1"]);
     expect(inserts[0].values).toMatchObject({
@@ -122,7 +135,7 @@ describe("POST /api/ai/agent-takeover", () => {
       company_id: "company-b",
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, released: true });
+    expect(await res.json()).toMatchObject({ ok: true, released: true });
     expect(updates[0].filters).toContainEqual(["company_id", "company-a"]);
     expect(updates[0].filters).not.toContainEqual(["company_id", "company-b"]);
   });

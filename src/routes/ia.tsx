@@ -75,6 +75,7 @@ interface LogRow {
 
 interface AutomationSettings {
   ai_auto_reply_enabled: boolean;
+  ai_auto_reply_scope: "desligado" | "teste" | "geral";
   ai_after_hours_only: boolean;
   ai_initial_message: string | null;
   ai_max_auto_replies: number;
@@ -168,7 +169,7 @@ function ConfiguracoesIA() {
       supabase
         .from("company_settings")
         .select(
-          "ai_auto_reply_enabled, ai_after_hours_only, ai_initial_message, ai_max_auto_replies, ai_handoff_timeout_minutes, ai_agent_name, business_hours_start, business_hours_end",
+          "ai_auto_reply_enabled, ai_auto_reply_scope, ai_after_hours_only, ai_initial_message, ai_max_auto_replies, ai_handoff_timeout_minutes, ai_agent_name, business_hours_start, business_hours_end",
         )
         .eq("company_id", companyId)
         .maybeSingle(),
@@ -196,6 +197,9 @@ function ConfiguracoesIA() {
       settings
         ? {
             ai_auto_reply_enabled: !!settings.ai_auto_reply_enabled,
+            ai_auto_reply_scope: settings.ai_auto_reply_scope === "teste" || settings.ai_auto_reply_scope === "geral"
+              ? settings.ai_auto_reply_scope
+              : settings.ai_auto_reply_enabled ? "geral" : "desligado",
             ai_after_hours_only: settings.ai_after_hours_only ?? true,
             ai_initial_message: settings.ai_initial_message ?? null,
             ai_max_auto_replies: settings.ai_max_auto_replies ?? 5,
@@ -313,6 +317,7 @@ function ConfiguracoesIA() {
       .from("company_settings")
       .update({
         ai_auto_reply_enabled: automation.ai_auto_reply_enabled,
+        ai_auto_reply_scope: automation.ai_auto_reply_scope,
         ai_after_hours_only: automation.ai_after_hours_only,
         ai_initial_message: automation.ai_initial_message,
         ai_max_auto_replies: automation.ai_max_auto_replies,
@@ -689,15 +694,25 @@ function ConfiguracoesIA() {
                 <CardContent className="grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                     <div>
-                      <div className="text-sm font-medium">Ativar pré-atendimento da IA</div>
+                      <div className="text-sm font-medium">Modo de atendimento da Vendedora 2.0</div>
                       <div className="text-xs text-muted-foreground">
-                        Quando ativado, a IA responde leads novos automaticamente.
+                        Desligado, teste por conversa autorizada ou atendimento geral.
                       </div>
                     </div>
-                    <Switch
-                      checked={automation.ai_auto_reply_enabled}
-                      onCheckedChange={(v) => setAuto("ai_auto_reply_enabled", v)}
-                    />
+                    <Select
+                      value={automation.ai_auto_reply_scope}
+                      onValueChange={(value: "desligado" | "teste" | "geral") => {
+                        setAuto("ai_auto_reply_scope", value);
+                        setAuto("ai_auto_reply_enabled", value !== "desligado");
+                      }}
+                    >
+                      <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="desligado">DESLIGADO</SelectItem>
+                        <SelectItem value="teste">TESTE</SelectItem>
+                        <SelectItem value="geral">GERAL</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="md:col-span-2 flex items-center justify-between rounded-md border border-border p-3">
                     <div>

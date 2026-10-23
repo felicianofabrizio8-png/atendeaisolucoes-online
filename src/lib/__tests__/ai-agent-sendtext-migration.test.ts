@@ -57,11 +57,40 @@ vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
 
 async function callSend(text = "olá mundo") {
   const { sendWhatsappText } = await import("@/lib/ai-agent.server");
+  const { authorizeWhatsappSend } = await import("../whatsapp-send-authorization.server");
+  const authorization = await authorizeWhatsappSend({
+    companyId: "company-1",
+    conversationId: "conv-1",
+    leadId: "lead-1",
+    source: "human",
+  });
   return sendWhatsappText({
     companyId: "company-1",
     conversationId: "conv-1",
     leadId: "lead-1",
     text,
+    authorization,
+  });
+}
+
+async function validAuthorization(source: "human" | "automatic" = "human") {
+  const { authorizeWhatsappSend } = await import("../whatsapp-send-authorization.server");
+  return authorizeWhatsappSend({
+    companyId: "company-1",
+    conversationId: "conv-1",
+    leadId: "lead-1",
+    source,
+  });
+}
+
+async function sendWithAuthorization(authorization: unknown) {
+  const { sendWhatsappText } = await import("@/lib/ai-agent.server");
+  return sendWhatsappText({
+    companyId: "company-1",
+    conversationId: "conv-1",
+    leadId: "lead-1",
+    text: "olÃ¡ mundo",
+    authorization: authorization as never,
   });
 }
 
@@ -71,19 +100,54 @@ beforeEach(() => {
   updatedRows.length = 0;
   Object.keys(tableRows).forEach((k) => delete tableRows[k]);
   tableRows.leads = {
+    id: "lead-1",
+    company_id: "company-1",
+    channel: "whatsapp",
     phone: "11999998888",
     external_id: "5511999998888",
     integration_id: "int-1",
+  };
+  tableRows.companies = { id: "company-1" };
+  // Política explícita da empresa: o comprovante automático não deduz permissão da conversa.
+  tableRows.company_settings = { company_id: "company-1", ai_auto_reply_scope: "geral", ai_auto_reply_enabled: true, sales_agent_master_enabled: true, sales_agent_v2_enabled: false };
+  tableRows.conversations = {
+    id: "conv-1",
+    company_id: "company-1",
+    lead_id: "lead-1",
     channel: "whatsapp",
+    sales_agent_auto_reply: true,
+    ai_status: null,
+    human_takeover_at: null,
   };
   tableRows.integrations = {
     id: "int-1",
+    company_id: "company-1",
+    channel: "whatsapp",
+    active: true,
     access_token: "EAAG-token",
     external_account_id: "PHONE-ID",
   };
 });
 
 describe("sendWhatsappText — migração B.4", () => {
+  it("bloqueia no sink quando o comprovante server-side não existe", async () => {
+    const { sendWhatsappText } = await import("@/lib/ai-agent.server");
+    const out = await sendWhatsappText({
+      companyId: "company-1",
+      conversationId: "conv-1",
+      leadId: "lead-1",
+      text: "não deve sair",
+      authorization: undefined as never,
+    });
+    expect(out).toEqual({
+      ok: false,
+      simulated: false,
+      error: "whatsapp_send_not_authorized",
+      externalRequestSent: false,
+    });
+    expect(postGraphSpy).not.toHaveBeenCalled();
+  });
+
   it("A. production/legacy → request idêntica ao legado + persistência ok", async () => {
     postGraphSpy.mockResolvedValueOnce({
       success: true,
@@ -172,7 +236,7 @@ describe("sendWhatsappText — migração B.4", () => {
       parsedBody: { error: { message: "Invalid phone" } },
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: false, simulated: false, error: "Invalid phone" });
+    expect(out).toEqual({ ok: false, simulated: false, error: "Invalid phone", externalRequestSent: true });
     expect(insertedRows.some((r) => r.table === "messages")).toBe(false);
   });
 
@@ -189,7 +253,7 @@ describe("sendWhatsappText — migração B.4", () => {
       parsedBody: null,
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: false, simulated: false, error: "HTTP 500" });
+    expect(out).toEqual({ ok: false, simulated: false, error: "HTTP 500", externalRequestSent: true });
   });
 
   it("F. erro de rede → ok:false com prefixo 'network:'", async () => {
@@ -202,18 +266,39 @@ describe("sendWhatsappText — migração B.4", () => {
       retryable: true,
     });
     const out = await callSend();
-    expect(out).toEqual({ ok: false, simulated: false, error: "network: ECONNRESET" });
+    expect(out).toEqual({ ok: false, simulated: false, error: "network: ECONNRESET", externalRequestSent: false });
     expect(insertedRows.some((r) => r.table === "messages")).toBe(false);
   });
 
   it("G. lead sem telefone → devolve error sem chamar postGraph", async () => {
-    tableRows.leads = { phone: null, external_id: null, integration_id: "int-1" };
-    const out = await callSend();
+    const authorization = await validAuthorization();
+    tableRows.leads = { id: "lead-1", company_id: "company-1", channel: "whatsapp", phone: null, external_id: null, integration_id: "int-1" };
+    const out = await sendWithAuthorization(authorization);
     expect(out.ok).toBe(false);
     expect(postGraphSpy).not.toHaveBeenCalled();
   });
 
+  it("revalida takeover humano depois que a autorização foi emitida", async () => {
+    const authorization = await validAuthorization("automatic");
+    tableRows.conversations = {
+      ...tableRows.conversations,
+      ai_status: "assumido_humano",
+      human_takeover_at: new Date().toISOString(),
+    };
+
+    const out = await sendWithAuthorization(authorization);
+
+    expect(out).toEqual({
+      ok: false,
+      simulated: false,
+      error: "whatsapp_send_not_authorized",
+      externalRequestSent: false,
+    });
+    expect(postGraphSpy).not.toHaveBeenCalled();
+  });
+
   it("H. integração ausente → devolve error sem chamar postGraph", async () => {
+    const authorization = await validAuthorization();
     tableRows.integrations = null;
     // Sem integração, nem as env vars globais podem ser usadas (ver I–K).
     const oldA = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -223,7 +308,7 @@ describe("sendWhatsappText — migração B.4", () => {
     delete process.env.WHATSAPP_API_KEY;
     delete process.env.WHATSAPP_PHONE_NUMBER_ID;
     try {
-      const out = await callSend();
+      const out = await sendWithAuthorization(authorization);
       expect(out.ok).toBe(false);
       expect(postGraphSpy).not.toHaveBeenCalled();
     } finally {
@@ -250,7 +335,8 @@ describe("sendWhatsappText — migração B.4", () => {
 
     it("I. empresa sem integração não usa o número global", async () => {
       tableRows.integrations = null;
-      const out = await callSend();
+      // Sem integração o comprovante nem é emitido; em qualquer forma, nada é enviado.
+      const out = await callSend().catch(() => ({ ok: false as const }));
       expect(out.ok).toBe(false);
       expect(postGraphSpy).not.toHaveBeenCalled();
     });

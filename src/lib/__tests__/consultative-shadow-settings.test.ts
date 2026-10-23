@@ -12,10 +12,11 @@ const settingsTypeSource = readFileSync(
   fileURLToPath(new URL("../../integrations/supabase/types.ts", import.meta.url)),
   "utf8",
 );
-const agentSource = readFileSync(
-  fileURLToPath(new URL("../ai-agent.server.ts", import.meta.url)),
-  "utf8",
-);
+const agentSource = [
+  // A integração consultiva do turno fica em consultative-turn.server.ts.
+  "../ai-agent.server.ts",
+  "../consultative-turn.server.ts",
+].map((path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8")).join("\n");
 
 const profile = {
   version: 1,

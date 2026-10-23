@@ -292,11 +292,23 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
         via: "text",
         message: input.text,
       };
+    const authorized = await authorizeDispatch(input);
+    if (!authorized.ok) {
+      const result: DispatchResult = {
+        status: "blocked",
+        reason: authorized.reason,
+        via: "text",
+        message: input.text,
+      };
+      await persist(input, result, { reason: "send_not_authorized" });
+      return result;
+    }
     const send = await sendWhatsappText({
       companyId: input.companyId,
       conversationId: input.conversationId,
       leadId: input.leadId,
       text: input.text,
+      authorization: authorized.authorization,
     });
     const outcome: Outcome = !send.ok
       ? { status: "failed", error: send.error }

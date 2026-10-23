@@ -10,6 +10,24 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 import {
+  authorizeWhatsappSend,
+  isWhatsappSendAuthorization,
+  type WhatsappSendAuthorization,
+} from "./whatsapp-send-authorization.server";
+import {
+  claimMessageDetailed,
+  finishMessageClaim,
+  markMessageOutboundStarted,
+} from "./runtime/RuntimeStateStore.server";
+import { normalizeAiReplyScope } from "./ai-reply-control";
+import { hasExecutionCapability, type ExecutionScope } from "./execution-scope";
+import {
+  buildTurnConsultativeGuidance,
+  enforceExecutionScopeDecision,
+  observeConsultativeShadow,
+} from "./consultative-turn.server";
+import { enforceConsultativeQuestionLimit } from "./consultative-sales-response";
+import {
   detectObjections,
   detectReadyToClose,
   normalizeState,
@@ -329,6 +347,8 @@ export interface AgentConversation {
   auto_reply_count: number;
   last_auto_reply_at: string | null;
   human_takeover_at: string | null;
+  /** Opt-in da conversa (exigido no escopo "teste" e no modo assistido). */
+  sales_agent_auto_reply?: boolean | null;
 }
 
 export type SkipReason =
@@ -406,6 +426,13 @@ export function shouldAutoReply(
   recentAutoReplyCount: number = conv.auto_reply_count,
 ): { ok: true } | { ok: false; reason: SkipReason } {
   if (!settings.ai_auto_reply_enabled) return { ok: false, reason: "disabled" };
+  // Escopo da empresa (Atendimento 2.0): desligado nunca responde; "teste", sem a
+  // Vendedora V2, só responde nas conversas autorizadas uma a uma.
+  const scope = normalizeAiReplyScope(settings.ai_auto_reply_scope, settings.ai_auto_reply_enabled);
+  if (scope === "desligado") return { ok: false, reason: "disabled" };
+  if (scope === "teste" && resolveSalesAgentMode(settings) === null && conv.sales_agent_auto_reply !== true) {
+    return { ok: false, reason: "disabled" };
+  }
   if (conv.ai_status === "assumido_humano") return { ok: false, reason: "human_active" };
   if (conv.human_takeover_at) return { ok: false, reason: "human_active" };
   if (conv.ai_status === "aguardando_humano") return { ok: false, reason: "human_pending" };
@@ -709,8 +736,29 @@ export async function runAgentTurn(params: {
     detected_interest: string | null;
     detected_intent: string | null;
     detected_budget: string | null;
+    detected_objections?: readonly string[] | null;
   };
+  /** Lead da conversa (memória consultiva e shadow). */
+  leadId?: string;
+  /** Capacidades do contexto (treino, sugestão assistida, conversa): limitam memória e motor externo. */
+  executionScope?: ExecutionScope;
 }): Promise<AgentDecision> {
+  const executionScope = params.executionScope;
+  if (executionScope && executionScope.companyId !== params.ctx.settings.company_id) {
+    throw new Error("execution_scope_company_mismatch");
+  }
+  if (
+    executionScope &&
+    params.salesStateScope &&
+    (params.salesStateScope.scopeType !== executionScope.kind ||
+      params.salesStateScope.scopeId !== executionScope.scopeId)
+  ) {
+    throw new Error("execution_scope_memory_mismatch");
+  }
+  if (executionScope && !hasExecutionCapability(executionScope, "generate_response")) {
+    throw new Error("execution_scope_generation_not_allowed");
+  }
+  const canWriteMemory = !executionScope || hasExecutionCapability(executionScope, "write_scoped_memory");
   const resolved = resolveSalesAgentLlmConfig();
   if (!resolved.ok) return { kind: "handoff", reason: resolved.reason };
   const { endpoint, model, apiKey } = resolved.config;
@@ -753,9 +801,14 @@ export async function runAgentTurn(params: {
     },
     sessionCorrections: params.sessionCorrections,
   });
-  const stateScope = params.salesStateScope
-    ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
-    : null;
+  const stateScope = executionScope
+    ? { companyId: executionScope.companyId, scopeType: executionScope.kind, scopeId: executionScope.scopeId }
+    : params.salesStateScope
+      ? { ...params.salesStateScope, companyId: params.ctx.settings.company_id }
+      : null;
+  if (executionScope && !hasExecutionCapability(executionScope, "read_scoped_memory")) {
+    throw new Error("execution_scope_memory_read_not_allowed");
+  }
   const previousCustomerContext = stateScope
     ? await loadCustomerContext(stateScope.companyId, stateScope.scopeId)
     : null;
@@ -854,7 +907,27 @@ export async function runAgentTurn(params: {
     lastValidProductIds: filteredSalesState.lastValidProductIds,
     lastCatalogQueryStatus: filteredSalesState.lastCatalogQuery?.status,
   });
-  if (stateScope && memoryStatus !== "error") await saveSalesStateSafely(stateScope, filteredSalesState);
+  if (stateScope && memoryStatus !== "error" && canWriteMemory) await saveSalesStateSafely(stateScope, filteredSalesState);
+  // Memória consultiva: orientação opt-in por empresa e observação em sombra; falha
+  // nunca altera o atendimento.
+  const consultativeGuidance = await buildTurnConsultativeGuidance({
+    ctx: params.ctx,
+    history: effectiveHistory,
+    salesState: filteredSalesState,
+    stateScope,
+    leadId: params.leadId,
+    objections: params.qualification?.detected_objections,
+  }).catch(() => null);
+  await observeConsultativeShadow({
+    ctx: params.ctx,
+    history: effectiveHistory,
+    salesState: filteredSalesState,
+    salesStateScope: stateScope,
+    leadId: params.leadId,
+    log: logEvent,
+  }).catch(() => {
+    // Falha shadow não pode alterar o atendimento atual.
+  });
   const relevantQuickReplies = await loadRelevantSalesAgentQuickReplies(
     safeContext.settings.company_id,
     effectiveHistory,
@@ -911,7 +984,9 @@ export async function runAgentTurn(params: {
   const sellerState = sellerStateConversationId
     ? await loadSellerState(params.ctx.settings.company_id, sellerStateConversationId)
     : null;
-  const external = await callExternalSalesAgent({
+  const external = executionScope && !hasExecutionCapability(executionScope, "use_external_engine")
+    ? ({ enabled: false, reason: "disabled", attempted: false, correlationId: "scope-disabled" } as const)
+    : await callExternalSalesAgent({
     companyId: params.ctx.settings.company_id,
     conversationId: params.salesStateScope?.scopeId ?? null,
     sellerState,
@@ -930,7 +1005,7 @@ export async function runAgentTurn(params: {
   }
   if (external.enabled && external.ok) {
     // `silent` só avalia e não altera nada da conversa; nos demais modos o estado é guardado.
-    if (sellerStateConversationId && external.sellerState && resolveSalesAgentMode(params.ctx.settings) !== "silent") {
+    if (canWriteMemory && sellerStateConversationId && external.sellerState && resolveSalesAgentMode(params.ctx.settings) !== "silent") {
       await saveSellerState(params.ctx.settings.company_id, sellerStateConversationId, external.sellerState);
     }
     return runExternalSafetyLayer(external.decision, external.evidenceText);
@@ -986,7 +1061,7 @@ export async function runAgentTurn(params: {
     return { ok: true, data: await res.json() };
   });
 
-  const decision = await core.decide({
+  const modelDecision = await core.decide({
     ...contextualParams,
     model,
     catalogSearch,
@@ -1000,25 +1075,38 @@ export async function runAgentTurn(params: {
     },
     customerContext: previousCustomerContext,
     focusProductIds,
+    consultativeGuidance,
   });
+  // A memória consultiva pode recomendar humano (objeção não autorizada): preservado.
+  const guardedDecision: AgentDecision = consultativeGuidance?.handoffRecommended && modelDecision.kind === "reply"
+    ? {
+        kind: "handoff",
+        reason: "consultative_objection_not_authorized",
+        grounding_sources: modelDecision.grounding_sources ?? [],
+        learning_ids_used: modelDecision.learning_ids_used ?? [],
+        fallback_reason: "consultative_handoff_guard",
+      }
+    : modelDecision;
+  const decision = enforceConsultativeQuestionLimit(guardedDecision, consultativeGuidance);
   // Customer Context: memória comercial da conversa, atualizada pelo plano
   // que o LLM escolheu e o gate validou.
-  if (stateScope && decision.sales_plan) {
+  if (stateScope && decision.sales_plan && canWriteMemory) {
     await saveCustomerContext(stateScope.companyId, stateScope.scopeId, decision, previousCustomerContext);
   }
-  if (stateScope && memoryStatus !== "error") {
+  // Só o que o cliente viu vira produto selecionado na memória; o conjunto de
+  // validação (suggested_products) pode conter itens não apresentados.
+  const shownProductIds = decision.presented_product_ids ?? decision.suggested_products ?? [];
+  if (stateScope && memoryStatus !== "error" && canWriteMemory) {
     await saveSalesStateSafely(
       stateScope,
       mergeConversationSalesState(filteredSalesState, {
         intent: decision.detected_intent ?? interpretation.intent,
         candidateProductIds: relevantCatalog.map((product) => product.id),
-        ...(decision.suggested_products?.length
-          ? { selectedProductIds: decision.suggested_products }
-          : {}),
+        ...(shownProductIds.length ? { selectedProductIds: shownProductIds } : {}),
       }),
     );
   }
-  return redactSalesAgentDecision(decision);
+  return redactSalesAgentDecision(enforceExecutionScopeDecision(decision, executionScope));
 }
 
 // ----------------------------------------------------------------------------
@@ -1045,7 +1133,7 @@ export type SendWhatsappTextResult =
       simulationId: string | null;
       externalRequestSent: false;
     }
-  | { ok: false; simulated: false; error: string };
+  | { ok: false; simulated: false; error: string; externalRequestSent?: boolean };
 
 export async function sendWhatsappText(params: {
   companyId: string;
@@ -1055,7 +1143,31 @@ export async function sendWhatsappText(params: {
   productIds?: string[];
   /** Marcas adicionais gravadas em messages.source_metadata (ex.: esclarecimento). */
   metadata?: Record<string, string>;
+  /** Comprovante emitido no servidor; é reconferido aqui, no instante do envio. */
+  authorization: WhatsappSendAuthorization;
 }): Promise<SendWhatsappTextResult> {
+  if (
+    !isWhatsappSendAuthorization(params.authorization) ||
+    params.authorization.companyId !== params.companyId ||
+    params.authorization.conversationId !== params.conversationId ||
+    params.authorization.leadId !== params.leadId
+  ) {
+    return { ok: false, simulated: false, error: "whatsapp_send_not_authorized", externalRequestSent: false };
+  }
+  try {
+    // Barreira final: takeover, desligamento ou troca de número entre a decisão e o envio.
+    const current = await authorizeWhatsappSend({
+      companyId: params.companyId,
+      conversationId: params.conversationId,
+      leadId: params.leadId,
+      source: params.authorization.source,
+    });
+    if (current.integrationId !== params.authorization.integrationId) {
+      return { ok: false, simulated: false, error: "whatsapp_send_not_authorized", externalRequestSent: false };
+    }
+  } catch {
+    return { ok: false, simulated: false, error: "whatsapp_send_not_authorized", externalRequestSent: false };
+  }
   const { data: lead } = await supabaseAdmin
     .from("leads")
     .select("phone, external_id, integration_id, channel")
@@ -1074,9 +1186,10 @@ export async function sendWhatsappText(params: {
     .eq("company_id", params.companyId)
     .eq("channel", "whatsapp")
     .eq("active", true);
-  const { data: integration } = lead.integration_id
-    ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
-    : await integrationQuery.limit(1).maybeSingle();
+  // O número é o resolvido pelo comprovante: o do lead ou a única integração ativa.
+  const { data: integration } = await integrationQuery
+    .eq("id", params.authorization.integrationId)
+    .maybeSingle();
 
   // Nunca completa credenciais com o número global de outro tenant.
   const credentials = resolveWhatsappSendCredentials(integration);
@@ -1131,9 +1244,10 @@ export async function sendWhatsappText(params: {
         ok: false,
         simulated: false,
         error: providerErr?.message ?? outbound.error,
+        externalRequestSent: true,
       };
     }
-    return { ok: false, simulated: false, error: `network: ${outbound.error}` };
+    return { ok: false, simulated: false, error: `network: ${outbound.error}`, externalRequestSent: false };
   }
 
   const externalId = outbound.externalId;
@@ -1352,24 +1466,104 @@ const AGENT_CATCHUP_MIN_BUDGET_MS = 10_000;
  * de novo (limitado), sem a checagem de "já respondida" — a resposta
  * anterior foi gerada sem ver essa mensagem.
  */
+type MessageClaimContext = { messageId: string; claimToken: string; outboundStarted: boolean };
+
+/** Escopo "geral" com ativação posterior à mensagem: a fila acumulada não é respondida. */
+async function isBeforeGeneralActivation(companyId: string, receivedAt: string | null): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from("company_settings")
+    .select("ai_auto_reply_scope, ai_auto_reply_enabled, ai_general_activated_at")
+    .eq("company_id", companyId)
+    .maybeSingle();
+  const settings = data as {
+    ai_auto_reply_scope?: string | null;
+    ai_auto_reply_enabled?: boolean | null;
+    ai_general_activated_at?: string | null;
+  } | null;
+  if (!settings || normalizeAiReplyScope(settings.ai_auto_reply_scope, settings.ai_auto_reply_enabled ?? false) !== "geral") {
+    return false;
+  }
+  const activatedAtMs = settings.ai_general_activated_at ? Date.parse(settings.ai_general_activated_at) : NaN;
+  if (!Number.isFinite(activatedAtMs)) return false;
+  const receivedAtMs = receivedAt ? Date.parse(receivedAt) : NaN;
+  return !Number.isFinite(receivedAtMs) || receivedAtMs <= activatedAtMs;
+}
+type AgentTickPassOptions = { force: boolean; deadlineAt: number; messageClaim?: MessageClaimContext };
+
 export async function runAgentTick(
   conversationId: string,
-  options: { budgetMs?: number } = {},
+  options: { budgetMs?: number; dedupeByLatestMessage?: boolean; messageId?: string } = {},
 ): Promise<AgentTickResult> {
   const deadlineAt = Date.now() + (options.budgetMs ?? AGENT_TICK_BUDGET_MS);
-  let pass = await runAgentTickOnce(conversationId, { force: false, deadlineAt });
-  for (let run = 0; run < MAX_AGENT_TICK_CATCHUP_RUNS; run += 1) {
-    if (!pass.snapshot) break;
-    // Sem orçamento para um turno inteiro, não pega o lock: o isolate seria
-    // encerrado no meio e deixaria ai_handling=true.
-    if (deadlineAt - Date.now() < AGENT_CATCHUP_MIN_BUDGET_MS) break;
-    const newer = await hasLeadMessageAfter(pass.snapshot);
-    if (!newer) break;
-    const next = await runAgentTickOnce(conversationId, { force: true, deadlineAt });
-    if (!next.snapshot && next.result.reason === "lock_busy") break;
-    pass = next;
+  // Reserva persistente por mensagem recebida: reenvios do mesmo gatilho (retry do
+  // webhook/pg_net) não geram nova chamada paga nem segunda resposta.
+  let messageClaim: MessageClaimContext | undefined;
+  let claimCompanyId: string | null = null;
+  if (options.dedupeByLatestMessage) {
+    const { data: owner } = await supabaseAdmin
+      .from("conversations")
+      .select("company_id")
+      .eq("id", conversationId)
+      .maybeSingle();
+    claimCompanyId = (owner as { company_id?: string } | null)?.company_id ?? null;
+    if (!claimCompanyId) return { ok: false, action: "error", reason: "conversation_not_found" };
+    // A mensagem do gatilho; sem message_id, a última mensagem do cliente.
+    let targetQuery = supabaseAdmin
+      .from("messages")
+      .select("id, at")
+      .eq("company_id", claimCompanyId)
+      .eq("conversation_id", conversationId)
+      .eq("role", "lead");
+    targetQuery = options.messageId
+      ? targetQuery.eq("id", options.messageId)
+      : targetQuery.order("at", { ascending: false }).limit(1);
+    const { data: target } = await targetQuery.maybeSingle();
+    const targetRow = target as { id?: string; at?: string } | null;
+    const messageId = options.messageId ?? targetRow?.id ?? null;
+    if (!messageId) return { ok: true, action: "skipped", reason: "no_lead_message" };
+    // Mensagem anterior à ativação geral nunca será respondida: não é reservada.
+    if (await isBeforeGeneralActivation(claimCompanyId, targetRow?.at ?? null)) {
+      return { ok: true, action: "skipped", reason: "before_general_activation" };
+    }
+    const claimResult = await claimMessageDetailed({ companyId: claimCompanyId, messageId });
+    const claim = claimResult.claim;
+    if (!claim) return { ok: false, action: "error", reason: "message_claim_unavailable" };
+    if (!claim.claimed || !claim.claim_token) {
+      return { ok: true, action: "skipped", reason: "duplicate_message" };
+    }
+    messageClaim = { messageId, claimToken: claim.claim_token, outboundStarted: false };
   }
-  return pass.result;
+  let pass = await runAgentTickOnce(conversationId, { force: false, deadlineAt, messageClaim });
+  try {
+    for (let run = 0; run < MAX_AGENT_TICK_CATCHUP_RUNS; run += 1) {
+      if (!pass.snapshot) break;
+      // Sem orçamento para um turno inteiro, não pega o lock: o isolate seria
+      // encerrado no meio e deixaria ai_handling=true.
+      if (deadlineAt - Date.now() < AGENT_CATCHUP_MIN_BUDGET_MS) break;
+      const newer = await hasLeadMessageAfter(pass.snapshot);
+      if (!newer) break;
+      const next = await runAgentTickOnce(conversationId, { force: true, deadlineAt });
+      if (!next.snapshot && next.result.reason === "lock_busy") break;
+      pass = next;
+    }
+    return pass.result;
+  } finally {
+    if (messageClaim && claimCompanyId) {
+      const result = pass.result;
+      const status = result.action === "replied"
+        ? "sent"
+        : result.action === "error"
+          ? (messageClaim.outboundStarted ? "uncertain" : "failed_retryable")
+          : "observed";
+      await finishMessageClaim({
+        companyId: claimCompanyId,
+        messageId: messageClaim.messageId,
+        claimToken: messageClaim.claimToken,
+        status,
+        error: result.action === "error" ? result.reason : undefined,
+      }).catch(() => false);
+    }
+  }
 }
 
 type AgentTickSnapshot = { companyId: string; conversationId: string; lastMessageAt: string | null };
@@ -1400,7 +1594,7 @@ type HistoryRow = {
 };
 
 /** Linha de `messages` → item de histórico do agente (produtos, esclarecimento, transcrição). */
-function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string; notice?: string } {
+function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarification?: string; notice?: string; at?: string } {
   const metadata =
     row.source_metadata && typeof row.source_metadata === "object" && !Array.isArray(row.source_metadata)
       ? (row.source_metadata as Record<string, unknown>)
@@ -1420,6 +1614,7 @@ function toAgentHistoryItem(row: HistoryRow): AgentHistory[number] & { clarifica
   return {
     role: row.role as "lead" | "agent" | "system",
     text,
+    at: row.at,
     ...(productIds.length > 0 ? { productIds } : {}),
     ...(clarification ? { clarification } : {}),
     // Aviso automático do sistema (ex.: "vou passar para um atendente"), não uma fala da venda.
@@ -1470,6 +1665,12 @@ async function sendHandoffNotice(
       leadId: conv.lead_id,
       text,
       metadata: { sales_agent_notice: "handoff" },
+      authorization: await authorizeWhatsappSend({
+        companyId: conv.company_id,
+        conversationId: conv.id,
+        leadId: conv.lead_id,
+        source: "handoff_notice",
+      }),
     });
     await logEvent(conv.company_id, conv.id, conv.lead_id, sent.ok ? "handoff_notice_sent" : "handoff_notice_failed", {
       simulated: sent.ok ? sent.simulated : false,
@@ -1527,7 +1728,7 @@ async function countRecentAutoReplies(
 
 async function runAgentTickOnce(
   conversationId: string,
-  options: { force: boolean; deadlineAt: number },
+  options: AgentTickPassOptions,
 ): Promise<{ result: AgentTickResult; snapshot: AgentTickSnapshot | null }> {
   let snapshot: AgentTickSnapshot | null = null;
   const result = await runAgentTickPass(conversationId, options, (value) => {
@@ -1570,13 +1771,13 @@ async function readConversationAutoReply(companyId: string, conversationId: stri
 
 async function runAgentTickPass(
   conversationId: string,
-  options: { force: boolean; deadlineAt: number },
+  options: AgentTickPassOptions,
   recordSnapshot: (snapshot: AgentTickSnapshot) => void,
 ): Promise<AgentTickResult> {
   const { data: conv } = await supabaseAdmin
     .from("conversations")
     .select(
-      "id, company_id, lead_id, channel, ai_handling, ai_status, auto_reply_count, last_auto_reply_at, human_takeover_at, detected_city, detected_state, detected_pool_size, detected_intent, detected_interest, detected_budget, purchase_timing, customer_stage, lead_temperature, lead_score, lead_ready_to_close, detected_objections",
+      "id, company_id, lead_id, channel, ai_handling, ai_status, auto_reply_count, last_auto_reply_at, human_takeover_at, sales_agent_auto_reply, detected_city, detected_state, detected_pool_size, detected_intent, detected_interest, detected_budget, purchase_timing, customer_stage, lead_temperature, lead_score, lead_ready_to_close, detected_objections",
     )
     .eq("id", conversationId)
     .maybeSingle();
@@ -1601,6 +1802,17 @@ async function runAgentTickPass(
   // Atualmente Fase 1 suporta apenas WhatsApp para envio
   if (conv.channel !== "whatsapp") {
     return { ok: true, action: "skipped", reason: "channel_unsupported" };
+  }
+  // Conversa e lead precisam ser da mesma empresa antes de qualquer leitura de
+  // contexto ou mutação (qualificação, trava, envio).
+  const { data: ownedLead } = await supabaseAdmin
+    .from("leads")
+    .select("id, company_id")
+    .eq("id", conv.lead_id)
+    .eq("company_id", conv.company_id)
+    .maybeSingle();
+  if (!ownedLead || (ownedLead as { company_id?: string }).company_id !== conv.company_id) {
+    return { ok: false, action: "error", reason: "agent_context_mismatch" };
   }
 
   const baseCtx = await loadAgentContext(conv.company_id);
@@ -1712,6 +1924,9 @@ async function runAgentTickPass(
     .eq("id", conv.id)
     .eq("company_id", conv.company_id)
     .eq("ai_handling", false)
+    // Barreira de takeover na própria gravação: humano que assumiu entre a leitura e
+    // a trava não pode ser atropelado pelo turno automático.
+    .is("human_takeover_at", null)
     .select("id")
     .maybeSingle();
   if (!locked) {
@@ -1812,6 +2027,21 @@ async function runAgentTickPass(
     // (pela IA ou por humano) não gera novo turno nem custo de LLM.
     if (!options.force && !hasUnansweredLeadMessage(history)) {
       return { ok: true, action: "skipped", reason: "already_answered" };
+    }
+    // Ativação geral não responde mensagens anteriores a ela (fila acumulada).
+    const generalActivatedAt = ctx.settings.ai_general_activated_at;
+    const activatedAtMs = generalActivatedAt ? Date.parse(generalActivatedAt) : NaN;
+    const receivedAtMs = Date.parse(lastLeadMsg.at ?? "");
+    if (
+      normalizeAiReplyScope(ctx.settings.ai_auto_reply_scope, ctx.settings.ai_auto_reply_enabled) === "geral" &&
+      Number.isFinite(activatedAtMs) &&
+      (!Number.isFinite(receivedAtMs) || receivedAtMs <= activatedAtMs)
+    ) {
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "skipped_before_general_activation", {
+        received_at: lastLeadMsg.at ?? null,
+        activated_at: generalActivatedAt,
+      });
+      return { ok: true, action: "skipped", reason: "before_general_activation" };
     }
 
     // Áudio sem transcrição (falhou ou não chegou a tempo): pede texto ao
@@ -2075,6 +2305,40 @@ async function runAgentTickPass(
       return { ok: true, action: "skipped", reason: "human_active" };
     }
 
+    // Comprovante emitido no servidor: revalida empresa, conversa, número, política de
+    // ativação e takeover imediatamente antes do envio.
+    let replyAuthorization: WhatsappSendAuthorization;
+    try {
+      replyAuthorization = await authorizeWhatsappSend({
+        companyId: conv.company_id,
+        conversationId: conv.id,
+        leadId: conv.lead_id,
+        source: "automatic",
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "whatsapp_send_not_authorized";
+      await logEvent(conv.company_id, conv.id, conv.lead_id, "skipped_send_not_authorized", { reason });
+      await writeSalesAgentAudit("skipped", "send_not_authorized", decision.suggested_products ?? [], ["mode_guard"], reason);
+      return { ok: true, action: "skipped", reason };
+    }
+
+    // Reserva da mensagem: a partir daqui um envio pode ter saído; uma nova tentativa
+    // do mesmo gatilho não repete a resposta.
+    if (options.messageClaim) {
+      const marked = await markMessageOutboundStarted({
+        companyId: conv.company_id,
+        messageId: options.messageClaim.messageId,
+        claimToken: options.messageClaim.claimToken,
+      });
+      if (!marked) {
+        await logEvent(conv.company_id, conv.id, conv.lead_id, "message_claim_unavailable", {
+          message_id: options.messageClaim.messageId,
+        });
+        return { ok: false, action: "error", reason: "message_claim_unavailable" };
+      }
+      options.messageClaim.outboundStarted = true;
+    }
+
     const sent = await sendWhatsappText({
       companyId: conv.company_id,
       conversationId: conv.id,
@@ -2087,6 +2351,7 @@ async function runAgentTickPass(
         : audioUnavailable
           ? { sales_agent_notice: "audio_unavailable" }
           : undefined,
+      authorization: replyAuthorization,
     });
 
     if (!sent.ok) {
@@ -2095,6 +2360,7 @@ async function runAgentTickPass(
         error: sent.error,
       });
       await writeSalesAgentAudit("error", "send_error", decision.suggested_products ?? [], ["action_contract", "whatsapp_text"], "send_failed");
+      if (options.messageClaim && sent.externalRequestSent !== true) options.messageClaim.outboundStarted = false;
       return { ok: false, action: "error", reason: sent.error };
     }
 
@@ -2147,6 +2413,12 @@ async function runAgentTickPass(
           leadId: conv.lead_id,
           productIds: requestedProductImageIds,
           selectionContext: productImageSelectionContext,
+          authorization: await authorizeWhatsappSend({
+            companyId: conv.company_id,
+            conversationId: conv.id,
+            leadId: conv.lead_id,
+            source: "automatic",
+          }),
         });
         await logEvent(conv.company_id, conv.id, conv.lead_id, "product_images_processed", {
           requested: requestedProductImageIds.length,

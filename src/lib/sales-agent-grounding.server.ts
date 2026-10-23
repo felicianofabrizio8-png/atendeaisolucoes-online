@@ -14,6 +14,7 @@ import {
   requestedQuantities,
   specificationsSearchText,
 } from "./catalog-facts";
+import { isSocialOnlyMessage } from "./sales-agent-interpretation";
 import type {
   ConversationProductAttributes,
   ConversationSalesState,
@@ -114,12 +115,15 @@ export type CatalogSearchStatus =
   | "empty_catalog"
   | "no_match"
   | "ambiguous"
-  | "matches";
+  | "matches"
+  | "not_requested";
 
 export type CatalogSearchResult =
   | { status: "query_error"; error: unknown }
   | { status: "empty_catalog"; products: [] }
   | { status: "no_match"; products: [] }
+  /** O turno não expressa necessidade de produto: nenhum produto entra no contexto. */
+  | { status: "not_requested"; products: [] }
   | { status: "ambiguous"; products: CatalogProduct[] }
   /** `exhaustive`: conjunto completo de compatíveis (atributo/medida ou comparação de preço). */
   | {
@@ -188,8 +192,25 @@ function catalogSearchTerms(value: string): string[] {
     .filter((token) => token.length >= 2);
 }
 
+// Palavras funcionais e de cortesia: casam por substring com qualquer descrição
+// ("boa para receber amigos", "mesa para tudo") sem indicar interesse em produto.
+const NON_PRODUCT_TERMS = new Set([
+  "a", "o", "as", "os", "um", "uma", "uns", "umas", "de", "da", "do", "das", "dos", "em", "na", "no",
+  "nas", "nos", "por", "para", "pra", "pro", "com", "sem", "sob", "sobre", "ao", "aos", "e", "ou",
+  "que", "se", "me", "te", "eu", "voce", "voces", "vc", "vcs", "ele", "ela", "nos", "meu", "minha",
+  "seu", "sua", "isso", "isto", "aqui", "ai", "la", "ja", "nao", "sim", "mais", "muito", "muita",
+  "bem", "bom", "boa", "bons", "boas", "dia", "tarde", "noite", "tudo", "todo", "toda", "oi", "ola",
+  "obrigado", "obrigada", "valeu", "tchau", "opa", "certo", "ok", "como", "vai", "esta", "estou",
+  "sou", "ser", "ter", "tem", "tenho", "temos", "quero", "queria", "gostaria", "pode", "poderia",
+  "saber", "ver", "olhar", "favor", "entao", "tambem", "ate", "quando", "onde", "qual", "quais",
+]);
+
+function catalogRankingTerms(value: string): string[] {
+  return catalogSearchTerms(value).filter((token) => !NON_PRODUCT_TERMS.has(token));
+}
+
 function isGenericProductQuestion(text: string): boolean {
-  return /\b(produto|produtos|catalogo|modelo|modelos|sku|preco|valor|custa|comparar|comparacao|opcao|opcoes|disponivel|caracteristica|especificacao|medida|tamanho|cor|variante)\b/i.test(
+  return /\b(produto|produtos|catalogo|modelo|modelos|sku|preco|valor|custa|comparar|comparacao|opcao|opcoes|disponivel|caracteristica|especificacao|medida|tamanho|cor|variante|metros?|centimetros?|cm|litros?|polegadas?)\b/i.test(
     normalizeCatalogText(text),
   );
 }
@@ -198,6 +219,12 @@ function isSpecificProductQuestion(text: string): boolean {
   return /\b(?:modelo|sku|produto)\s+[\p{L}\d][\p{L}\d-]*/iu.test(text) ||
     /\b(?:preco|valor|quanto custa)\b.*\b(?:modelo|produto|sku)\b/iu.test(text) ||
     /\b(?:quero|procuro|gostaria|tem|possui)\b.{0,40}\b(?:o|a|um|uma)?\s*[\p{L}\d][\p{L}\d-]{3,}/iu.test(text);
+}
+
+function isCommercialConditionQuestion(text: string): boolean {
+  return /\b(?:desconto|parcel\w*|pagamento|pagar|pix|cartao|boleto|juros|a vista|entrada|garantia|frete|entrega|prazo|instal\w*|montagem|visita|caro|barato|negoci\w*|condic\w*|orcamento)\b/.test(
+    normalizeCatalogText(text),
+  );
 }
 
 function isCatalogContinuationQuery(text: string): boolean {
@@ -228,6 +255,7 @@ export function searchSalesAgentCatalog(
 
   const lastLeadIndex = [...history].map((item) => item.role).lastIndexOf("lead");
   const lastLeadText = lastLeadIndex >= 0 ? history[lastLeadIndex].text : "";
+  if (isSocialOnlyMessage(lastLeadText)) return { status: "not_requested", products: [] };
   const query = normalizeCatalogText(lastLeadText);
   const selectedIds = new Set([
     ...(salesState?.productIds ?? []),
@@ -347,7 +375,7 @@ export function searchSalesAgentCatalog(
     return { status: "matches", products: selectedProducts };
   }
 
-  const terms = catalogSearchTerms(query);
+  const terms = catalogRankingTerms(query);
   const ranked = products
     .map((product, index) => {
       const haystack = catalogSearchText(product);
@@ -359,9 +387,20 @@ export function searchSalesAgentCatalog(
     .map((entry) => entry.product);
   // Correspondência só textual/lexical da última mensagem: base fraca.
   if (ranked.length > 0) return { status: "matches", products: ranked, basis: "text_match" };
+  // Objeção ou condição comercial ("tem desconto?", "dá pra parcelar?") não é busca
+  // por um produto inexistente: segue sobre o que já está em discussão.
+  if (isCommercialConditionQuestion(query)) {
+    return selectedProducts.length > 0
+      ? { status: "matches", products: selectedProducts.slice(0, SALES_AGENT_MAX_OPTIONS), basis: "focus" }
+      : { status: "not_requested", products: [] };
+  }
   if (isSpecificProductQuestion(query)) return { status: "no_match", products: [] };
   if (isGenericProductQuestion(query)) return { status: "matches", products, basis: "default" };
-  return { status: "matches", products: products.slice(0, SALES_AGENT_MAX_OPTIONS), basis: "default" };
+  // Sem necessidade de produto neste turno: mantém só o que já está em discussão.
+  if (selectedProducts.length > 0) {
+    return { status: "matches", products: selectedProducts.slice(0, SALES_AGENT_MAX_OPTIONS), basis: "focus" };
+  }
+  return { status: "not_requested", products: [] };
 }
 
 const PLAYBOOK_RULE_CATEGORIES = new Set([
@@ -371,12 +410,12 @@ const PLAYBOOK_RULE_CATEGORIES = new Set([
   "human_handoff",
 ]);
 const COACH_RULE_CATEGORY_TERMS: Record<string, string[]> = {
-  sales: ["piscina", "modelo", "medida", "tamanho", "instal"],
+  sales: ["produto", "modelo", "medida", "tamanho", "instal"],
   pricing: ["preco", "valor", "orcamento"],
   payments: ["pagamento", "parcel", "pix", "cartao", "boleto", "entrada"],
   discounts: ["desconto", "negoci"],
   negotiation: ["desconto", "negoci", "condicao"],
-  after_sales: ["garantia", "casco", "estrutura", "filtro", "motobomba"],
+  after_sales: ["garantia", "assistencia", "defeito", "troca", "manutencao"],
   prohibitions: ["invent", "promet", "preco", "desconto"],
   safety: ["segur", "risco", "instal", "acesso"],
 };
@@ -391,21 +430,17 @@ const QUICK_REPLY_TOPIC_TERMS: Record<string, string[]> = {
     "responsabilidade",
     "cliente fornece",
     "cliente precisa",
-    "contrapiso",
     "piso",
     "agua",
     "energia",
-    "drenagem",
-    "pluvial",
     "retirada",
-    "terra",
     "material",
     "materiais",
   ],
-  instalacao: ["instal", "escav", "obra", "casa de maquina"],
+  instalacao: ["instal", "montagem", "obra"],
   faq: ["horario", "endereco", "prazo", "entrega", "atendimento", "link"],
   payment: ["pagamento", "pix", "cartao", "boleto", "parcel", "entrada"],
-  guarantee: ["garantia", "garantias", "casco"],
+  guarantee: ["garantia", "garantias"],
 };
 const NON_OPERATIONAL_QUICK_REPLY_CATEGORIES = new Set([
   "identity",
@@ -460,7 +495,6 @@ function significantTokens(value: string): Set<string> {
     "que",
     "por",
     "cliente",
-    "piscina",
   ]);
   return new Set(
     normalizeCatalogText(value)
@@ -711,10 +745,8 @@ export function extractCurrentProductAttributes(
   const capacity = /(\d+(?:[.,]\d+)?)\s*(mil\s*)?(?:l|litros?)\b/.exec(normalized);
   const capacityBase = decimal(capacity?.[1]);
   const variant = /\b(?:cor|variante)\s+(?:(?:na|em|de)\s+)?([\p{L}\d-]+)/u.exec(normalized);
-  const asksRectangular = /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
-  const shape = asksRectangular
-    ? "retangular"
-    : (["retangular", "redond", "oval"].find((term) => normalized.includes(term)) ?? undefined);
+  // Formatos geométricos citados literalmente; equivalências de segmento vêm dos dados da empresa.
+  const shape = ["retangular", "quadrad", "redond", "oval"].find((term) => normalized.includes(term));
   const lengthM = getRequestedProductLength(history);
   const sizeComparison = /\b(?:maior(?:es)?|mais\s+espaco|aproveitar\s+mais\s+(?:o\s+)?espaco)\b/.test(
     normalized,
@@ -856,8 +888,7 @@ export function selectRelevantSalesAgentProducts(
   }
 
   const explicitModelOrSku =
-    /\b(?:modelo|sku)\s+(?!(?:e|ou|para|de|da|do|em|ideal|adequado|disponivel)\b)[\p{L}\d-]+/u.test(normalized) &&
-    !/\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
+    /\b(?:modelo|sku)\s+(?!(?:e|ou|para|de|da|do|em|ideal|adequado|disponivel)\b)[\p{L}\d-]+/u.test(normalized);
   const modelMatches = candidates.filter((product) =>
     [product.model, product.sku]
       .filter((value): value is string => Boolean(value?.trim()))
@@ -868,22 +899,16 @@ export function selectRelevantSalesAgentProducts(
     candidates = modelMatches;
   }
 
-  const asksRectangularPool = /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
   const requestedShapeTerm = effectiveAttributes.shape ?? null;
   const shapeMatches = candidates.filter((product) => {
     const shape = normalizeCatalogText(product.shape ?? "");
-    if (asksRectangularPool) {
-      const category = normalizeCatalogText(product.category ?? "");
-      return /piscina/.test(category) && /retangular|\bret[ao]\b|linhas retas/.test(shape);
-    }
     return requestedShapeTerm
       ? shape.includes(requestedShapeTerm)
       : Boolean(shape && normalized.includes(shape));
   });
   const asksShape =
     Boolean(requestedShapeTerm) ||
-    asksRectangularPool ||
-    /\b(retangular|redond[ao]s?|oval|formato)\b/.test(normalized);
+    /\b(retangular|quadrad[ao]s?|redond[ao]s?|oval|formato)\b/.test(normalized);
   if (shapeMatches.length > 0) {
     hasStructuredFilter = true;
     candidates = shapeMatches;
@@ -916,33 +941,18 @@ export function selectRelevantSalesAgentProducts(
     if (selected.length > 0) return selected;
   }
 
-  // TODO(fase-2-multissegmento): hardcode de piscina (conceitos de intenção fixos: aquecimento, acessórios...).
-  const intentConcepts = [
-    /\bfibr/,
-    /\bvinil/,
-    /\bspa\b/,
-    /\bbanheir/,
-    /\baquec/,
-    /\bacessor/,
-    /\btratament/,
-  ].filter((concept) => concept.test(normalized));
-  if (intentConcepts.length === 0) {
+  // Conceitos de intenção vêm das categorias cadastradas pela própria empresa.
+  const categoryStem = (category: string) => normalizeCatalogText(category).replace(/s\b/g, "").trim();
+  const requestedCategories = [...new Set(products.map((product) => product.category ?? "").filter(Boolean))]
+    .map(categoryStem)
+    .filter((stem) => stem.length >= 3 && normalized.includes(stem));
+  if (requestedCategories.length === 0) {
     return rankRelevantProducts(products, history).slice(0, SALES_AGENT_MAX_OPTIONS);
   }
-  return rankRelevantProducts(products.filter((product) => {
-    const haystack = normalizeCatalogText(
-      [
-        product.name,
-        product.category,
-        product.description,
-        product.notes,
-        product.specifications ? specificationsSearchText(product.specifications) : null,
-      ]
-        .filter(Boolean)
-        .join(" "),
-    );
-    return intentConcepts.some((concept) => concept.test(haystack));
-  }), history).slice(0, SALES_AGENT_MAX_OPTIONS);
+  return rankRelevantProducts(
+    products.filter((product) => requestedCategories.includes(categoryStem(product.category ?? ""))),
+    history,
+  ).slice(0, SALES_AGENT_MAX_OPTIONS);
 }
 
 function mapLearning(learning: Awaited<ReturnType<typeof listLearningCandidates>>[number]) {

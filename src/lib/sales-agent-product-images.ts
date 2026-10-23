@@ -23,47 +23,6 @@ export interface ProductImageSelectionContext {
   detectedInterest?: string | null;
 }
 
-const FIBER_SIZES = [4, 5, 6, 7, 8, 10] as const;
-
-function normalizeText(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function findFiberSize(value: string): number | null {
-  const normalized = normalizeText(value);
-  const match = /(?:^|\D)(10|[4-8])\s*(?:m|metros?)(?:\W|$)/.exec(normalized);
-  const size = match ? Number(match[1]) : NaN;
-  return FIBER_SIZES.includes(size as (typeof FIBER_SIZES)[number]) ? size : null;
-}
-
-export function detectFiberCatalogSize(context: ProductImageSelectionContext): number | null {
-  const historyText = (context.history ?? []).map((message) => message.text).join(" ");
-  const combined = normalizeText(
-    [context.detectedInterest, context.detectedPoolSize, historyText].filter(Boolean).join(" "),
-  );
-  if (/\bvinil\b/.test(combined)) return null;
-  return findFiberSize(context.detectedPoolSize ?? "") ?? findFiberSize(historyText);
-}
-
-export function resolveFiberCatalogImages(
-  size: number,
-  products: ProductImageCandidate[],
-  companyId: string,
-): ResolvedProductImage[] {
-  const matchingProducts = products.filter((product) => {
-    if (!normalizeText(product.category ?? "").includes("piscinas de fibra")) return false;
-    return (
-      findFiberSize(
-        [product.name, product.description, product.notes].filter(Boolean).join(" "),
-      ) === size
-    );
-  });
-  return resolveUniqueProductImages(matchingProducts, companyId);
-}
-
 function resolveUniqueProductImages(
   products: ProductImageCandidate[],
   companyId: string,

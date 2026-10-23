@@ -45,7 +45,9 @@ export async function releaseConversationToAi(
   }
   const { data, error } = await client
     .from("conversations")
-    .update({ ai_status: null, human_takeover_at: null, ai_handling: false })
+    // Não zera ai_handling: um turno ainda em andamento é dono do lock e o libera
+    // no finally; zerar aqui permitiria um segundo turno paralelo (resposta duplicada).
+    .update({ ai_status: null, human_takeover_at: null })
     .eq("id", input.conversationId)
     .eq("company_id", input.companyId)
     .select("id")

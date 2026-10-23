@@ -4,8 +4,12 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const AUTHORIZATION = Symbol("whatsapp-send-authorization");
 
-/** `campaign`: disparo de campanha configurado pelo lojista; valida só o contexto do tenant. */
-export type WhatsappSendSource = "human" | "automatic" | "followup" | "campaign";
+/**
+ * `campaign`: disparo de campanha configurado pelo lojista; valida só o contexto do tenant.
+ * `handoff_notice`: aviso automático de que um atendente vai continuar; vale com a conversa
+ * aguardando humano (é o motivo do aviso), mas não depois que um humano assumiu.
+ */
+export type WhatsappSendSource = "human" | "automatic" | "followup" | "campaign" | "handoff_notice";
 
 export type WhatsappSendAuthorization = {
   readonly [AUTHORIZATION]: true;
@@ -42,7 +46,7 @@ export async function authorizeWhatsappSend(
     !input.companyId.trim() ||
     !input.conversationId.trim() ||
     !input.leadId.trim() ||
-    !["human", "automatic", "followup", "campaign"].includes(input.source)
+    !["human", "automatic", "followup", "campaign", "handoff_notice"].includes(input.source)
   ) {
     throw new Error("whatsapp_send_scope_invalid");
   }
@@ -141,6 +145,13 @@ export async function authorizeWhatsappSend(
     if (!replyPermission.ok) {
       throw new Error("whatsapp_send_not_permitted");
     }
+  }
+
+  if (
+    input.source === "handoff_notice" &&
+    (conversationRow.ai_status === "assumido_humano" || Boolean(conversationRow.human_takeover_at))
+  ) {
+    throw new Error("whatsapp_send_not_permitted");
   }
 
   if (

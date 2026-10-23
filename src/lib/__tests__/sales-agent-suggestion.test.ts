@@ -29,4 +29,9 @@ describe("Sales Agent assisted suggestion contract", () => {
     expect(source).not.toContain("ai_status");
     expect(source).not.toContain("handoff_human");
   });
+
+  it("usa o escopo assistido restrito e não o escopo operacional", () => {
+    expect(source).toContain("ASSISTED_SUGGESTION_CAPABILITIES");
+    expect(source).not.toContain("WHATSAPP_CONVERSATION_CAPABILITIES");
+  });
 });

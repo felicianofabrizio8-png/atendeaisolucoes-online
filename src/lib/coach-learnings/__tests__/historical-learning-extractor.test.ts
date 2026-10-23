@@ -130,7 +130,8 @@ describe("historical learning extractor", () => {
       /LOVABLE_API_KEY|ai\.gateway\.lovable/i,
     );
     expect(extractorSource).toContain("resolveSalesAgentLlmConfig");
-    expect(salesAgentSource).toContain("const decision = await core.decide({");
+    // A decisão do modelo passa pela guarda consultiva antes de seguir.
+    expect(salesAgentSource).toContain(" = await core.decide({");
     expect(salesAgentSource).toContain("...contextualParams,");
     expect(salesAgentSource).toContain("model,");
     expect(salesAgentSource).toContain("catalogSearch,");

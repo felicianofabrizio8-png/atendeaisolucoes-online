@@ -310,7 +310,8 @@ export async function sendWhatsappTemplate(params: {
     (authorization.source === "automatic" && sourceKind !== "automatic") ||
     (authorization.source === "followup" && sourceKind !== "followup") ||
     (authorization.source === "campaign" && sourceKind !== "campaign") ||
-    (sourceKind === "campaign" && authorization.source !== "campaign")
+    (sourceKind === "campaign" && authorization.source !== "campaign") ||
+    authorization.source === "handoff_notice"
   ) {
     return { ok: false, simulated: false, error: "whatsapp_send_source_mismatch" };
   }

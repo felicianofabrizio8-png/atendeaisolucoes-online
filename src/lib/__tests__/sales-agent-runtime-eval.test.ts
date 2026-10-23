@@ -1,18 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { from, fetchMock, postGraph, listLearningCandidates, retrieveLearnings, decideSpy } = vi.hoisted(() => ({
+const { from, fetchMock, postGraph, listLearningCandidates, retrieveLearnings, decideSpy, tryDedupe, claimMessage, claimMessageDetailed } = vi.hoisted(() => ({
   from: vi.fn(),
   fetchMock: vi.fn(),
   postGraph: vi.fn(),
   listLearningCandidates: vi.fn(),
   retrieveLearnings: vi.fn(),
   decideSpy: vi.fn(),
+  tryDedupe: vi.fn(),
+  claimMessage: vi.fn(),
+  claimMessageDetailed: vi.fn(async (...args: Parameters<typeof claimMessage>) => ({ claim: await claimMessage(...args) })),
 }));
 
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: { from } }));
 vi.mock("@/lib/outbound/MetaOutbound.server", () => ({ postGraph }));
 vi.mock("../coach-learnings/coach-learnings.repository", () => ({ listLearningCandidates }));
 vi.mock("../coach-learnings/retriever", () => ({ retrieveLearnings }));
+vi.mock("../runtime/RuntimeStateStore.server", () => ({ tryDedupe, claimMessage, claimMessageDetailed, markMessageOutboundStarted: vi.fn().mockResolvedValue(true), finishMessageClaim: vi.fn().mockResolvedValue(true) }));
 vi.mock("../sales-agent-config.server", () => ({
   resolveSalesAgentLlmConfig: () => ({
     ok: true,
@@ -143,6 +147,8 @@ function query(data: unknown, error: unknown = null, upsertError: unknown = null
   const builder = {
     select: vi.fn(),
     eq: vi.fn(),
+    is: vi.fn(),
+    not: vi.fn(),
     in: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
@@ -155,6 +161,8 @@ function query(data: unknown, error: unknown = null, upsertError: unknown = null
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
+  builder.is.mockReturnValue(builder);
+  builder.not.mockReturnValue(builder);
   builder.in.mockReturnValue(builder);
   builder.order.mockReturnValue(builder);
   builder.limit.mockReturnValue(builder);
@@ -377,6 +385,7 @@ describe("Sales Agent runtime eval determinístico", () => {
     vi.stubGlobal("fetch", fetchMock);
     listLearningCandidates.mockResolvedValue([]);
     retrieveLearnings.mockReturnValue({ selected: [], scored: [], metrics: {} });
+    tryDedupe.mockResolvedValue(true);
   });
 
   it("usa somente preço e promoção do catálogo", async () => {
@@ -529,7 +538,7 @@ describe("Sales Agent runtime eval determinístico", () => {
       lead_temperature: null, lead_score: 0, lead_ready_to_close: false,
       detected_objections: [],
     };
-    const settings = buildContext().settings;
+    const settings = { ...buildContext().settings, ai_handoff_message: "" };
     const aiProfile = {
       tone: "consultivo", description: "Venda de piscinas", products: null,
       payment_methods: "Pix", avg_lead_time: null, region: "SP",
@@ -556,11 +565,11 @@ describe("Sales Agent runtime eval determinístico", () => {
         role: "lead", text: "Quero fechar agora",
         at: "2026-09-19T12:00:00.000Z", source_metadata: {},
       }]);
+      if (table === "leads") return query({ id: leadId, company_id: companyId, name: "Cliente Runtime" });
       if (
         table === "products" || table === "marketing_knowledge_base" || table === "ai_knowledge_proposals" ||
         table === "coach_rules" || table === "coach_rule_versions" ||
-        table === "quick_replies" || table === "ai_flow_events" ||
-        table === "leads"
+        table === "quick_replies" || table === "ai_flow_events"
       ) return query([]);
       throw new Error(`unexpected table in runAgentTick handoff test: ${table}`);
     });
@@ -570,6 +579,100 @@ describe("Sales Agent runtime eval determinístico", () => {
     expect(result).toMatchObject({ ok: true, action: "handoff" });
     expect(postGraph).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("TESTE sem autorização e aguardando_humano bloqueiam antes de qualquer chamada paga", async () => {
+    const conversation = {
+      id: "conversation-gated", company_id: companyId, lead_id: "lead-gated", channel: "whatsapp",
+      ai_handling: false, ai_status: null, ai_reply_enabled: false, auto_reply_count: 0,
+      last_auto_reply_at: null, human_takeover_at: null,
+    };
+    const settings = { ...buildContext().settings, ai_auto_reply_scope: "teste" };
+    from.mockImplementation((table: string) => {
+      if (table === "conversations") return query(conversation);
+      if (table === "company_settings") return query(settings);
+      if (table === "leads") return query({ id: conversation.lead_id, company_id: companyId });
+      if (table === "companies") return query({ name: "Empresa Runtime" });
+      if (table === "ai_profiles") return query({ tone: "consultivo", description: "Venda", products: null, payment_methods: "Pix", avg_lead_time: null, region: "SP", differentials: null, faq: [] });
+      if (table === "integrations") return query({ id: "wa-int-gated" });
+      if (table === "messages") return query([]);
+      if (table === "products" || table === "marketing_knowledge_base" || table === "ai_knowledge_proposals" || table === "ai_flow_events") return query([]);
+      throw new Error(`unexpected gated table: ${table}`);
+    });
+
+    const result = await runAgentTick(conversation.id);
+
+    expect(result).toMatchObject({ ok: true, action: "skipped", reason: "disabled" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(postGraph).not.toHaveBeenCalled();
+    expect(tryDedupe).not.toHaveBeenCalled();
+  });
+
+  it("trigger repetido do mesmo message_id é deduplicado antes da segunda execução", async () => {
+    const conversation = {
+      id: "conversation-dedupe", company_id: companyId, lead_id: "lead-dedupe", channel: "whatsapp",
+      ai_handling: false, ai_status: null, ai_reply_enabled: true, auto_reply_count: 0,
+      last_auto_reply_at: null, human_takeover_at: null,
+      detected_city: null, detected_state: null, detected_pool_size: null, detected_intent: null,
+      detected_interest: null, detected_budget: null, purchase_timing: null, customer_stage: null,
+      lead_temperature: null, lead_score: 0, lead_ready_to_close: false, detected_objections: [],
+    };
+    const settings = { ...buildContext().settings, ai_auto_reply_scope: "geral" };
+    from.mockImplementation((table: string) => {
+      if (table === "conversations") return query(conversation);
+      if (table === "company_settings") return query(settings);
+      if (table === "companies") return query({ name: "Empresa Runtime" });
+      if (table === "ai_profiles") return query({ tone: "consultivo", description: "Venda", products: null, payment_methods: "Pix", avg_lead_time: null, region: "SP", differentials: null, faq: [] });
+      if (table === "integrations") return query({ id: "wa-int-1" });
+      if (table === "messages") return query([{ id: "message-once", role: "lead", text: "Quero fechar agora", at: "2026-10-22T12:00:00Z", source_metadata: {} }]);
+      if (table === "ai_flow_events") return query([]);
+      if (table === "leads") return query({ id: "lead-dedupe", company_id: companyId, name: "Cliente Dedupe" });
+      if (table === "products" || table === "marketing_knowledge_base" || table === "ai_knowledge_proposals" || table === "coach_rules" || table === "coach_rule_versions" || table === "quick_replies") return query([]);
+      throw new Error(`unexpected dedupe table: ${table}`);
+    });
+    claimMessage
+      .mockResolvedValueOnce({ claimed: true, status: "processing", claim_token: "claim-1" })
+      .mockResolvedValueOnce({ claimed: false, status: "sent" });
+
+    const first = await runAgentTick(conversation.id, { dedupeByLatestMessage: true, messageId: "message-once" });
+    const second = await runAgentTick(conversation.id, { dedupeByLatestMessage: true, messageId: "message-once" });
+
+    expect(first).toMatchObject({ ok: true, action: "handoff" });
+    expect(second).toMatchObject({ ok: true, action: "skipped", reason: "duplicate_message" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(postGraph).not.toHaveBeenCalled();
+  });
+
+  it("GERAL ignora mensagem anterior ao timestamp de ativação", async () => {
+    const conversation = {
+      id: "conversation-cutoff", company_id: companyId, lead_id: "lead-cutoff", channel: "whatsapp",
+      ai_handling: false, ai_status: null, ai_reply_enabled: false, auto_reply_count: 0,
+      last_auto_reply_at: null, human_takeover_at: null,
+    };
+    const settings = {
+      ...buildContext().settings,
+      ai_auto_reply_scope: "geral",
+      ai_general_activated_at: "2026-10-22T12:00:00.000Z",
+    };
+    from.mockImplementation((table: string) => {
+      if (table === "conversations") return query(conversation);
+      if (table === "company_settings") return query(settings);
+      if (table === "companies") return query({ name: "Empresa Runtime" });
+      if (table === "ai_profiles") return query({ tone: "consultivo", description: "Venda", products: null, payment_methods: "Pix", avg_lead_time: null, region: "SP", differentials: null, faq: [] });
+      if (table === "integrations") return query({ id: "wa-int-cutoff" });
+      if (table === "messages") return query([{ id: "message-old", role: "lead", text: "Quero comprar", at: "2026-10-22T11:59:59.000Z", source_metadata: {} }]);
+      if (table === "ai_flow_events") return query([]);
+      if (table === "leads") return query({ id: "lead-cutoff", company_id: companyId, name: "Cliente Cutoff" });
+      if (table === "products" || table === "marketing_knowledge_base" || table === "ai_knowledge_proposals" || table === "coach_rules" || table === "coach_rule_versions" || table === "quick_replies") return query([]);
+      throw new Error(`unexpected table in cutoff test: ${table}`);
+    });
+
+    const result = await runAgentTick(conversation.id, { dedupeByLatestMessage: true, messageId: "message-old" });
+
+    expect(result).toMatchObject({ ok: true, action: "skipped", reason: "before_general_activation" });
+    expect(claimMessage).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(postGraph).not.toHaveBeenCalled();
   });
 
   it("upsert falho nao contamina o segundo turno", async () => {
@@ -593,5 +696,52 @@ describe("Sales Agent runtime eval determinístico", () => {
     expect(second.result.kind).toBe("reply");
     expect(second.persistedStates).toEqual([]);
     assertUniversalRuntimeInvariants(second);
+  });
+
+  it("rejeita IDs de lead de outra empresa antes de qualquer mutação", async () => {
+    const conversation = {
+      id: "conversation-cross-company-lead", company_id: companyId,
+      lead_id: "lead-owned-by-other-company", channel: "whatsapp", ai_handling: false,
+      ai_status: null, ai_reply_enabled: true, auto_reply_count: 0,
+      last_auto_reply_at: null, human_takeover_at: null,
+    };
+    const settings = { ...buildContext().settings, ai_auto_reply_scope: "geral" };
+    const conversationQuery = query(conversation);
+    const leadQuery = query({ id: conversation.lead_id, company_id: "other-company", name: "Outro cliente" });
+    from.mockImplementation((table: string) => {
+      if (table === "conversations") return conversationQuery;
+      if (table === "company_settings") return query(settings);
+      if (table === "leads") return leadQuery;
+      throw new Error(`unexpected table in cross-company context test: ${table}`);
+    });
+
+    const result = await runAgentTick(conversation.id);
+
+    expect(result).toEqual({ ok: false, action: "error", reason: "agent_context_mismatch" });
+    expect(conversationQuery.update).not.toHaveBeenCalled();
+    expect(postGraph).not.toHaveBeenCalled();
+  });
+
+  it("rejeita lead que não pertence ao company_id filtrado", async () => {
+    const conversation = {
+      id: "conversation-filtered-lead", company_id: companyId,
+      lead_id: "lead-filtered-out", channel: "whatsapp", ai_handling: false,
+      ai_status: null, ai_reply_enabled: true, auto_reply_count: 0,
+      last_auto_reply_at: null, human_takeover_at: null,
+    };
+    const settings = { ...buildContext().settings, ai_auto_reply_scope: "geral" };
+    const leadQuery = query(null);
+    from.mockImplementation((table: string) => {
+      if (table === "conversations") return query(conversation);
+      if (table === "company_settings") return query(settings);
+      if (table === "leads") return leadQuery;
+      throw new Error(`unexpected table in filtered context test: ${table}`);
+    });
+
+    const result = await runAgentTick(conversation.id);
+
+    expect(result).toEqual({ ok: false, action: "error", reason: "agent_context_mismatch" });
+    expect(leadQuery.eq).toHaveBeenCalledWith("company_id", companyId);
+    expect(postGraph).not.toHaveBeenCalled();
   });
 });

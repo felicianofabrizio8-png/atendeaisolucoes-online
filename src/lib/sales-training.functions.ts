@@ -13,6 +13,7 @@ import { loadValidatedProductImages } from "./sales-agent-product-images.server"
 import type { AgentDecision } from "./sales-agent-core";
 import { loadConversationSalesState, saveConversationSalesState } from "./conversation-sales-state.server";
 import { EMPTY_CONVERSATION_SALES_STATE } from "./conversation-sales-state";
+import { TRAINING_SESSION_CAPABILITIES } from "./execution-scope";
 
 const SessionInput = z.object({ sessionId: z.string().uuid() });
 const SendInput = SessionInput.extend({ message: z.string().trim().min(1).max(4000) });
@@ -153,6 +154,12 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
           history,
           leadName: "Cliente simulado",
           sessionCorrections,
+          executionScope: {
+            kind: "training_session",
+            companyId,
+            scopeId: input.sessionId,
+            capabilities: TRAINING_SESSION_CAPABILITIES,
+          },
           salesStateScope: { scopeType: "training_session", scopeId: input.sessionId },
         }),
       );

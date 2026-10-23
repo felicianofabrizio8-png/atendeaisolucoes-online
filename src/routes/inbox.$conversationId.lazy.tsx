@@ -383,6 +383,9 @@ function ConversationPage() {
   const [aiState, setAiState] = useState<{ ai_status: string | null; ai_handling: boolean } | null>(null);
   const [aiHandoffReason, setAiHandoffReason] = useState<string | null>(null);
   const [takingOver, setTakingOver] = useState(false);
+  const [aiReplyScope, setAiReplyScope] = useState<"desligado" | "teste" | "geral">("desligado");
+  const [aiReplyAuthorized, setAiReplyAuthorized] = useState(false);
+  const [aiReplyBusy, setAiReplyBusy] = useState(false);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const latestVisibleMessagesLengthRef = useRef(0);
   const renderedWindowRef = useRef<{
@@ -724,6 +727,7 @@ function ConversationPage() {
   const aiStatePrevDiagRef = useRef<AiStateShape>(null);
   useEffect(() => {
     if (!conversation) return;
+    setAiReplyAuthorized(conversation.aiReplyEnabled === true);
     const next: AiStateShape = {
       ai_status: conversation.aiStatus ?? null,
       ai_handling: conversation.aiHandling ?? false,
@@ -775,6 +779,62 @@ function ConversationPage() {
       toast.error(e instanceof Error ? e.message : "Erro ao assumir atendimento");
     } finally {
       setTakingOver(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!profile?.company_id || !conversationId) return;
+    void supabase
+      .from("company_settings")
+      .select("ai_auto_reply_scope, ai_auto_reply_enabled")
+      .eq("company_id", profile.company_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const scope = data?.ai_auto_reply_scope;
+        setAiReplyScope(scope === "teste" || scope === "geral" ? scope : data?.ai_auto_reply_enabled ? "geral" : "desligado");
+      });
+    return () => { cancelled = true; };
+  }, [conversationId, profile?.company_id]);
+
+  const handleVendedoraReply = async (action: "resume" | "disable") => {
+    if (aiReplyBusy) return;
+    setAiReplyBusy(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const call = async (apiAction: "release" | "auto_reply_on" | "auto_reply_off") => {
+        const res = await fetch("/api/ai/agent-takeover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ conversation_id: conversationId, action: apiAction }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok) throw new Error(json?.error ?? "Falha ao atualizar atendimento");
+      };
+      // Devolver e autorizar são ações separadas: a autorização da conversa só é
+      // gravada quando o escopo da empresa é "teste" (onde a política a exige).
+      if (action === "resume") {
+        if (aiState?.ai_status === "assumido_humano" || aiState?.ai_status === "aguardando_humano") await call("release");
+        if (aiReplyScope === "teste") await call("auto_reply_on");
+      } else {
+        await call("auto_reply_off");
+      }
+      if (action === "resume") {
+        setAiReplyAuthorized(true);
+        const nextAi: AiStateShape = { ai_status: null, ai_handling: false };
+        aiStatePrevDiagRef.current = nextAi;
+        setAiState(nextAi);
+        toast.success("A Vendedora voltou a responder esta conversa.");
+      } else {
+        setAiReplyAuthorized(false);
+        toast.success("A Vendedora foi pausada nesta conversa.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao atualizar atendimento");
+    } finally {
+      setAiReplyBusy(false);
     }
   };
 
@@ -1805,9 +1865,17 @@ function ConversationPage() {
               <span className="text-xs text-muted-foreground">Motivo: {aiHandoffReason}</span>
             )}
             <button
+              onClick={() => handleVendedoraReply("resume")}
+              disabled={aiReplyBusy}
+              className="ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-md border border-amber-600/50 text-amber-700 hover:bg-amber-500/10 text-xs font-semibold disabled:opacity-50"
+            >
+              {aiReplyBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              Deixar a Vendedora responder
+            </button>
+            <button
               onClick={handleTakeover}
               disabled={takingOver}
-              className="ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-md bg-amber-600 text-white hover:bg-amber-700 text-xs font-semibold disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md bg-amber-600 text-white hover:bg-amber-700 text-xs font-semibold disabled:opacity-50"
             >
               {takingOver ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
               Assumir atendimento
@@ -1826,6 +1894,31 @@ function ConversationPage() {
               className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-sky-500/40 text-sky-700 hover:bg-sky-500/10 text-[11px] font-semibold disabled:opacity-50"
             >
               Assumir
+            </button>
+            {aiReplyScope === "teste" && aiReplyAuthorized && (
+              <button
+                onClick={() => handleVendedoraReply("disable")}
+                disabled={aiReplyBusy}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-sky-500/40 text-sky-700 hover:bg-sky-500/10 text-[11px] font-semibold disabled:opacity-50"
+              >
+                Pausar Vendedora
+              </button>
+            )}
+          </div>
+        )}
+        {((aiReplyScope === "teste" && !aiReplyAuthorized && aiState?.ai_status !== "aguardando_humano") || aiState?.ai_status === "assumido_humano") && (
+          <div className="border-b border-violet-500/30 bg-violet-500/5 px-4 py-2 flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+            <span className="text-xs text-violet-700 dark:text-violet-400">
+              {aiReplyScope === "teste" ? "Esta conversa ainda não está autorizada para a Vendedora." : "A Vendedora está pausada nesta conversa."}
+            </span>
+            <button
+              onClick={() => handleVendedoraReply("resume")}
+              disabled={aiReplyBusy}
+              className="ml-auto inline-flex items-center gap-1.5 h-7 px-3 rounded-md bg-violet-600 text-white hover:bg-violet-700 text-xs font-semibold disabled:opacity-50"
+            >
+              {aiReplyBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              Deixar a Vendedora responder
             </button>
           </div>
         )}

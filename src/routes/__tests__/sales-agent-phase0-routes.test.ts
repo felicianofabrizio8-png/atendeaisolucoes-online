@@ -99,7 +99,10 @@ describe("POST /api/public/hooks/agent-trigger", () => {
     expect(runAgentTick).not.toHaveBeenCalled();
     expect(tasks).toHaveLength(1);
     await tasks[0]();
-    expect(runAgentTick).toHaveBeenCalledWith("44444444-4444-4444-8444-444444444444");
+    expect(runAgentTick).toHaveBeenCalledWith(
+      "44444444-4444-4444-8444-444444444444",
+      expect.objectContaining({ dedupeByLatestMessage: true }),
+    );
   });
 
   it("erro do turno em segundo plano não vaza da tarefa", async () => {

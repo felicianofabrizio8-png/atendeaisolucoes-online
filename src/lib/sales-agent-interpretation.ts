@@ -4,6 +4,7 @@ export type SalesAgentIntent =
   | "confirmation"
   | "continuation"
   | "commercial_question"
+  | "social"
   | "unknown";
 
 export type SalesAgentSubject =
@@ -70,6 +71,35 @@ function normalize(text: string): string {
     .trim();
 }
 
+// Cortesias genéricas (qualquer segmento): sozinhas não expressam necessidade comercial.
+const SOCIAL_PHRASES = [
+  "muito obrigado", "muito obrigada", "como voce esta", "como vai voce", "e com voce", "tudo tranquilo",
+  "bom dia", "boa tarde", "boa noite", "tudo bem", "tudo bom", "tudo certo", "tudo joia", "tudo otimo",
+  "td bem", "td bom", "como vai", "como esta", "estou bem", "to bem", "ate mais", "ate logo", "e ai",
+  "obrigado", "obrigada", "brigado", "brigada", "valeu", "grato", "grata", "prazer", "tchau",
+  "oi", "oie", "ola", "opa", "eai", "salve", "hey", "hello",
+].sort((a, b) => b.length - a.length);
+const SOCIAL_FILLERS = new Set(["e", "voce", "vc", "com", "ne", "rs", "kk", "kkk", "aqui", "por", "ai"]);
+
+/**
+ * Mensagem composta só de cumprimento/cortesia, com no máximo um vocativo
+ * ("Oi Bruna, tudo bem?"). Qualquer outro conteúdo mantém o turno comercial.
+ */
+export function isSocialOnlyMessage(text: string): boolean {
+  let rest = ` ${normalize(text).replace(/[^a-z0-9]+/g, " ").trim()} `;
+  if (!rest.trim() || /\d/.test(rest)) return false;
+  let found = false;
+  for (const phrase of SOCIAL_PHRASES) {
+    const pattern = new RegExp(` ${phrase}(?= )`, "g");
+    if (pattern.test(rest)) {
+      found = true;
+      rest = rest.replace(pattern, " ");
+    }
+  }
+  const remaining = rest.split(" ").filter((token) => token && !SOCIAL_FILLERS.has(token));
+  return found && remaining.length <= 1 && subjectFor(text) === "unknown";
+}
+
 function lastLead(history: InterpretationMessage[]): string {
   return [...history].reverse().find((item) => item.role === "lead")?.text ?? "";
 }
@@ -85,7 +115,7 @@ function subjectFor(text: string): SalesAgentSubject {
   if (/\b(?:pagamento|parcel|pix|cartao|boleto|desconto|negoci|garantia)\b/.test(value)) {
     return "commercial";
   }
-  if (/\b(?:produto|catalogo|modelo|piscina|spa|banheira|aquecedor)\b/.test(value))
+  if (/\b(?:produtos?|catalogo|modelos?|opcoes|itens)\b/.test(value))
     return "product";
   return "unknown";
 }
@@ -110,7 +140,7 @@ export function interpretStructuredSalesTurn(
       : PRONOUN.test(normalized) || (confirmation !== "none" && referencedIds.length > 0)
         ? "pronoun"
         : referencedIds.length > 0 &&
-            /\b(?:modelo|produto|piscina|spa|banheira|aquecedor)\b/i.test(normalized)
+            /\b(?:modelos?|produtos?|itens?)\b/i.test(normalized)
           ? "explicit"
           : "none";
   const intent: SalesAgentIntent =
@@ -118,6 +148,8 @@ export function interpretStructuredSalesTurn(
       ? "confirmation"
       : isContinuation
         ? "continuation"
+        : isSocialOnlyMessage(text)
+          ? "social"
         : subjectFor(text) === "commercial"
           ? "commercial_question"
           : subjectFor(text) === "unknown"
@@ -127,6 +159,8 @@ export function interpretStructuredSalesTurn(
   const confidence =
     intent === "unknown"
       ? 0.35
+      : intent === "social"
+        ? 0.9
       : confirmation !== "none" && !hasContext
         ? 0.55
         : kind === "none"

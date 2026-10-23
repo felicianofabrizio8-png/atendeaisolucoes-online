@@ -3,9 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   extractCompanyProductImagePath,
-  detectFiberCatalogSize,
   normalizeRequestedProductIds,
-  resolveFiberCatalogImages,
   resolveProductImages,
 } from "../sales-agent-product-images";
 
@@ -30,7 +28,12 @@ describe("SalesAgent product images", () => {
     expect(serverSource).toContain('.eq("company_id", companyId)');
     expect(serverSource).toContain('.eq("active", true)');
     expect(serverSource).toContain('.in("id", ids)');
-    expect(serverSource).toContain("const useFiberFallback = ids.length === 0");
+    expect(serverSource).toContain("if (ids.length === 0) return [];");
+    // Nenhuma seleção de imagens por vocabulário de segmento.
+    expect(serverSource).not.toMatch(/fiber|fibra|piscina|vinil/i);
+    expect(serverSource).toContain("authorization: WhatsappSendAuthorization");
+    expect(serverSource).toContain("isWhatsappSendAuthorization(params.authorization)");
+    expect(serverSource).toContain('return { sent: 0, failed: 0 }');
     expect(serverSource).not.toMatch(/mediaUrl|send_product_images.*https?:/);
   });
 
@@ -112,64 +115,5 @@ describe("SalesAgent product images", () => {
         path: "company-1/p1-a.jpg",
       },
     ]);
-  });
-
-  it("classifica tamanho padrão como fibra por padrão e nunca classifica vinil", () => {
-    expect(
-      detectFiberCatalogSize({
-        history: [{ role: "lead", text: "Quero uma piscina de fibra de 6 metros" }],
-      }),
-    ).toBe(6);
-    expect(
-      detectFiberCatalogSize({
-        history: [{ role: "lead", text: "Quero uma piscina de vinil de 6 metros" }],
-      }),
-    ).toBeNull();
-    expect(
-      detectFiberCatalogSize({
-        history: [{ role: "lead", text: "Quero uma piscina de 6 metros" }],
-      }),
-    ).toBe(6);
-  });
-
-  it("seleciona todos os modelos ativos de fibra do tamanho, sem limite de cinco", () => {
-    const products = Array.from({ length: 7 }, (_, index) => ({
-      id: `20000000-0000-4000-8000-00000000000${index}`,
-      name: `Modelo Fibra 6m ${index}`,
-      category: "Piscinas de fibra",
-      description: "Piscina de 6 metros",
-      images: [`company-1/modelo-${index}.jpg`, `company-1/modelo-${index}-extra.jpg`],
-    }));
-    products.push({
-      id: "30000000-0000-4000-8000-000000000001",
-      name: "Vinil 6m",
-      category: "Piscinas de vinil",
-      description: "Piscina de 6 metros",
-      images: ["company-1/vinil.jpg"],
-    });
-    products.push({
-      id: "30000000-0000-4000-8000-000000000002",
-      name: "Fibra 8m",
-      category: "Piscinas de fibra",
-      description: "Piscina de 8 metros",
-      images: ["company-1/fibra-8.jpg"],
-    });
-
-    const inferredSize = detectFiberCatalogSize({
-      history: [{ role: "lead", text: "Quero uma piscina de 6 metros" }],
-    });
-    const selected = resolveFiberCatalogImages(inferredSize!, products, companyId);
-
-    expect(selected).toHaveLength(7);
-    expect(new Set(selected.map((image) => image.productId)).size).toBe(7);
-    expect(selected.every((image) => image.path.endsWith(".jpg"))).toBe(true);
-  });
-
-  it("não expande catálogo de fibra quando o cliente informa vinil", () => {
-    const inferredSize = detectFiberCatalogSize({
-      history: [{ role: "lead", text: "Quero uma piscina de vinil de 6 metros" }],
-    });
-
-    expect(inferredSize).toBeNull();
   });
 });

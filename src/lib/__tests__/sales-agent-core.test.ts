@@ -5,7 +5,6 @@ import {
   SalesAgentCore,
   buildSalesAgentCompletionRequest,
   getAutomaticProductImageIds,
-  hasRectangularPoolIntent,
   type AgentContext,
   type SalesAgentCompletionRequest,
   type SalesAgentCoreInput,
@@ -1784,16 +1783,6 @@ const validationContext: AgentContext = {
     expect(decision).toMatchObject({ kind: "reply", suggested_products: ["product-1"] });
     expect(decision.message).toContain("formato retangular");
     expect(decision.message).not.toContain("formato quadrado");
-  });
-
-  it.each([
-    "piscina quadrada",
-    "modelos quadrados",
-    "modelo quadrada",
-    "piscina mais quadrada/reta",
-    "modelo reto",
-  ])("normaliza a variação comercial %s", (text) => {
-    expect(hasRectangularPoolIntent([{ role: "lead", text }])).toBe(true);
   });
 
   it("learning antigo não cria produto quando a resposta não traz ID válido", async () => {

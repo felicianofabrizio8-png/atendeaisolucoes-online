@@ -1,3 +1,4 @@
+import type { AgentCapabilityProfile } from "./consultative-sales-contracts";
 import {
   normalizeState,
   normalizeTiming,
@@ -113,6 +114,15 @@ export interface AgentSettings {
   sales_agent_v2_mode?: string;
   /** Botão mestre da Vendedora IA da empresa; só `false` desliga. */
   sales_agent_master_enabled?: boolean | null;
+  /** Escopo global sem a Vendedora V2: desligado, teste (por conversa) ou geral. */
+  ai_auto_reply_scope?: string | null;
+  /** Quando o escopo virou "geral": mensagens anteriores não são respondidas. */
+  ai_general_activated_at?: string | null;
+  /** Colunas aditivas de company_settings; ausentes em fixtures antigas permanecem desligadas. */
+  consultative_shadow_enabled?: boolean;
+  consultative_capability_profile?: AgentCapabilityProfile | null;
+  /** Integra a orientação consultiva à resposta; ausente permanece desligada. */
+  consultative_sales_enabled?: boolean;
 }
 
 export interface SalesAgentGrounding {
@@ -281,6 +291,8 @@ export type SalesAgentCatalogSearch =
   | { status: "query_error"; error?: unknown }
   | { status: "empty_catalog"; products: [] }
   | { status: "no_match"; products: [] }
+  /** O turno não expressa necessidade de produto: nenhum produto entra no contexto. */
+  | { status: "not_requested"; products: [] }
   | { status: "ambiguous"; products: SalesAgentGrounding["catalog"] }
   /** `exhaustive`: todos os compatíveis por atributo/medida ou comparação de preço (sem corte em 3). */
   | {
@@ -324,6 +336,14 @@ export interface SalesAgentCoreInput {
   leadName: string | null;
   model: string;
   catalogSearch: SalesAgentCatalogSearch;
+  /** Orientação da memória consultiva (opt-in por empresa); nunca cria ação nem condição. */
+  consultativeGuidance?: {
+    stage: string;
+    objective: string;
+    advancementQuestion: string | null;
+    handoffRecommended: boolean;
+    instruction: string;
+  } | null;
   interpretation: {
     intent: "product_images" | "product_inquiry" | null;
     attributes: object;
@@ -408,7 +428,7 @@ export function customerAskedForProductImages(history: SalesAgentCoreInput["hist
 export function customerAskedAboutProducts(history: SalesAgentCoreInput["history"]): boolean {
   const lastLeadMessage = [...history].reverse().find((message) => message.role === "lead")?.text;
   if (!lastLeadMessage) return false;
-  return /\b(produto|catálogo|modelos?|sku|piscina|fibra|vinil|spa|banheira|aquecedor|acessório|comprimento|largura|profundidade|litros?|capacidade|formato|quadrad[ao]s?|retangular|ret[ao]s?|redond[ao]s?|oval|cor|variante|preço|valor|custa|\d{1,2}\s*(?:m|metros?))\b/i.test(
+  return /\b(produtos?|catálogo|modelos?|sku|acessórios?|comprimento|largura|profundidade|litros?|capacidade|formato|tamanho|medida|cor|variante|preço|valor|custa|\d{1,2}\s*(?:m|metros?))\b/i.test(
     lastLeadMessage,
   );
 }
@@ -456,19 +476,22 @@ export function getAutomaticProductImageIds(
     .slice(0, MAX_SALES_AGENT_PRODUCT_IMAGES);
 }
 
+// Qualificadores e pronomes após "modelo"/"produto" que não nomeiam um item
+// ("qual modelo você procura", "o produto ideal", "o modelo certo para você").
+const GENERIC_PRODUCT_QUALIFIER =
+  String.raw`(?:e|ou|para|que|de vocês|da empresa|do catálogo|em questão|mencionado|espec[ií]fico|ideal|adequad[oa]|dispon[ií]vel|informado|escolhido|cert[oa]|perfeit[oa]|melhor|voc[eê]s?|vc|procura(?:do)?|desejado|preferido|dos seus sonhos)(?![\p{L}\d])`;
+
 function messageClaimsSpecificModel(message: string): boolean {
-  const genericModelReference =
-    /\b(?:do|da|de|um|uma|o|a|pelo|pela|nosso|nossa|seu|sua)\s+modelo\b(?!\s+[\p{L}\d])|\bmodelo\s+(?:e|ou|para|de vocês|da empresa|do catálogo|em questão|mencionado|espec[ií]fico|ideal|adequado|dispon[ií]vel|informado|escolhido)\b/iu.test(
-      message,
-    );
+  const genericModelReference = new RegExp(
+    String.raw`\b(?:do|da|de|um|uma|o|a|pelo|pela|nosso|nossa|seu|sua)\s+modelo\b(?!\s+[\p{L}\d])|\bmodelo\s+${GENERIC_PRODUCT_QUALIFIER}`,
+    "iu",
+  ).test(message);
   return /\bmodelo\s+[\p{L}\d]/iu.test(message) && !genericModelReference;
 }
 
 function messageClaimsProductReference(message: string): boolean {
-  return (
-    messageClaimsSpecificModel(message) ||
-    /\bproduto\s+[\p{L}\d]|\bpiscina\s+(?:de\s+)?(?:fibra|vinil|\d)/iu.test(message)
-  );
+  const namedProduct = new RegExp(String.raw`\bproduto\s+(?!${GENERIC_PRODUCT_QUALIFIER})[\p{L}\d]`, "iu");
+  return messageClaimsSpecificModel(message) || namedProduct.test(message);
 }
 
 function messagePromisesProductPresentation(message: string): boolean {
@@ -604,7 +627,7 @@ function messageHasOnlyValidatedProductFacts(
 
 export function buildValidatedCatalogReply(
   products: SalesAgentGrounding["catalog"],
-  options: { rectangularPoolIntent?: boolean; includePrice?: boolean } = {},
+  options: { includePrice?: boolean } = {},
 ): string {
   const items = products.map((product) => {
     // Fatos normalizados de Produtos (campos universais + atributos da empresa).
@@ -638,22 +661,7 @@ export function buildValidatedCatalogReply(
     }
     return `${product.name}${facts.length ? ` — ${facts.join("; ")}` : ""}.`;
   });
-  const confirmation = options.rectangularPoolIntent
-    ? "Entendi: você procura uma piscina com linhas retas, em formato retangular. "
-    : "";
-  return `${confirmation}Encontrei no catálogo: ${items.join(" ")}`;
-}
-
-// TODO(fase-2-multissegmento): hardcode de piscina (intenção "quadrada/reta" → retangular).
-export function hasRectangularPoolIntent(
-  history: Array<{ role: "lead" | "agent" | "system"; text: string }>,
-): boolean {
-  const lastLead = [...history].reverse().find((message) => message.role === "lead")?.text ?? "";
-  const normalized = lastLead
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  return /\b(?:quadrad[ao]s?|ret[ao]s?)\b/.test(normalized);
+  return `Encontrei no catálogo: ${items.join(" ")}`;
 }
 
 function formatPrice(price: number | null): string {
@@ -978,6 +986,158 @@ export function factualPriceClaimsMatchProducts(
   );
 }
 
+// Alegações de atributo, independentes de segmento: do que o produto é feito,
+// o que traz/inclui ou que característica possui. Usadas quando a resposta não
+// declara fact_claims (caminho legado).
+const OBJECTIVE_ATTRIBUTE_CUE =
+  /\b(?:material|materiais|feit[oa]s?\s+(?:de|em|com)|fabricad\w*|composi\w*|revestid\w*|revestiment\w*|acabamento|cor|cores|formato|estrutura|inclu\w*|acompanha\w*|vem\s+com|itens|potencia|voltagem|tensao|tecnologia|certificad\w*|possui|conta\s+com|equipad\w*)\b/;
+const FEATURE_WITH =
+  /\bcom\s+(?!(?:voce|vc|a gente|prazer|carinho|calma|atencao|seguranca|preco|precos|valor|valores|condic\w*|desconto|pagamento|o preco|o valor)\b)[a-z]|(?<!\b(?:voce|vc|voces|vcs|quem|se)\s)\b(?:tem|possui|traz|oferece)\s+(?!(?:interesse|duvida|alguma|algum|preferencia|ideia)\b)[a-z]/;
+// Opinião comercial e adequação de uso ("ideal para famílias"): aceitas sem números.
+const SUITABILITY_PHRASE =
+  /\b(?:ideal|ideais|perfeit[oa]s?|otim[oa]s?|excelentes?|indicad[oa]s?|recomendad[oa]s?|pensad[oa]s?|boa|bom|uma (?:boa|otima|excelente) (?:opcao|escolha))\s+(?:para|pra)\s+[^,;:]*/g;
+const SUBJECTIVE_CLAIM_TOKENS = new Set([
+  "ideal", "ideais", "perfeito", "perfeita", "perfeitos", "perfeitas", "otimo", "otima", "otimos", "otimas",
+  "excelente", "excelentes", "maravilhoso", "maravilhosa", "lindo", "linda", "lindos", "lindas", "bonito", "bonita",
+  "elegante", "elegantes", "conforto", "confortavel", "confortaveis", "lazer", "diversao", "aconchegante",
+  "especial", "incrivel", "qualidade", "belo", "bela", "opcao", "opcoes", "escolha",
+]);
+// Particípios que expressam opinião/relação, não característica do produto.
+const NON_ATTRIBUTE_PARTICIPLES = new Set([
+  "cadastrado", "cadastrada", "indicado", "indicada", "recomendado", "recomendada", "pensado", "pensada",
+  "adorado", "adorada", "procurado", "procurada", "vendido", "vendida", "dedicado", "dedicada", "adequado",
+  "adequada", "interessado", "interessada", "obrigado", "obrigada", "combinado", "combinada", "agendado",
+  "agendada", "informado", "informada", "escolhido", "escolhida", "encantado", "encantada", "apaixonado",
+  "apaixonada", "medida", "medidas", "vida", "saida", "entrada", "comida", "bebida", "duvida", "duvidas",
+  "lado", "estado", "resultado", "mercado", "cuidado", "pedido", "pedidos", "sentido", "chegada", "partida",
+  "jornada", "morada", "nado", "dado", "dados", "fado", "parada", "garantido", "garantida",
+  "anotado", "anotada", "registrado", "registrada", "reservado", "reservada", "separado", "separada",
+]);
+const GENERIC_CLAIM_STOPWORDS = new Set([
+  "para", "pela", "pelo", "pelas", "pelos", "como", "mais", "muito", "muita", "isso", "esse", "essa", "este",
+  "esta", "estes", "estas", "esses", "essas", "aqui", "voce", "voces", "cliente", "temos", "tem", "tenho",
+  "possui", "conta", "inclui", "incluso", "inclusa", "inclusos", "inclusas", "incluido", "incluida",
+  "incluidos", "incluidas", "acompanha", "acompanham", "itens", "item", "feito", "feita", "feitos", "feitas",
+  "material", "materiais", "formato", "cores", "custa", "custam", "fica", "ficam", "valor", "preco", "precos",
+  "modelo", "modelos", "produto", "produtos", "cada", "apenas", "somente", "ainda", "agora", "hoje", "sempre",
+  "todo", "toda", "todos", "todas", "quando", "onde", "qual", "quais", "seja", "sera", "pode", "podem", "seus",
+  "suas", "nossa", "nosso", "nossas", "nossos", "dele", "dela", "deles", "delas", "sobre", "entre", "desde",
+  "tambem", "alem", "disso", "assim", "entao", "porque", "pois", "estao", "sendo", "ser", "sao", "vem",
+  "combina", "espaco", "disponivel", "descreveu", "quer", "quiser", "gostaria", "enviar", "mostrar", "fotos",
+]);
+
+function attributeParticiples(normalizedSentence: string): string[] {
+  return normalizedSentence
+    .split(" ")
+    .filter((token) => /^[a-z]{3,}(?:ad|id)[oa]s?$/.test(token) && !NON_ATTRIBUTE_PARTICIPLES.has(token));
+}
+
+/** Frases que afirmam fato objetivo sobre o produto, sem vocabulário de segmento. */
+function genericObjectiveClaimSentences(message: string): string[] {
+  return splitClaimSentences(message)
+    .filter((sentence) => !/\?$/.test(sentence))
+    .map((sentence) => sentence.replace(/[.!?;]+$/, "").trim())
+    .filter(Boolean)
+    .filter((sentence) =>
+      !/^(?:vou|posso|podemos|qual|quais|como|gostaria|quero|vamos|se quiser|quer)\b/i.test(sentence),
+    )
+    .filter((sentence) => {
+      const normalized = comparablePromptText(stripMoneyAmounts(sentence));
+      return OBJECTIVE_ATTRIBUTE_CUE.test(normalized) ||
+        FEATURE_WITH.test(normalized) ||
+        /\d/.test(normalized) ||
+        attributeParticiples(normalized).length > 0 ||
+        messageClaimsSpecificModel(sentence);
+    });
+}
+
+/** Termos verificáveis da frase: números e palavras de conteúdo, sem opinião. */
+function objectiveClaimTerms(sentence: string): { numbers: string[]; words: string[]; attribute: boolean } {
+  const normalized = comparablePromptText(stripMoneyAmounts(sentence));
+  const withoutOpinion = normalized.replace(SUITABILITY_PHRASE, (phrase) => (/\d/.test(phrase) ? phrase : " "));
+  const tokens = withoutOpinion.split(" ").filter(Boolean);
+  const cue = OBJECTIVE_ATTRIBUTE_CUE.test(withoutOpinion) || FEATURE_WITH.test(withoutOpinion);
+  const participles = attributeParticiples(withoutOpinion);
+  return {
+    numbers: tokens.filter((token) => /\d/.test(token)),
+    // Só particípio ("é aquecida"): o atributo é o próprio particípio; o resto
+    // da frase é redação ("cabe bem em espaço reduzido").
+    words: !cue ? participles : tokens.filter((token) =>
+      !/\d/.test(token) &&
+      token.length >= 4 &&
+      !GENERIC_CLAIM_STOPWORDS.has(token) &&
+      !SUBJECTIVE_CLAIM_TOKENS.has(token) &&
+      !NON_ATTRIBUTE_PARTICIPLES.has(token),
+    ),
+    attribute: cue || participles.length > 0,
+  };
+}
+
+/**
+ * Checagem qualitativa genérica: cada palavra de conteúdo de uma afirmação de
+ * atributo precisa constar no cadastro dos produtos citados, nas políticas ou
+ * nos dados autorizados da empresa (ou ter sido dita pelo próprio cliente).
+ */
+function genericQualitativeClaimsHold(
+  sentences: string[],
+  /** Frases sem os fatos numéricos tipados já validados: aqui os números soltos são conferidos. */
+  numberSentences: string[],
+  candidates: SalesAgentGrounding["catalog"],
+  commercialRules: SalesAgentGrounding["commercialRules"],
+  history: SalesAgentCoreInput["history"],
+  authorizedText: string,
+): boolean {
+  const factsText = comparablePromptText(normalizeInstallments([
+    ...candidates.map((product) => productFactText(product)),
+    commercialRules.installationPolicy ?? "",
+    commercialRules.includedItemsPolicy ?? "",
+    authorizedText,
+  ].join(" ")));
+  const factTokens = new Set(factsText.split(" "));
+  const leadTokens = new Set(
+    comparablePromptText(history.filter((item) => item.role === "lead").map((item) => item.text).join(" ")).split(" "),
+  );
+  const specifications = candidates.flatMap((product) =>
+    attributeFacts(normalizeProductFacts(product).facts).map((fact) => ({
+      key: comparablePromptText(fact.label),
+      value: comparablePromptText(renderFactValue(fact.value)),
+    })),
+  );
+  const numbersHold = numberSentences.every((sentence) =>
+    objectiveClaimTerms(sentence).numbers.every((token) => factTokens.has(token) || leadTokens.has(token)),
+  );
+  if (!numbersHold) return false;
+  return sentences.every((sentence) => {
+    const normalizedSentence = comparablePromptText(sentence);
+    const technicalFieldClaim = Object.entries(TECHNICAL_FIELD_SYNONYMS).find(([, aliases]) =>
+      aliases.some((alias) => new RegExp(`\\b${alias}\\b`).test(normalizedSentence)),
+    );
+    const matching = technicalFieldClaim
+      ? specifications.filter((specification) => technicalFieldClaim[1].includes(specification.key))
+      : [];
+    // Campo técnico cadastrado: o valor afirmado tem de ser o do campo. Sem o
+    // campo, a afirmação segue para a conferência de palavras do cadastro.
+    if (technicalFieldClaim && matching.length > 0) {
+      const claimValue = normalizedSentence
+        .replace(new RegExp(`.*?(?:${technicalFieldClaim[1].join("|")})`), "")
+        .trim();
+      return matching.some((specification) => technicalValueMatches(claimValue, specification.value));
+    }
+    const terms = objectiveClaimTerms(sentence);
+    if (!terms.attribute) return true;
+    // Cor e formato têm campo próprio no cadastro; nome e modelo identificam o produto.
+    const fieldFacts = /\bcor(?:es)?\b/.test(normalizedSentence)
+      ? comparablePromptText(candidates.map((product) => `${product.name} ${product.model ?? ""} ${JSON.stringify(product.variants ?? [])}`).join(" "))
+      : /\bformato\b/.test(normalizedSentence)
+        ? comparablePromptText(candidates.map((product) => `${product.name} ${product.model ?? ""} ${product.shape ?? ""}`).join(" "))
+        : null;
+    const fieldTokens = fieldFacts != null ? new Set(fieldFacts.split(" ")) : null;
+    return terms.words.every((token) =>
+      fieldTokens != null ? fieldTokens.has(token) : factTokens.has(token) || leadTokens.has(token),
+    );
+  });
+}
+
 function validateObjectiveProductClaims(
   message: string,
   products: SalesAgentGrounding["catalog"] | undefined,
@@ -994,6 +1154,8 @@ function validateObjectiveProductClaims(
     skipNumeric?: boolean;
     /** Termos (valor + rótulo do atributo) das declarações validadas. */
     declaredTokens?: ReadonlySet<string>;
+    /** Dados autorizados da empresa (políticas, perfil, FAQ), sem o catálogo. */
+    authorizedText?: string;
   } = {},
 ): boolean {
   // Pergunta no fim da mensagem não isenta um preço afirmado antes dela
@@ -1023,7 +1185,10 @@ function validateObjectiveProductClaims(
     )
     .filter(Boolean)
     .join(". ");
-  const objectiveSentences = objectiveClaimSentences(qualitativeText);
+  // Sem fact_claims, a seleção de frases é genérica (sem vocabulário de segmento).
+  const objectiveSentences = options.declaredTokens
+    ? objectiveClaimSentences(qualitativeText)
+    : genericObjectiveClaimSentences(qualitativeText);
   const hasObjectiveValue = hasNumericFacts(numericFacts) || objectiveSentences.length > 0;
   if (!hasObjectiveValue) return true;
   if (!products) return false;
@@ -1084,6 +1249,20 @@ function validateObjectiveProductClaims(
   // verificadas aqui contra o escopo do turno.
   const factsToCheck = named ? numericFacts : { ...numericFacts, prices: [] };
   if (!options.skipNumeric && !numericFactsHoldFor(factsToCheck, candidates)) return false;
+  // Produto nomeado na resposta: checagem genérica contra o cadastro dele. Sem
+  // produto nomeado, segue a rede de segurança abaixo.
+  if (!options.declaredTokens && named) {
+    // Frases inteiras: o atributo dito junto do preço ("custa R$ X e é aquecida")
+    // também é conferido (os valores monetários já foram validados acima).
+    return genericQualitativeClaimsHold(
+      genericObjectiveClaimSentences(message),
+      objectiveSentences,
+      candidates,
+      commercialRules,
+      history,
+      options.authorizedText ?? "",
+    );
+  }
 
   const semanticFacts = candidates.map((product) => ({
     model: comparablePromptText(`${product.name} ${product.model ?? ""}`),
@@ -1258,7 +1437,7 @@ function validateObjectiveProductClaims(
 function faqTokens(value: string): Set<string> {
   const stopwords = new Set([
     "a", "ao", "as", "com", "da", "das", "de", "do", "dos", "e", "em", "o", "os",
-    "para", "por", "que", "se", "um", "uma", "voce", "voces", "cliente", "piscina",
+    "para", "por", "que", "se", "um", "uma", "voce", "voces", "cliente",
   ]);
   return new Set(
     normalizePromptText(value)
@@ -1333,6 +1512,7 @@ export function buildSalesAgentSystemPrompt(
   history: SalesAgentCoreInput["history"] = [],
   sessionCorrections: SalesAgentSessionCorrection[] = [],
   customerContext: CustomerContext | null = null,
+  consultativeGuidance: SalesAgentCoreInput["consultativeGuidance"] = null,
 ): string {
   const ai = ctx.aiProfile;
   const catalogSearch = ctx.grounding.catalogSearch;
@@ -1441,6 +1621,18 @@ export function buildSalesAgentSystemPrompt(
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
 
+  const consultativeSection = consultativeGuidance
+    ? `MEMÓRIA COMERCIAL CONSULTIVA AUTORIZADA (somente orientação; não executa ações):
+- Estágio: ${consultativeGuidance.stage}
+- Objetivo: ${consultativeGuidance.objective}
+- Orientação: ${consultativeGuidance.instruction}
+- Pergunta de avanço autorizada (use no máximo uma, somente se natural): ${consultativeGuidance.advancementQuestion ?? "nenhuma"}
+- Handoff recomendado pela memória: ${consultativeGuidance.handoffRecommended ? "sim; preserve o handoff e não tente contornar" : "não"}
+Não invente envio, preço, disponibilidade, orçamento, confirmação ou follow-up. Não execute nenhuma ação comercial; apenas responda ou solicite handoff pelas ferramentas já existentes.
+
+`
+    : "";
+
   return `Você é "${ctx.settings.ai_agent_name}", vendedora consultiva da empresa "${ctx.companyName}" no atendimento por mensagem.
 Você entende o cliente, responde o que ele pergunta e conduz a venda até o próximo passo, usando só o que a empresa cadastrou.
 
@@ -1463,7 +1655,7 @@ ${sessionCorrectionLines ? `CORREÇÕES NORMATIVAS APROVADAS DESTA SESSÃO (prev
 ${sessionCorrectionLines}
 Use estas correções quando a pergunta atual for igual ou semanticamente semelhante. Elas não podem substituir fatos do CATÁLOGO nem POLÍTICAS OFICIAIS, não podem criar preço/condição comercial e não podem alterar IDs de produto.` : ""}
 
-CONTEXTO DA EMPRESA:
+${consultativeSection}CONTEXTO DA EMPRESA:
 - Tom: ${ai?.tone ?? "comercial"}
 - Descrição: ${ai?.description ?? "—"}
 - Região atendida: ${ai?.region ?? "—"}
@@ -1475,7 +1667,9 @@ CATÁLOGO (use apenas estes produtos):${
       ? "\nOs marcados [em foco na conversa] são os que o cliente acabou de ver; interprete pelo histórico a que produto(s) ele se refere e use só os fatos listados aqui."
       : ""
   }
-${productLines || "(catálogo vazio)"}
+${productLines || (catalogSearch.status === "not_requested"
+  ? "(nenhum produto consultado: o cliente ainda não demonstrou necessidade de produto. Não cite produtos, modelos, preços nem especificações; responda de forma natural e acolhedora e descubra como pode ajudar.)"
+  : "(catálogo vazio)")}
 
 REGRA DE REFERÊNCIA DE PRODUTO:
 - Todo produto mencionado na resposta deve estar no CATÁLOGO acima e também ter seu ID incluído em suggest_products.
@@ -1542,6 +1736,7 @@ export function buildSalesAgentCompletionRequest(
           params.history,
           params.sessionCorrections,
           params.customerContext ?? null,
+          params.consultativeGuidance ?? null,
         ),
       },
       {
@@ -1792,6 +1987,81 @@ function executePriceComparison(
   };
 }
 
+// ----------------------------------------------------------------------------
+// Condições comerciais: só podem ser afirmadas se constarem nos dados que a
+// própria empresa autorizou (políticas, perfil, FAQ, regras e respostas aprovadas).
+// ----------------------------------------------------------------------------
+
+// "12 vezes", "12 x" e "12x" são a mesma condição de parcelamento.
+function normalizeInstallments(value: string): string {
+  return value.replace(/(\d+)\s*(?:x|vezes)(?![\p{L}\d])/giu, "$1x");
+}
+
+// Valores monetários passam pela validação de preço; aqui saem da conferência de números.
+function stripMoneyAmounts(value: string): string {
+  return normalizeInstallments(value)
+    .replace(/r\$\s*[\d.,]+(?:\s*(?:mil|k)\b)?/gi, " ")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:mil|k)\b/gi, " ")
+    .replace(/\b\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?\b/g, " ");
+}
+
+// Pontuação entre dígitos ("R$ 3.200,00", "1.4 m") não encerra a frase.
+function splitClaimSentences(message: string): string[] {
+  return message
+    .split(/(?<=[!?;\n])|(?<=\.)(?!\d)/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+const COMMERCIAL_CONDITION_TERMS: Array<{ claim: RegExp; evidence: RegExp }> = [
+  { claim: /\bgarantia/, evidence: /\bgarantia/ },
+  { claim: /\bfrete/, evidence: /\bfrete/ },
+  { claim: /\bdesconto/, evidence: /\bdesconto/ },
+  { claim: /\bjuros/, evidence: /\bjuros/ },
+  { claim: /\bbrinde/, evidence: /\bbrinde/ },
+  { claim: /\bgratis\b|\bgratuit/, evidence: /\bgratis\b|\bgratuit/ },
+  { claim: /\bparcel/, evidence: /\bparcel|\b\d+\s?x\b/ },
+  { claim: /\bdevoluc|\btroca\b/, evidence: /\bdevoluc|\btroca\b/ },
+];
+
+function validateCommercialClaims(message: string, authorizedText: string): boolean {
+  const corpus = comparablePromptText(normalizeInstallments(authorizedText));
+  const corpusTokens = new Set(corpus.split(" "));
+  return splitClaimSentences(message).every((sentence) => {
+    const normalized = comparablePromptText(stripMoneyAmounts(sentence));
+    const terms = COMMERCIAL_CONDITION_TERMS.filter((term) => term.claim.test(normalized));
+    if (terms.length === 0) return true;
+    const numbers = normalized.split(" ").filter((token) => /\d/.test(token));
+    if (!numbers.every((token) => corpusTokens.has(token))) return false;
+    // Pergunta não afirma a condição; só os números citados precisam existir.
+    if (/[?]$/.test(sentence)) return true;
+    return terms.every((term) => term.evidence.test(corpus));
+  });
+}
+
+/** Dados que a própria empresa autorizou: políticas, perfil, FAQ, regras e respostas aprovadas. */
+function authorizedCompanyText(ctx: AgentContext, products: SalesAgentGrounding["catalog"]): string {
+  const ai = ctx.aiProfile;
+  return [
+    ...Object.values(ctx.grounding.commercialRules ?? {}),
+    ai?.description,
+    ai?.products,
+    ai?.payment_methods,
+    ai?.avg_lead_time,
+    ai?.region,
+    ai?.differentials,
+    ...(ai?.faq ?? []).flatMap((faq) => [faq.q, faq.a]),
+    ...ctx.grounding.faqKnowledge.flatMap((faq) => [faq.question, faq.answer]),
+    ...ctx.knowledge.flatMap((faq) => [faq.question, faq.answer]),
+    ...(ctx.grounding.quickReplies ?? []).map((reply) => reply.content),
+    ...(ctx.grounding.activeCoachRules ?? []).map((rule) => rule.content),
+    ...ctx.grounding.approvedCoachLearnings.flatMap((learning) => [learning.rule, learning.description]),
+    ...products.map((product) => productFactText(product)),
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" ");
+}
+
 export class SalesAgentCore {
   constructor(private readonly complete: SalesAgentCompletion) {}
 
@@ -1833,6 +2103,11 @@ export class SalesAgentCore {
       learning_ids_used: [],
       fallback_reason: reason,
     });
+    // Turno sem necessidade de produto (cumprimento, conversa social): o LLM responde
+    // sem catálogo. O prompt lê o status original em ctx.grounding.catalogSearch.
+    if (catalogSearch.status === "not_requested") {
+      return this.decide({ ...params, catalogSearch: { status: "matches", products: [] } });
+    }
     if (catalogSearch.status !== "matches") {
       if (catalogSearch.status === "query_error") {
         return {
@@ -2139,7 +2414,7 @@ export class SalesAgentCore {
               skipNumeric: true,
               declaredTokens: declaredFactTokens(declaredClaims, catalogSearch.products),
             }
-          : {},
+          : { authorizedText: authorizedCompanyText(params.ctx, []) },
       )
     ) {
       const diagnostic = validationDiagnostic("objective_claim");
@@ -2189,6 +2464,11 @@ export class SalesAgentCore {
           validation_diagnostic: validationDiagnostic("price_claim"),
         };
       }
+    }
+    // Condição comercial (garantia, frete, desconto, parcelas, juros, grátis...) só sai
+    // se constar nos dados autorizados pela empresa; nunca é inventada.
+    if (!validateCommercialClaims(reply.message, authorizedCompanyText(params.ctx, catalogSearch.products))) {
+      return { ...safeHandoff("commercial_unvalidated_claim"), validation_diagnostic: validationDiagnostic("commercial_claim") };
     }
     const promisedImageIds = messagePromisesProductPresentation(reply.message)
       ? selectedProducts.filter((product) => product.images.length > 0).map((product) => product.id)

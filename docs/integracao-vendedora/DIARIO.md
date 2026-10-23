@@ -124,3 +124,51 @@ guarda que passava vazia com nulo (`<>` → `IS DISTINCT FROM`). Ajustes só do 
 
 Padrões conferidos no banco: consultivo, shadow e V2 desligados; escopo `desligado` para empresas
 novas; empresas existentes convertidas do campo legado (`geral` se respondiam, senão `desligado`).
+
+## Camada 4 — motor da vendedora (2026-10-23)
+
+Base: o motor da `main` (fact_claims, presented_product_ids, institutionalOnly, plano de venda,
+customerContext, vendedora externa). Sobre ela, as melhorias da Bruna:
+
+- **Envio**: `sendWhatsappText` exige comprovante de autorização e reautoriza no envio; a
+  integração usada é a do comprovante; falhas informam se o pedido chegou a sair
+  (`externalRequestSent`). Aviso de handoff ganhou origem própria (`handoff_notice`), bloqueada
+  com takeover humano.
+- **Tick**: comprovante "automatic" antes do envio; reserva persistente por mensagem
+  (`claimMessageDetailed`/`finishMessageClaim`) — sem `message_id` no gatilho, a reserva vale para
+  a última mensagem do cliente; mensagem anterior à ativação do escopo geral não é reservada nem
+  respondida; lead precisa ser da mesma empresa da conversa antes de qualquer mutação
+  (`agent_context_mismatch`); trava com `human_takeover_at` nulo.
+- **Controle**: devolver a conversa para a IA não zera mais `ai_handling` (o turno em andamento
+  é dono da trava; zerar permitia dois turnos paralelos e resposta duplicada). A rota confere a
+  posse da conversa antes de consultar a configuração.
+- **Consultivo**: orientação consultiva e observação em sombra no módulo novo
+  `consultative-turn.server.ts` (opt-in por empresa, desligados por padrão; nada ali envia
+  mensagem ou cria ação).
+- **Validação de fatos**: caminho `fact_claims` da main intacto. No caminho legado (resposta sem
+  fact_claims) e **com produto nomeado**, a checagem qualitativa passou a ser a genérica da Bruna
+  (sem vocabulário de segmento): palavra de atributo afirmado precisa constar no cadastro do
+  produto, nas políticas ou nos dados autorizados da empresa. Isso corrigiu nos dois sentidos:
+  bloqueava fatos cadastrados (garantia do perfil, itens inclusos, "Mesa Oval formato oval" →
+  handoff desnecessário) e deixava passar características inventadas fora do vocabulário de
+  piscina ("aquecida", "hidromassagem", "fibra de vidro reforçada", "couro", "impermeabilizado").
+  Sem produto nomeado, segue a rede de segurança da main (responde com o catálogo validado).
+  Números tipados (preço, medidas, capacidade) continuam validados pelos campos da main.
+- **Validação comercial** da Bruna (garantia, frete, desconto, juros, parcelas, brinde, troca)
+  antes do envio de imagens.
+- **Catálogo**: "12 mês" → "12 meses" (unidades de tempo por extenso concordam com a quantidade).
+
+Contratos que mudaram nos testes (sem enfraquecer proteção): a busca devolve `basis: "focus"`
+quando os produtos vêm da memória; "produto apresentado" é `presented_product_ids` (o que a
+memória grava), `suggested_products` segue a semântica da main; callback repetido do gatilho
+chega ao tick com o mesmo `message_id` (dedupe pela reserva, não por janela de tempo, que
+descartava mensagens seguidas legítimas). Testes do adaptador externo antigo da Bruna removidos
+(fica o adaptador da main).
+
+Resultado: tsc 0 erros; suíte 3665 passam, 9 ignorados; 3 falhas só sob carga, que passam
+isoladas (quote-wizard e dois testes de FFmpeg real do render-engine — já intermitentes na linha
+de base).
+
+Pendências registradas: (1) a rede de segurança legada sem produto nomeado ainda tem vocabulário
+de piscina (TODO fase 2 da main); (2) qualificação automática no tick em modo assistido segue a
+main (decisão de produto).

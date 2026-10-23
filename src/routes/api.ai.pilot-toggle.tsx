@@ -48,6 +48,7 @@ export const Route = createFileRoute("/api/ai/pilot-toggle")({
           .update({
             ai_pilot_mode: enable,
             ai_auto_reply_enabled: enable,
+            ai_auto_reply_scope: enable ? "geral" : "desligado",
             ai_after_hours_only: true,
             ai_pilot_enabled_at: enable ? new Date().toISOString() : null,
           })

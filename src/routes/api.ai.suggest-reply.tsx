@@ -7,6 +7,7 @@ import {
   runAgentTurn,
   runSafetyLayer,
 } from "@/lib/ai-agent.server";
+import { ASSISTED_SUGGESTION_CAPABILITIES } from "@/lib/execution-scope";
 
 export const Route = createFileRoute("/api/ai/suggest-reply")({
   server: {
@@ -152,6 +153,12 @@ export const Route = createFileRoute("/api/ai/suggest-reply")({
             ctx: context,
             history,
             leadName: lead?.name ?? null,
+            executionScope: {
+              kind: "whatsapp_conversation",
+              companyId: conv.company_id,
+              scopeId: conv.id,
+              capabilities: ASSISTED_SUGGESTION_CAPABILITIES,
+            },
             salesStateScope: {
               scopeType: "whatsapp_conversation",
               scopeId: conv.id,

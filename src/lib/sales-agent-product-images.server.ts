@@ -2,9 +2,11 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 import {
-  detectFiberCatalogSize,
+  isWhatsappSendAuthorization,
+  type WhatsappSendAuthorization,
+} from "./whatsapp-send-authorization.server";
+import {
   normalizeRequestedProductIds,
-  resolveFiberCatalogImages,
   resolveProductImages,
   type ProductImageCandidate,
   type ProductImageSelectionContext,
@@ -13,27 +15,25 @@ import {
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
 
+/**
+ * Só envia imagens de produtos validados pelo motor; nenhuma seleção por
+ * vocabulário de segmento.
+ */
 export async function loadValidatedProductImages(
   companyId: string,
   requestedIds: unknown,
-  selectionContext: ProductImageSelectionContext = {},
+  _selectionContext: ProductImageSelectionContext = {},
 ): Promise<ResolvedProductImage[]> {
-  const fiberSize = detectFiberCatalogSize(selectionContext);
   const ids = normalizeRequestedProductIds(requestedIds);
-  if (!fiberSize && ids.length === 0) return [];
-  const useFiberFallback = ids.length === 0 && fiberSize !== null;
-  let query = supabaseAdmin
+  if (ids.length === 0) return [];
+  const { data, error } = await supabaseAdmin
     .from("products")
     .select("id, name, images, category, description, notes")
     .eq("company_id", companyId)
-    .eq("active", true);
-  if (!useFiberFallback) query = query.in("id", ids);
-  const { data, error } = await query;
+    .eq("active", true)
+    .in("id", ids);
   if (error) throw new Error("product_images_load_failed");
-  const products = (data ?? []) as ProductImageCandidate[];
-  return useFiberFallback
-    ? resolveFiberCatalogImages(fiberSize, products, companyId)
-    : resolveProductImages(ids, products, companyId);
+  return resolveProductImages(ids, (data ?? []) as ProductImageCandidate[], companyId);
 }
 
 export async function sendWhatsappProductImages(params: {
@@ -42,7 +42,16 @@ export async function sendWhatsappProductImages(params: {
   leadId: string;
   productIds: unknown;
   selectionContext?: ProductImageSelectionContext;
+  authorization: WhatsappSendAuthorization;
 }): Promise<{ sent: number; failed: number }> {
+  if (
+    !isWhatsappSendAuthorization(params.authorization) ||
+    params.authorization.companyId !== params.companyId ||
+    params.authorization.conversationId !== params.conversationId ||
+    params.authorization.leadId !== params.leadId
+  ) {
+    return { sent: 0, failed: 0 };
+  }
   const images = await loadValidatedProductImages(
     params.companyId,
     params.productIds,
@@ -69,8 +78,8 @@ export async function sendWhatsappProductImages(params: {
     .eq("active", true);
   const { data: integration } = lead.integration_id
     ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
-    : await integrationQuery.limit(1).maybeSingle();
-  if (!integration?.access_token || !integration.external_account_id) {
+    : { data: null };
+  if (!integration?.access_token || !integration.external_account_id || integration.id !== params.authorization.integrationId) {
     return { sent: 0, failed: images.length };
   }
 

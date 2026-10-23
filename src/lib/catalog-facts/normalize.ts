@@ -136,13 +136,13 @@ export function renderFactValue(value: FactValue): string {
     case "money":
       return formatMoney(value.amount);
     case "quantity":
-      return withUnit(formatFactNumber(value.value), value.unit);
+      return withUnit(formatFactNumber(value.value), pluralUnit(value.unit, value.value));
     case "dimensions":
       return withUnit(value.values.map(formatFactNumber).join(" x "), value.unit);
     case "range":
       return withUnit(
         `${formatFactNumber(value.min)} a ${formatFactNumber(value.max)}`,
-        value.unit,
+        pluralUnit(value.unit, value.max),
       );
     case "boolean":
       return value.value ? "sim" : "não";
@@ -151,6 +151,19 @@ export function renderFactValue(value: FactValue): string {
     case "list":
       return value.items.join(", ");
   }
+}
+
+/** Unidades de tempo escritas por extenso concordam com a quantidade ("12 meses"). */
+const PLURAL_UNITS: Record<string, string> = {
+  dia: "dias",
+  semana: "semanas",
+  "mês": "meses",
+  ano: "anos",
+};
+
+function pluralUnit(unit: string | null, amount: number): string | null {
+  if (!unit || Math.abs(amount) < 2) return unit;
+  return PLURAL_UNITS[unit] ?? unit;
 }
 
 function isFiniteNumber(value: unknown): value is number {

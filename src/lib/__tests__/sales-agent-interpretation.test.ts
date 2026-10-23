@@ -47,9 +47,13 @@ describe("structured sales interpretation", () => {
   );
 
   it("mantem confianca baixa quando a mensagem nao permite inferencia", () => {
-    const result = interpretStructuredSalesTurn([{ role: "lead", text: "Oi" }]);
+    const result = interpretStructuredSalesTurn([{ role: "lead", text: "hmm deixa eu pensar aqui no assunto" }]);
     expect(result).toMatchObject({ intent: "unknown", subject: "unknown" });
     expect(result.confidence).toBeLessThan(0.5);
+  });
+
+  it("classifica cumprimento isolado como turno social", () => {
+    expect(interpretStructuredSalesTurn([{ role: "lead", text: "Oi" }])).toMatchObject({ intent: "social", subject: "unknown" });
   });
 
   it("gera resumo compacto sem carregar fatos de produto", () => {

@@ -283,10 +283,9 @@ describe("SalesAgent grounding", () => {
       promoPrice: 18_000,
       images: ["image.jpg"],
     });
-    expect(grounding.catalogSearch).toMatchObject({
-      status: "matches",
-      products: [{ id: "product-1", model: "Caribe 6", price: 20_000 }],
-    });
+    // Sem mensagem do cliente não há necessidade de produto: o catálogo é carregado,
+    // mas nenhum produto entra na busca do turno.
+    expect(grounding.catalogSearch).toEqual({ status: "not_requested", products: [] });
     expect(grounding.faqKnowledge).toEqual([{ question: "Instala?", answer: "Sim.", type: "faq" }]);
     expect(grounding.commercialRules.commercialTerms).toBe("Entrada de 50%");
     expect(grounding.commercialRules).toMatchObject({
@@ -507,7 +506,7 @@ describe("SalesAgent grounding", () => {
     expect(select("Preciso de profundidade 9 m")).toEqual([]);
   });
 
-  it("inclui produtos de aquecimento e suas specifications para a pergunta técnica", () => {
+  it("seleciona pela categoria cadastrada citada pelo cliente, com suas specifications", () => {
     const heatingByCategory = {
       id: "heat-category",
       name: "Equipamento térmico",
@@ -544,14 +543,12 @@ describe("SalesAgent grounding", () => {
 
     const selected = selectRelevantSalesAgentProducts(
       [heatingByCategory, heatingBySpecifications, irrelevant],
-      [{ role: "lead", text: "Como funciona o aquecimento da piscina?" }],
+      [{ role: "lead", text: "Quais aquecedores vocês têm?" }],
     );
 
-    expect(selected).toEqual([heatingByCategory, heatingBySpecifications]);
-    expect(selected.map((product) => product.specifications)).toEqual([
-      heatingByCategory.specifications,
-      heatingBySpecifications.specifications,
-    ]);
+    // Sem sinônimos fixos de segmento: "aquecedores" casa a categoria cadastrada "Aquecedores".
+    expect(selected).toEqual([heatingByCategory]);
+    expect(selected[0].specifications).toEqual(heatingByCategory.specifications);
   });
 
   it("preserva product_id escolhido em pergunta seguinte", () => {
@@ -597,13 +594,12 @@ describe("SalesAgent grounding", () => {
   });
 
   it.each([
-    "piscina quadrada",
-    "modelos quadrados",
-    "modelo quadrada",
-    "piscina mais quadrada",
-    "piscina reta",
-    "modelos retos",
-  ])("interpreta %s como intenção por linhas retas sem alterar shape", (text) => {
+    ["piscina retangular", ["rect"]],
+    ["quero a redonda", ["round"]],
+    // Sem equivalência fixa de segmento: "quadrada" não vira "retangular".
+    ["piscina quadrada", []],
+    ["modelos quadrados", []],
+  ])("seleciona formato %s só pelo formato cadastrado", (text, expectedIds) => {
     const rectangular = {
       id: "rect",
       name: "Piscina reta",
@@ -621,8 +617,8 @@ describe("SalesAgent grounding", () => {
       [{ role: "lead", text }],
     );
 
-    expect(selected).toEqual([rectangular]);
-    expect(selected[0].shape).toBe("retangular");
+    expect(selected.map((product) => product.id)).toEqual(expectedIds);
+    for (const product of selected) expect([rectangular, round]).toContain(product);
   });
 
   it("ranqueia candidatos pela mensagem atual e preserva company_id", async () => {

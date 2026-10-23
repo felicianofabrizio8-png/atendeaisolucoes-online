@@ -166,7 +166,7 @@ describe("o botão mestre no código do servidor", () => {
 
   it("o automático por conversa some com o botão desligado, sem apagar o valor gravado na conversa", () => {
     const route = source("routes/api.ai.agent-takeover.tsx");
-    const block = route.slice(route.indexOf('body.action === "auto_reply_status"'));
+    const block = route.slice(route.indexOf('action === "auto_reply_status"'));
     const guard = block.indexOf("isCompanySalesAgentMasterOff(profile.company_id)");
     expect(guard).toBeGreaterThan(0);
     expect(guard).toBeLessThan(block.indexOf("available: false, enabled: false"));

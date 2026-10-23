@@ -21,6 +21,11 @@ const { from, postGraph, listLearningCandidates, retrieveLearnings, state } = vi
 
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: { from } }));
 vi.mock("@/lib/outbound/MetaOutbound.server", () => ({ postGraph }));
+// O comprovante de envio tem testes próprios; aqui o foco é o fluxo do tick.
+vi.mock("../whatsapp-send-authorization.server", () => ({
+  authorizeWhatsappSend: async (input: Record<string, unknown>) => ({ ...input, integrationId: "integration-test" }),
+  isWhatsappSendAuthorization: () => true,
+}));
 vi.mock("../coach-learnings/coach-learnings.repository", () => ({ listLearningCandidates }));
 vi.mock("../coach-learnings/retriever", () => ({ retrieveLearnings }));
 vi.mock("../sales-agent-config.server", () => ({
@@ -210,6 +215,7 @@ function install(scenario: Scenario) {
       if (op === "update") return { data: null, error: null };
       return {
         data: {
+          company_id: COMPANY,
           name: "Cliente",
           status: "novo",
           phone: "5511999990000",

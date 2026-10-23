@@ -3,7 +3,7 @@
 // Endpoint server-to-server chamado pelo trigger postgres em `messages`.
 //
 // Segurança (FASE 1 hardening):
-//  - Requer header x-agent-trigger-secret === AGENT_TRIGGER_SECRET.
+//  - Requer header x-agent-trigger-secret === segredo armazenado no Vault.
 //  - Comparação timing-safe.
 //  - Somente método POST (405 nos demais).
 //  - Body validado por Zod strict (rejeita campos extras).
@@ -34,6 +34,7 @@ const RATE_GLOBAL_PER_MIN = 300;
 const BodySchema = z
   .object({
     conversation_id: z.string().uuid().max(64),
+    message_id: z.string().uuid().max(64).optional(),
   })
   .strict();
 
@@ -55,10 +56,9 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
         const cid = correlationId();
         const startedAt = Date.now();
 
-        const expected =
-          (await getHookSecret("agent_trigger_secret")) ??
-          process.env.AGENT_TRIGGER_SECRET ??
-          null;
+        // Vault é a fonte única de verdade. Não há fallback por variável de
+        // ambiente para evitar divergência entre o trigger PostgreSQL e a rota.
+        const expected = await getHookSecret("agent_trigger_secret");
         if (!expected) {
           console.error("[agent-trigger]", { cid, event: "secret_not_configured" });
           return Response.json({ ok: false, error: "unavailable" }, { status: 503 });
@@ -87,6 +87,7 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
           return Response.json({ ok: false, error: "invalid_body" }, { status: 400 });
         }
         const conversationId = parsed.data.conversation_id;
+        const messageId = parsed.data.message_id;
 
         // Rate limit local (fast-path) + distribuído (fonte de verdade).
         const globalRl = rateLimit("agent-trigger:global", RATE_GLOBAL_PER_MIN, 60_000);
@@ -127,7 +128,7 @@ export const Route = createFileRoute("/api/public/hooks/agent-trigger")({
         // Guardas de tenant/integração já existentes são respeitadas.
         const tick = async () => {
           try {
-            const result = await runAgentTick(conversationId);
+            const result = await runAgentTick(conversationId, { dedupeByLatestMessage: true, messageId });
             console.info("[agent-trigger]", {
               cid,
               event: "ok",

@@ -171,7 +171,16 @@ describe("consultative response integration", () => {
     });
     expect(request.messages[0].content).toContain("MEMÓRIA COMERCIAL CONSULTIVA AUTORIZADA");
     expect(request.messages[0].content).toContain("O que você achou dos modelos que enviei?");
-    expect(request.tools).toHaveLength(2);
+    // A orientação não acrescenta ferramenta: as mesmas do pedido sem orientação.
+    const withoutGuidance = buildSalesAgentCompletionRequest({
+      ctx: syntheticContext,
+      history: [],
+      leadName: null,
+      model: "synthetic-model",
+      catalogSearch: syntheticContext.grounding.catalogSearch,
+      interpretation: { intent: null, attributes: {}, references: { lastLeadText: "", productIds: [] } },
+    });
+    expect(request.tools).toEqual(withoutGuidance.tools);
     expect(JSON.stringify(request.tools)).not.toContain("schedule_followup");
     expect(JSON.stringify(request.tools)).not.toContain("send_quote");
   });
