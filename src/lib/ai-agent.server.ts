@@ -110,6 +110,14 @@ import {
   interpretStructuredSalesTurn,
   type StructuredSalesAgentInterpretation,
 } from "./sales-agent-interpretation";
+import {
+  NO_DISCOUNT_POLICY,
+  authorizedDiscountPercents,
+  checkReplyDiscounts,
+  isDiscountRequest,
+  parseDiscountPolicy,
+  type DiscountPolicy,
+} from "./discount-policy";
 
 export type { AgentContext, AgentDecision, AgentSettings } from "./sales-agent-core";
 export type { AgentContextBase } from "./sales-agent-core";
@@ -463,11 +471,12 @@ const DELIVERY_TIME_PATTERN = /\bquand?o.*\b(instal|entreg|chega)/i;
 const CHEAPER_PATTERN = /\bbarat/i;
 const LOWEST_PRICE_PATTERN = /\bmenor preço\b/i;
 
+// Pedido de desconto/negociação: com a política do lojista informada, só vai para
+// humano quando ela exige aprovação; sem política informada, segue indo para humano.
+const DISCOUNT_REQUEST_PATTERNS = new Set<RegExp>([/\bdesconto\b/i, /\babatimento\b/i, /\bdescont/i, /\bnegoci/i]);
+
 const HANDOFF_PATTERNS: RegExp[] = [
-  /\bdesconto\b/i,
-  /\babatimento\b/i,
-  /\bdescont/i,
-  /\bnegoci/i,
+  ...DISCOUNT_REQUEST_PATTERNS,
   PAYMENT_TERMS_PATTERN,
   CHEAPER_PATTERN,
   LOWEST_PRICE_PATTERN,
@@ -498,17 +507,24 @@ const PRICE_SENSITIVE_PATTERNS = new Set<RegExp>([CHEAPER_PATTERN, LOWEST_PRICE_
 export function detectHandoffNeeded(
   text: string,
   commercialRules?: AgentContext["grounding"]["commercialRules"] | null,
-  options: { deferPriceSensitive?: boolean } = {},
+  options: { deferPriceSensitive?: boolean; discountPolicy?: DiscountPolicy } = {},
 ): { needed: boolean; reason?: string; priceSensitive?: boolean } {
   const normalized = text.trim();
+  // Desconto com aprovação humana obrigatória: vai para a equipe mesmo em forma de pergunta.
+  if (options.discountPolicy?.mode === "approval_required" && isDiscountRequest(text)) {
+    return { needed: true, reason: "discount_requires_approval" };
+  }
   const informationalQuestion =
     /^(?:voc[eê]s|qual|quais|quando|como|tem|posso|pode|quanto)\b.*\?$/i.test(normalized) ||
     /^se\s+eu\s+fechar\b/i.test(normalized);
   if (informationalQuestion) return { needed: false };
   const answeredByPolicy = resolveInstitutionalPolicies(text, commercialRules) !== null;
+  // Sem desconto ou com descontos autorizados, a vendedora responde pela política.
+  const discountAnsweredByPolicy = options.discountPolicy != null && options.discountPolicy.mode !== "approval_required";
   let priceSensitive = false;
   for (const re of HANDOFF_PATTERNS) {
     if (answeredByPolicy && INSTITUTIONAL_HANDOFF_PATTERNS.has(re)) continue;
+    if (discountAnsweredByPolicy && DISCOUNT_REQUEST_PATTERNS.has(re)) continue;
     if (!re.test(text)) continue;
     // Sem outro sinal de humano, adia a decisão para o LLM: no turno sensível
     // a preço, só a comparação determinística do catálogo pode responder;
@@ -526,8 +542,8 @@ export function detectHandoffNeeded(
 // Safety layer pós-LLM (vence o LLM)
 // ----------------------------------------------------------------------------
 
+// Desconto não está aqui: quem decide é a política do lojista (discount-policy).
 const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
-  { pattern: /\bdesconto\b/i, reason: "ofereceu desconto" },
   { pattern: /\bnegoci\w*/i, reason: "tentou negociar" },
   { pattern: /\bgaranto\b/i, reason: "fez promessa" },
   { pattern: /\bprometo\b/i, reason: "fez promessa" },
@@ -538,19 +554,64 @@ const SAFETY_BLOCK_PATTERNS: { pattern: RegExp; reason: string }[] = [
 
 const PERCENTAGE_PATTERN = /\b\d+(?:[.,]\d+)?\s?%/gi;
 
+/**
+ * Políticas cadastradas cujos percentuais (ex.: entrada) podem ser repetidos pela IA.
+ * Mesmo conjunto nos quatro caminhos: WhatsApp, sugestão, treino e teste.
+ */
+export function commercialPolicyEvidence(rules: AgentContext["grounding"]["commercialRules"]): string {
+  return [
+    rules.commercialTerms,
+    rules.paymentPolicy,
+    rules.paymentMethods,
+    rules.installationPolicy,
+    rules.shippingPolicy,
+    rules.nextLoadForecast,
+    rules.visitPolicy,
+    rules.includedItemsPolicy,
+  ].filter(Boolean).join(" ");
+}
+
 function canonicalPercentage(value: string): string {
   return value.replace(/\s+/g, "").replace(",", ".");
+}
+
+/**
+ * Trava pós-IA com as políticas cadastradas da empresa: percentuais das políticas e
+ * desconto conforme a política do lojista. Ponto único dos quatro caminhos.
+ */
+export function runCompanySafetyLayer(decision: AgentDecision, ctx: AgentContextBase): AgentDecision {
+  return runSafetyLayer(
+    decision,
+    commercialPolicyEvidence(ctx.grounding.commercialRules),
+    parseDiscountPolicy(ctx.settings),
+  );
+}
+
+/** Política de desconto do lojista aplicada à resposta (mesma regra nos quatro caminhos). */
+function discountSafetyBlock(message: string, policy: DiscountPolicy): string | null {
+  const check = checkReplyDiscounts(message, policy);
+  return check.ok ? null : `safety_block: ${check.reason}`;
 }
 
 export function runSafetyLayer(
   decision: AgentDecision,
   commercialTerms?: string | null,
+  /** Política de desconto da empresa; ausente = nenhum desconto autorizado. */
+  discountPolicy: DiscountPolicy = NO_DISCOUNT_POLICY,
 ): AgentDecision {
+  if (decision.kind !== "reply" || !decision.message) return decision;
+  // Desconto vale para todas as origens, inclusive a Vendedora externa.
+  const discountBlock = discountSafetyBlock(decision.message, discountPolicy);
+  if (discountBlock) {
+    return { kind: "handoff", reason: discountBlock, grounding_sources: decision.grounding_sources };
+  }
   // A decisão da Vendedora externa já foi validada contra o que a empresa cadastrou.
   if (decision.external_validated) return decision;
-  if (decision.kind !== "reply" || !decision.message) return decision;
   const registeredPercentages = new Set(
-    (commercialTerms?.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage),
+    [
+      ...(commercialTerms?.match(PERCENTAGE_PATTERN) ?? []),
+      ...authorizedDiscountPercents(discountPolicy),
+    ].map(canonicalPercentage),
   );
   const unregisteredPercentage = (decision.message.match(PERCENTAGE_PATTERN) ?? []).some(
     (percentage) => !registeredPercentages.has(canonicalPercentage(percentage)),
@@ -583,9 +644,18 @@ export function runSafetyLayer(
  *    cadastrou algo sobre ele; sem cadastro, continua bloqueado e vai para humano.
  * Números, preços e medidas já foram conferidos pela Vendedora contra os fatos citados.
  */
-export function runExternalSafetyLayer(decision: AgentDecision, evidenceText: string): AgentDecision {
+export function runExternalSafetyLayer(
+  decision: AgentDecision,
+  evidenceText: string,
+  discountPolicy: DiscountPolicy = NO_DISCOUNT_POLICY,
+): AgentDecision {
   if (decision.kind !== "reply" || !decision.message) return { ...decision, external_validated: true };
-  const registered = new Set((evidenceText.match(PERCENTAGE_PATTERN) ?? []).map(canonicalPercentage));
+  const discountBlock = discountSafetyBlock(decision.message, discountPolicy);
+  if (discountBlock) return { kind: "handoff", reason: discountBlock, external_validated: true };
+  const registered = new Set(
+    [...(evidenceText.match(PERCENTAGE_PATTERN) ?? []), ...authorizedDiscountPercents(discountPolicy)]
+      .map(canonicalPercentage),
+  );
   const unregistered = (decision.message.match(PERCENTAGE_PATTERN) ?? []).some(
     (percentage) => !registered.has(canonicalPercentage(percentage)),
   );
@@ -1008,7 +1078,7 @@ export async function runAgentTurn(params: {
     if (canWriteMemory && sellerStateConversationId && external.sellerState && resolveSalesAgentMode(params.ctx.settings) !== "silent") {
       await saveSellerState(params.ctx.settings.company_id, sellerStateConversationId, external.sellerState);
     }
-    return runExternalSafetyLayer(external.decision, external.evidenceText);
+    return runExternalSafetyLayer(external.decision, external.evidenceText, parseDiscountPolicy(params.ctx.settings));
   }
   // Assistido: se a Vendedora externa falha, o turno termina sem sugestão e o atendente
   // responde como já faria. O fallback para o agente interno podia transferir a conversa
@@ -2063,6 +2133,7 @@ async function runAgentTickPass(
         ? { needed: false }
         : detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules, {
             deferPriceSensitive: true,
+            discountPolicy: parseDiscountPolicy(ctx.settings),
           });
     const readyToClose = !audioUnavailable && !externalActive && detectReadyToClose(lastLeadMsg.text);
     if (triggerCheck.needed || readyToClose) {
@@ -2120,9 +2191,8 @@ async function runAgentTickPass(
       if (!loadedTurnCtx) return { ok: false, action: "error", reason: "no_settings" };
       const turnCtx = withConversationMode(loadedTurnCtx);
       // Percentuais citados em qualquer política cadastrada (ex.: entrada)
-      // podem ser repetidos; os demais continuam bloqueados.
-      const rules = ctx.grounding.commercialRules;
-      decision = runSafetyLayer(
+      // podem ser repetidos; os demais continuam bloqueados. Desconto: política do lojista.
+      decision = runCompanySafetyLayer(
         await runAgentTurn({
           priceSensitive: triggerCheck.priceSensitive === true,
           ctx: turnCtx,
@@ -2133,7 +2203,9 @@ async function runAgentTickPass(
           qualification: currentQual,
           deferredPrecheck: externalActive
             ? () => {
-                if (detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules).needed) {
+                if (detectHandoffNeeded(lastLeadMsg.text, ctx.grounding.commercialRules, {
+                  discountPolicy: parseDiscountPolicy(ctx.settings),
+                }).needed) {
                   return { kind: "handoff", reason: "pre_check" };
                 }
                 return detectReadyToClose(lastLeadMsg.text) ? { kind: "handoff", reason: "ready_to_close" } : null;
@@ -2159,16 +2231,7 @@ async function runAgentTickPass(
             });
           },
         }),
-        [
-          rules.commercialTerms,
-          rules.paymentPolicy,
-          rules.paymentMethods,
-          rules.installationPolicy,
-          rules.shippingPolicy,
-          rules.nextLoadForecast,
-          rules.visitPolicy,
-          rules.includedItemsPolicy,
-        ].filter(Boolean).join(" "),
+        turnCtx,
       );
     }
     auditFallbackReason = decision.fallback_reason ?? null;

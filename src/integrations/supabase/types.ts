@@ -2392,6 +2392,8 @@ export type Database = {
       }
       company_settings: {
         Row: {
+          ai_discount_mode: string
+          ai_discount_rules: Json
           ai_after_hours_only: boolean
           ai_agent_name: string
           ai_auto_reply_enabled: boolean
@@ -2456,6 +2458,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_discount_mode?: string
+          ai_discount_rules?: Json
           ai_after_hours_only?: boolean
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
@@ -2520,6 +2524,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_discount_mode?: string
+          ai_discount_rules?: Json
           ai_after_hours_only?: boolean
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean

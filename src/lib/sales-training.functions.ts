@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireTeamPermission } from "@/lib/team/middleware";
-import { loadAgentContext, runAgentTurn, runSafetyLayer } from "./ai-agent.server";
+import { loadAgentContext, runAgentTurn, runCompanySafetyLayer } from "./ai-agent.server";
 import {
   extractSessionTrainingCorrections,
   buildTrainingHistory,
@@ -148,7 +148,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
       const sessionCorrections = extractSessionTrainingCorrections(sessionMessages);
       const ctx = await loadAgentContext(companyId, history);
       if (!ctx) throw new Error("training_context_not_found");
-      const decision = runSafetyLayer(
+      const decision = runCompanySafetyLayer(
         await runAgentTurn({
           ctx,
           history,
@@ -162,6 +162,7 @@ export const sendTrainingMessage = createServerFn({ method: "POST" })
           },
           salesStateScope: { scopeType: "training_session", scopeId: input.sessionId },
         }),
+        ctx,
       );
       const content =
         decision.kind === "reply" && decision.message

@@ -107,6 +107,10 @@ function buildContext(companyId: string, catalog: Product[], status: "matches" |
       ai_max_auto_replies: 3, ai_handoff_timeout_minutes: 30, ai_agent_name: "Bruna",
       business_hours_start: "08:00:00", business_hours_end: "18:00:00",
       sales_agent_v2_enabled: true, sales_agent_v2_mode: "automatic",
+      // Desconto só pela política estruturada do lojista (a de móveis não tem nenhuma).
+      ...(companyId === POOL
+        ? { ai_discount_mode: "authorized", ai_discount_rules: [{ percent: 5, condition: "pagamento no Pix" }] }
+        : {}),
     },
     companyName: companyId === POOL ? "Piscinas Teste" : "Móveis Teste",
     products: catalog,
@@ -242,6 +246,12 @@ describe("objeção comercial", () => {
       .toBe("not_requested");
   });
 
+  it("sem política de desconto, a mesma frase de desconto não passa (texto livre não autoriza)", async () => {
+    expect((await decide(FURNITURE, "Tem desconto?", "No Pix você tem 5% de desconto.", { suggest: ["lisboa"] })).kind).toBe("handoff");
+    // Recusar e seguir vendendo é permitido.
+    expect((await furniture("Tem desconto?", "O valor do Sofá Lisboa é o cadastrado, sem desconto, e sai em até 10x sem juros.")).kind).toBe("reply");
+  });
+
   it("objeção em outro segmento usa só a política daquela empresa", async () => {
     expect((await furniture("Tá caro", "Entendo! O Sofá Lisboa sai em até 10x sem juros.")).kind).toBe("reply");
     // 12x é política da empresa de piscinas, não da de móveis.
@@ -267,6 +277,22 @@ describe("motor sem regras fixas de segmento", () => {
       catalogSearch: ctx.grounding.catalogSearch,
     } as never);
     expect(JSON.stringify(request)).not.toMatch(segmentTerms);
+  });
+
+  it("o prompt de cada empresa leva só a política de desconto dela", () => {
+    const prompt = (companyId: string, rows: Row[]) => {
+      const ctx = buildContext(companyId, rows.map(product));
+      return String(buildSalesAgentCompletionRequest({
+        ctx,
+        history: [{ role: "lead", text: "tem desconto?" }],
+        leadName: null,
+        model: "provider/sales-model",
+        catalogSearch: ctx.grounding.catalogSearch,
+      } as never).messages[0].content);
+    };
+    expect(prompt(FURNITURE, furnitureRows)).toContain("a empresa não oferece desconto");
+    expect(prompt(FURNITURE, furnitureRows)).not.toContain("5% — pagamento no Pix");
+    expect(prompt(POOL, poolRows)).toContain("- 5% — pagamento no Pix");
   });
 
   it("formato é validado pelos formatos cadastrados, não por equivalências fixas", async () => {

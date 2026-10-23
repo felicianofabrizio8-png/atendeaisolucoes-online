@@ -172,3 +172,35 @@ de base).
 Pendências registradas: (1) a rede de segurança legada sem produto nomeado ainda tem vocabulário
 de piscina (TODO fase 2 da main); (2) qualificação automática no tick em modo assistido segue a
 main (decisão de produto).
+
+## Etapa 5 — política de desconto por empresa (2026-10-23)
+
+- **Configuração estruturada, só do lojista**: `company_settings.ai_discount_mode`
+  (`none` | `authorized` | `approval_required`) e `ai_discount_rules` (até 10
+  `{percent, condition}`). Padrão `none` para todas as empresas. Migration
+  `20261023090000_company_discount_policy.sql` com restrições no banco (modo válido; percentual
+  em (0, 100]; condição não vazia, até 160 caracteres). Alteração só por administrador (RLS
+  `admin update settings` já existente). Tela: cartão "Política de desconto" na aba Automação.
+- **Uma regra, quatro caminhos** (`src/lib/discount-policy.ts`): motor (`decide`), trava pós-IA
+  `runCompanySafetyLayer` usada por WhatsApp, sugestão assistida, treino e "Testar IA agora", e a
+  trava da Vendedora externa. Os quatro caminhos agora usam também o mesmo conjunto de políticas
+  para percentuais (antes sugestão usava só `commercial_terms`, teste e treino nenhum).
+- **Comportamento**: `none` — não oferece desconto; recusar ("o valor é o cadastrado, sem
+  desconto") é permitido e o pedido de desconto não vai mais direto para humano. `authorized` —
+  só o percentual e a condição cadastrados (acima → bloqueio; condição diferente → bloqueio).
+  `approval_required` — pedido de desconto vai para humano já na pré-checagem. O prompt recebe a
+  seção "POLÍTICA DE DESCONTO" da empresa.
+- **Texto livre não autoriza desconto**: "Pix com 5% de desconto" escrito em política, FAQ ou
+  perfil não libera a IA a oferecer (antes a trava interna já bloqueava "desconto" sempre; a da
+  Vendedora externa aceitava se estivesse no texto — agora exige a política estruturada).
+  Nenhuma configuração existente foi alterada ou convertida.
+
+Validação: 16 testes do módulo; testes da trava, pré-checagem, motor e prompt por empresa;
+migration aplicada (e reaplicada, idempotente) no banco descartável `vendedora-unificada-validacao`
+com padrão conferido e 5 violações recusadas. tsc 0 erros; suíte 3690 passam, 9 ignorados; 2
+falhas só sob carga que passam isoladas (quote-wizard, video-studio-editor); build OK.
+
+Limitações/pendências: (1) empresas que descreveram desconto só em texto precisam cadastrá-lo no
+novo cartão para a IA oferecê-lo; (2) a Vendedora externa recebe a política só pela trava
+(o serviço externo não conhece a política ao gerar a resposta); (3) "negociar", "condição
+especial", "parcelo" na resposta continuam indo para humano (inalterado).

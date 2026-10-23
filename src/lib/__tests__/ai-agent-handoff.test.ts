@@ -8,6 +8,10 @@ import {
   runSafetyLayer,
 } from "@/lib/ai-agent.server";
 import { detectReadyToClose } from "@/lib/ai-qualifier.server";
+import { NO_DISCOUNT_POLICY, type DiscountPolicy } from "@/lib/discount-policy";
+
+// Desconto autorizado pelo lojista na configuração estruturada da empresa.
+const pixDiscount: DiscountPolicy = { mode: "authorized", rules: [{ percent: 5, condition: "pagamento à vista no Pix" }] };
 
 describe("Sales Agent handoff boundaries", () => {
   it("mantém as fronteiras interpretação -> catálogo -> redação sem criar fatos", () => {
@@ -98,7 +102,7 @@ describe("Sales Agent handoff boundaries", () => {
 
   it.each([
     ["Consigo fazer 10% para você.", "safety_block: tentou aplicar percentual/desconto"],
-    ["Posso oferecer desconto.", "safety_block: ofereceu desconto"],
+    ["Posso oferecer desconto.", "safety_block: discount_not_authorized"],
     ["Garanto que vai funcionar.", "safety_block: fez promessa"],
     ["Prometo a entrega.", "safety_block: fez promessa"],
     ["Fecho a venda agora.", "safety_block: tentou fechar venda"],
@@ -123,20 +127,26 @@ describe("Sales Agent handoff boundaries", () => {
       "No Pix à vista você tem 5% de desconto.",
       "A garantia é de 2 anos contra defeito de fabricação.",
     ])("aceita o que a empresa cadastrou: %s", (message) => {
-      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence)).toEqual({ kind: "reply", message, external_validated: true });
+      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence, pixDiscount)).toEqual({ kind: "reply", message, external_validated: true });
+    });
+
+    it("desconto descrito só em texto livre não autoriza: vale a política estruturada", () => {
+      const message = "No Pix à vista você tem 5% de desconto.";
+      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence))
+        .toMatchObject({ kind: "handoff", reason: "safety_block: discount_not_authorized" });
     });
 
     it.each([
-      ["Consigo 10% de desconto para você.", "safety_block: percentual sem cadastro da empresa"],
+      ["Consigo 10% de desconto no Pix para você.", "safety_block: discount_above_policy"],
       ["Garanto que chega amanhã.", "safety_block: fez promessa"],
       ["Tenho uma condição especial.", "safety_block: condição comercial nova"],
     ])("continua bloqueando o que não tem cadastro: %s", (message, reason) => {
-      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence)).toMatchObject({ kind: "handoff", reason });
+      expect(runExternalSafetyLayer({ kind: "reply", message }, evidence, pixDiscount)).toMatchObject({ kind: "handoff", reason });
     });
 
-    it("sem cadastro sobre desconto, falar em desconto continua indo para humano", () => {
+    it("sem política de desconto, oferecer desconto continua indo para humano", () => {
       expect(runExternalSafetyLayer({ kind: "reply", message: "Posso oferecer desconto." }, "Garantia: 2 anos."))
-        .toMatchObject({ kind: "handoff", reason: "safety_block: ofereceu desconto" });
+        .toMatchObject({ kind: "handoff", reason: "safety_block: discount_not_authorized" });
     });
 
     it("o dado de uma empresa não libera a resposta de outra", () => {
@@ -145,8 +155,8 @@ describe("Sales Agent handoff boundaries", () => {
     });
 
     it("a decisão já validada não passa de novo pela lista fixa", () => {
-      const validated = runExternalSafetyLayer({ kind: "reply", message: "No Pix à vista você tem 5% de desconto." }, evidence);
-      expect(runSafetyLayer(validated)).toEqual(validated);
+      const validated = runExternalSafetyLayer({ kind: "reply", message: "No Pix à vista você tem 5% de desconto." }, evidence, pixDiscount);
+      expect(runSafetyLayer(validated, null, pixDiscount)).toEqual(validated);
     });
   });
 
@@ -168,13 +178,38 @@ describe("Sales Agent handoff boundaries", () => {
     });
   });
 
-  it("bloqueia desconto mesmo quando o percentual está cadastrado", () => {
+  it("bloqueia desconto citado só em texto de política (não é a política estruturada)", () => {
     expect(
       runSafetyLayer(
         { kind: "reply", message: "Posso oferecer 10% de desconto." },
         "Desconto cadastrado de 10%.",
       ),
-    ).toMatchObject({ kind: "handoff", reason: "safety_block: ofereceu desconto" });
+    ).toMatchObject({ kind: "handoff", reason: "safety_block: discount_not_authorized" });
+  });
+
+  describe("política de desconto do lojista", () => {
+    it("sem desconto: recusar e seguir vendendo não vai para humano", () => {
+      const message = "Entendo! O valor é o cadastrado, sem desconto, e já inclui a instalação.";
+      expect(runSafetyLayer({ kind: "reply", message }, null, NO_DISCOUNT_POLICY)).toEqual({ kind: "reply", message });
+    });
+
+    it("autorizado: só o percentual e a condição cadastrados", () => {
+      const ok = "No pagamento à vista no Pix você tem 5% de desconto.";
+      expect(runSafetyLayer({ kind: "reply", message: ok }, null, pixDiscount)).toEqual({ kind: "reply", message: ok });
+      expect(runSafetyLayer({ kind: "reply", message: "No cartão você tem 5% de desconto." }, null, pixDiscount))
+        .toMatchObject({ kind: "handoff", reason: "safety_block: discount_condition_mismatch" });
+      expect(runSafetyLayer({ kind: "reply", message: "No Pix consigo 8% de desconto." }, null, pixDiscount))
+        .toMatchObject({ kind: "handoff", reason: "safety_block: discount_above_policy" });
+    });
+
+    it("pedido de desconto só vai direto para humano quando a política exige aprovação", () => {
+      const ask = "Achei caro, me dá um desconto";
+      expect(detectHandoffNeeded(ask)).toMatchObject({ needed: true });
+      expect(detectHandoffNeeded(ask, null, { discountPolicy: NO_DISCOUNT_POLICY })).toEqual({ needed: false });
+      expect(detectHandoffNeeded(ask, null, { discountPolicy: pixDiscount })).toEqual({ needed: false });
+      expect(detectHandoffNeeded("Tem desconto?", null, { discountPolicy: { mode: "approval_required", rules: [] } }))
+        .toEqual({ needed: true, reason: "discount_requires_approval" });
+    });
   });
 
   it("bloqueia negociacao na resposta comercial do agente", () => {

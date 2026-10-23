@@ -1,4 +1,5 @@
 import type { AgentCapabilityProfile } from "./consultative-sales-contracts";
+import { checkReplyDiscounts, discountPolicyPromptSection, parseDiscountPolicy } from "./discount-policy";
 import {
   normalizeState,
   normalizeTiming,
@@ -123,6 +124,10 @@ export interface AgentSettings {
   consultative_capability_profile?: AgentCapabilityProfile | null;
   /** Integra a orientação consultiva à resposta; ausente permanece desligada. */
   consultative_sales_enabled?: boolean;
+  /** Política de desconto do lojista (none | authorized | approval_required); ausente = nenhum desconto. */
+  ai_discount_mode?: string | null;
+  /** Descontos autorizados [{percent, condition}]; só valem com ai_discount_mode = authorized. */
+  ai_discount_rules?: unknown;
 }
 
 export interface SalesAgentGrounding {
@@ -1645,7 +1650,7 @@ ${renderBusinessKnowledge(buildBusinessKnowledge(ctx))}
 ${renderCustomerContext(customerContext)}
 
 REGRAS INVIOLÁVEIS (se violar, peça handoff imediato):
-- NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
+- NUNCA invente nem negocie desconto, preço, parcelamento ou condição comercial. Desconto, só o que a POLÍTICA DE DESCONTO abaixo autoriza. Você pode informar o preço exato cadastrado no produto; use o preço promocional válido quando existir, senão o preço normal.
 - Perguntas sobre prazo de entrega/instalação devem ser respondidas pelas POLÍTICAS OFICIAIS cadastradas abaixo; só informe previsão quando perguntarem sobre prazo, entrega ou instalação, e nunca prometa uma data.
 - NUNCA invente informação que não esteja no contexto abaixo.
 - NUNCA conclua pedido nem crie condição: diante de sinal de compra, confirme a escolha (next_action confirm_purchase_intent) e um atendente finaliza.
@@ -1683,12 +1688,14 @@ ${faqLines || "(sem faq cadastrado)"}
 BASE DE CONHECIMENTO APROVADA:
 ${kbLines || "(vazia)"}${groundingSections ? `\n\n${groundingSections}` : ""}
 
+${discountPolicyPromptSection(parseDiscountPolicy(ctx.settings))}
+
 CONTRATO DE AÇÃO:
 1. Em respond_to_customer, preencha sales_plan: o estágio da conversa, a próxima ação que você escolheu e o que aprendeu do cliente (necessidades, preferências, objeções, sinais de compra). Isso é memória para os próximos turnos, não texto ao cliente.
 2. Se faltar dado cadastrado para responder ou a pergunta sair do escopo → request_human_handoff.
 3. Preencha send_product_images quando o cliente pedir fotos/imagens/modelos OU quando sua resposta prometer mostrar, enviar ou apresentar produtos. Use somente IDs com fotos cadastradas, nunca invente IDs ou URLs e selecione no máximo 10 produtos.
 4. Em pedidos por medida/atributo, os produtos do CATÁLOGO acima já são todos os compatíveis: apresente-os. Se o cliente apenas demonstrar interesse, responda em uma frase curta e natural, sem listar preços ou medidas não pedidos. Ausência de fotos ou de informação de disponibilidade não justifica handoff: não afirme disponibilidade e envie apenas fotos realmente cadastradas.
-5. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto ou de valor diferente do cadastrado é negociação: request_human_handoff.
+5. Quando o cliente quiser saber qual opção custa menos ou mais, use compare_catalog_prices (o sistema responde com os preços cadastrados); não escreva comparações de preço você mesmo. Pedido de desconto: siga a POLÍTICA DE DESCONTO. Valor diferente do cadastrado ("faz por X") nunca é aceito: mantenha o valor cadastrado.
 6. Em respond_to_customer, declare em fact_claims CADA fato de produto que a mensagem afirma ou nega (preço, medida, quantidade, característica, item incluso, variante...): o ID do produto, a chave [..] do fato no CATÁLOGO a que ele corresponde, o valor exatamente como escrito na mensagem e denies=true se a mensagem nega o fato. Escreva com suas palavras, mas só afirme fatos que existem no CATÁLOGO; pergunta sobre algo sem chave cadastrada não se responde por suposição: diga que vai confirmar ou use request_human_handoff. Sem fato de produto na mensagem, envie fact_claims vazio.
 
 Sempre retorne via tool call (respond_to_customer, compare_catalog_prices OU request_human_handoff). Texto deve ser pt-BR, máx 4 frases, humano e sem clichês.`;
@@ -1883,7 +1890,7 @@ export function buildSalesAgentCompletionRequest(
         function: {
           name: COMPARE_CATALOG_PRICES_TOOL,
           description:
-            "Use quando o cliente quer saber qual opção custa menos ou custa mais (comparar os preços cadastrados), seja qual for a forma de dizer. O sistema monta a resposta só com preços reais do catálogo; não escreva preços. NÃO use para: pedido de desconto, abatimento, contraproposta, 'faz por X' ou pedir para baixar/melhorar o valor (isso é negociação: use request_human_handoff); nem para custo-benefício, qualidade ou 'qual vale mais a pena' (isso não é só preço: responda com respond_to_customer usando os fatos do catálogo).",
+            "Use quando o cliente quer saber qual opção custa menos ou custa mais (comparar os preços cadastrados), seja qual for a forma de dizer. O sistema monta a resposta só com preços reais do catálogo; não escreva preços. NÃO use para: pedido de desconto, abatimento, contraproposta, 'faz por X' ou pedir para baixar/melhorar o valor (isso é negociação: siga a POLÍTICA DE DESCONTO; se ela exigir aprovação, use request_human_handoff); nem para custo-benefício, qualidade ou 'qual vale mais a pena' (isso não é só preço: responda com respond_to_customer usando os fatos do catálogo).",
           parameters: {
             type: "object",
             properties: {
@@ -2016,7 +2023,6 @@ function splitClaimSentences(message: string): string[] {
 const COMMERCIAL_CONDITION_TERMS: Array<{ claim: RegExp; evidence: RegExp }> = [
   { claim: /\bgarantia/, evidence: /\bgarantia/ },
   { claim: /\bfrete/, evidence: /\bfrete/ },
-  { claim: /\bdesconto/, evidence: /\bdesconto/ },
   { claim: /\bjuros/, evidence: /\bjuros/ },
   { claim: /\bbrinde/, evidence: /\bbrinde/ },
   { claim: /\bgratis\b|\bgratuit/, evidence: /\bgratis\b|\bgratuit/ },
@@ -2469,6 +2475,11 @@ export class SalesAgentCore {
     // se constar nos dados autorizados pela empresa; nunca é inventada.
     if (!validateCommercialClaims(reply.message, authorizedCompanyText(params.ctx, catalogSearch.products))) {
       return { ...safeHandoff("commercial_unvalidated_claim"), validation_diagnostic: validationDiagnostic("commercial_claim") };
+    }
+    // Desconto só conforme a política cadastrada pelo lojista (recusar é sempre permitido).
+    const discountCheck = checkReplyDiscounts(reply.message, parseDiscountPolicy(params.ctx.settings));
+    if (!discountCheck.ok) {
+      return { ...safeHandoff(discountCheck.reason), validation_diagnostic: validationDiagnostic("commercial_claim") };
     }
     const promisedImageIds = messagePromisesProductPresentation(reply.message)
       ? selectedProducts.filter((product) => product.images.length > 0).map((product) => product.id)

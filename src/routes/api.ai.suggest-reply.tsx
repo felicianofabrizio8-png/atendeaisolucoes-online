@@ -5,8 +5,9 @@ import {
   detectHandoffNeeded,
   loadAgentContext,
   runAgentTurn,
-  runSafetyLayer,
+  runCompanySafetyLayer,
 } from "@/lib/ai-agent.server";
+import { parseDiscountPolicy } from "@/lib/discount-policy";
 import { ASSISTED_SUGGESTION_CAPABILITIES } from "@/lib/execution-scope";
 
 export const Route = createFileRoute("/api/ai/suggest-reply")({
@@ -120,7 +121,20 @@ export const Route = createFileRoute("/api/ai/suggest-reply")({
           });
         }
 
-        const triggerCheck = detectHandoffNeeded(lastLeadMessage.text);
+        // Contexto antes da pré-checagem: ela segue as políticas e o desconto da empresa.
+        const context = await loadAgentContext(conv.company_id, history);
+
+        if (!context) {
+          return Response.json(
+            { ok: false, error: "configuração da IA indisponível" },
+            { status: 503 },
+          );
+        }
+
+        const discountPolicy = parseDiscountPolicy(context.settings);
+        const triggerCheck = detectHandoffNeeded(lastLeadMessage.text, context.grounding.commercialRules, {
+          discountPolicy,
+        });
         const readyToClose = detectReadyToClose(lastLeadMessage.text);
 
         if (triggerCheck.needed || readyToClose) {
@@ -139,16 +153,7 @@ export const Route = createFileRoute("/api/ai/suggest-reply")({
           .eq("id", conv.lead_id)
           .maybeSingle();
 
-        const context = await loadAgentContext(conv.company_id, history);
-
-        if (!context) {
-          return Response.json(
-            { ok: false, error: "configuração da IA indisponível" },
-            { status: 503 },
-          );
-        }
-
-        const decision = runSafetyLayer(
+        const decision = runCompanySafetyLayer(
           await runAgentTurn({
             ctx: context,
             history,
@@ -170,7 +175,7 @@ export const Route = createFileRoute("/api/ai/suggest-reply")({
               detected_budget: conv.detected_budget ?? null,
             },
           }),
-          context.grounding.commercialRules.commercialTerms,
+          context,
         );
 
         if (decision.kind === "reply" && decision.message?.trim()) {

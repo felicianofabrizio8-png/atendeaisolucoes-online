@@ -10,7 +10,7 @@ describe("Sales Agent assisted suggestion contract", () => {
 
   it("reutiliza o Sales Engine e as protecoes de handoff", () => {
     expect(source).toContain("runAgentTurn");
-    expect(source).toContain("runSafetyLayer");
+    expect(source).toContain("runCompanySafetyLayer");
     expect(source).toContain("detectHandoffNeeded");
     expect(source).toContain("detectReadyToClose");
   });

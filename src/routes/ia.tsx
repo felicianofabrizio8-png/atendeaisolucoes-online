@@ -24,6 +24,7 @@ import { AIFollowupPanel } from "@/components/AIFollowupPanel";
 import { WhatsappTemplatesPanel } from "@/components/WhatsappTemplatesPanel";
 import { SalesTrainingChat } from "@/components/ai/SalesTrainingChat";
 import { SalesAgentMasterSwitch } from "@/components/ai/SalesAgentMasterSwitch";
+import { DiscountPolicyCard } from "@/components/ai/DiscountPolicyCard";
 import { MarketingKnowledgeBase } from "@/components/marketing/MarketingKnowledgeBase";
 import { iaTabOptions, type IaTabId } from "@/lib/ia-tabs";
 import { toast } from "sonner";
@@ -786,6 +787,8 @@ function ConfiguracoesIA() {
                   </div>
                 </CardContent>
               </Card>
+
+              <DiscountPolicyCard companyId={companyId} />
 
               <Card>
                 <CardHeader>

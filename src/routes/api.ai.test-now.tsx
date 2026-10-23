@@ -9,12 +9,13 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   loadAgentContext,
   detectHandoffNeeded,
-  runSafetyLayer,
+  runCompanySafetyLayer,
   runAgentTurn,
   isWithinBusinessHours,
   logEvent,
 } from "@/lib/ai-agent.server";
 import { getReadiness } from "@/lib/ai-readiness.server";
+import { parseDiscountPolicy } from "@/lib/discount-policy";
 
 export const Route = createFileRoute("/api/ai/test-now")({
   server: {
@@ -78,7 +79,8 @@ export const Route = createFileRoute("/api/ai/test-now")({
             : "Fora do horário (IA responderia)",
         });
 
-        const handoff = detectHandoffNeeded(sample);
+        const discountPolicy = parseDiscountPolicy(ctx.settings);
+        const handoff = detectHandoffNeeded(sample, ctx.grounding.commercialRules, { discountPolicy });
         steps.push({
           name: "Pre-check handoff",
           ok: true,
@@ -102,12 +104,13 @@ export const Route = createFileRoute("/api/ai/test-now")({
 
         let decision;
         try {
-          decision = runSafetyLayer(
+          decision = runCompanySafetyLayer(
             await runAgentTurn({
               ctx,
               history: [{ role: "lead", text: sample }],
               leadName: "Cliente Teste",
             }),
+            ctx,
           );
           steps.push({
             name: "LLM + safety",

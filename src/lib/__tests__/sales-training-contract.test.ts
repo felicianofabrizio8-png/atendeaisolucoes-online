@@ -60,7 +60,8 @@ describe("Sales training contract", () => {
     expect(functionsSource).toContain("loadAgentContext(companyId, history)");
     expect(functionsSource).toContain("runAgentTurn({");
     expect(functionsSource).toContain('scopeType: "training_session"');
-    expect(functionsSource).toContain("runSafetyLayer");
+    // Trava pós-IA com as políticas da empresa (percentuais e desconto do lojista).
+    expect(functionsSource).toContain("runCompanySafetyLayer");
     expect(functionsSource).not.toMatch(/sendWhatsappText|postGraph|meta-send|meta-webhook/);
     expect(functionsSource).not.toMatch(/\.from\("(?:leads|conversations|messages)"/);
   });
