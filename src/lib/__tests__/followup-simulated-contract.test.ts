@@ -60,6 +60,10 @@ const sendSpy = vi.fn();
 vi.mock("@/lib/ai-agent.server", () => ({
   sendWhatsappText: (...args: unknown[]) => sendSpy(...args),
 }));
+// O comprovante de envio tem testes próprios; aqui só o contrato de simulação importa.
+vi.mock("@/lib/whatsapp-send-authorization.server", () => ({
+  authorizeWhatsappSend: async (input: Record<string, unknown>) => ({ ...input, integrationId: "integration-test" }),
+}));
 const templateSpy = vi.fn();
 vi.mock("@/lib/wa-templates.server", async (importOriginal) => {
   // Render REAL (contrato do template); só busca e envio são simulados.

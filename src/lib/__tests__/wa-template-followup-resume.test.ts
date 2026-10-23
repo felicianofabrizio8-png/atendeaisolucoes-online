@@ -59,6 +59,7 @@ import {
   sendWhatsappTemplate,
   syncTemplatesFromMeta,
 } from "@/lib/wa-templates.server";
+import { authorizeWhatsappSend } from "@/lib/whatsapp-send-authorization.server";
 
 function metaTemplate(over: Record<string, unknown> = {}) {
   return {
@@ -109,11 +110,17 @@ beforeEach(() => {
       {
         id: "lead-1",
         company_id: "company-a",
+        channel: "whatsapp",
         phone: "5511999999999",
         external_id: "5511999999999",
         integration_id: "int-a",
         name: "Mariana",
       },
+    ],
+    // Contexto exigido pelo comprovante de envio emitido no servidor.
+    companies: [{ id: "company-a" }],
+    conversations: [
+      { id: "conv-1", company_id: "company-a", lead_id: "lead-1", channel: "whatsapp", ai_status: null, human_takeover_at: null },
     ],
   };
 });
@@ -174,6 +181,12 @@ describe("chamar_novamente ↔ followup_resume", () => {
       leadId: "lead-1",
       purpose: "followup_resume",
       variables: { var1: "Conseguiu avaliar o orçamento do ar split?" },
+      authorization: await authorizeWhatsappSend({
+        companyId: "company-a",
+        conversationId: "conv-1",
+        leadId: "lead-1",
+        source: "human",
+      }),
     });
 
     expect(out).toMatchObject({ ok: true, simulated: false, externalId: "wamid.CN" });

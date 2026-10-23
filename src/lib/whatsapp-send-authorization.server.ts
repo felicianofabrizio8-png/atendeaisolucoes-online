@@ -4,7 +4,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const AUTHORIZATION = Symbol("whatsapp-send-authorization");
 
-export type WhatsappSendSource = "human" | "automatic" | "followup";
+/** `campaign`: disparo de campanha configurado pelo lojista; valida só o contexto do tenant. */
+export type WhatsappSendSource = "human" | "automatic" | "followup" | "campaign";
 
 export type WhatsappSendAuthorization = {
   readonly [AUTHORIZATION]: true;
@@ -22,6 +23,18 @@ type AuthorizationInput = {
   source: WhatsappSendSource;
 };
 
+async function resolveSoleWhatsappIntegrationId(companyId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("integrations")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("channel", "whatsapp")
+    .eq("active", true)
+    .limit(2);
+  const rows = (data ?? []) as Array<{ id?: string | null }>;
+  return rows.length === 1 && rows[0].id ? rows[0].id : null;
+}
+
 export async function authorizeWhatsappSend(
   input: AuthorizationInput,
 ): Promise<WhatsappSendAuthorization> {
@@ -29,7 +42,7 @@ export async function authorizeWhatsappSend(
     !input.companyId.trim() ||
     !input.conversationId.trim() ||
     !input.leadId.trim() ||
-    !["human", "automatic", "followup"].includes(input.source)
+    !["human", "automatic", "followup", "campaign"].includes(input.source)
   ) {
     throw new Error("whatsapp_send_scope_invalid");
   }
@@ -52,7 +65,10 @@ export async function authorizeWhatsappSend(
       .maybeSingle(),
   ]);
 
-  const integrationId = (lead as { integration_id?: string | null } | null)?.integration_id ?? null;
+  // Lead sem integration_id (leads antigos ou criados manualmente) só usa a
+  // integração da empresa quando ela é a única ativa: nunca escolhe entre números.
+  const integrationId = (lead as { integration_id?: string | null } | null)?.integration_id ??
+    (lead ? await resolveSoleWhatsappIntegrationId(input.companyId) : null);
   const { data: integration } = integrationId
     ? await supabaseAdmin
         .from("integrations")

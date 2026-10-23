@@ -129,6 +129,7 @@ beforeEach(() => {
   storageRemovals.length = 0;
   storageUploads.length = 0;
   Object.keys(tableRows).forEach((k) => delete tableRows[k]);
+  tableRows.companies = { id: "company-1" };
 });
 
 // =====================================================
@@ -141,11 +142,11 @@ describe("api.whatsapp.send-media — migração B.2", () => {
       id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1",
     };
     tableRows.leads = {
-      id: "lead-1", company_id: "company-1",
+      id: "lead-1", company_id: "company-1", channel: "whatsapp",
       phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 
@@ -231,11 +232,11 @@ describe("api.whatsapp.send-audio — migração B.2", () => {
       id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1",
     };
     tableRows.leads = {
-      id: "lead-1", company_id: "company-1",
+      id: "lead-1", company_id: "company-1", channel: "whatsapp",
       phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 
@@ -349,14 +350,14 @@ describe("api.whatsapp.forward-message — migração B.2", () => {
       },
     };
     tableRows.leads = {
-      id: "lead-target", company_id: "company-1",
+      id: "lead-target", company_id: "company-1", channel: "whatsapp",
       phone: "11888887777", external_id: "5511888887777", integration_id: "int-1",
     };
     tableRows.conversations = {
       id: "conv-t", company_id: "company-1", channel: "whatsapp", lead_id: "lead-target",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 

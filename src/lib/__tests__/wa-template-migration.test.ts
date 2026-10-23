@@ -10,61 +10,67 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { authorizeWhatsappSend } from "../whatsapp-send-authorization.server";
 
 // ---------- Fake supabaseAdmin ----------
 type Row = Record<string, unknown> | Row[] | null;
-const inserted: Array<{ table: string; row: any }> = [];
-const updated: Array<{ table: string; patch: any }> = [];
-const tableRows: Record<string, Row> = {};
+const { inserted, updated, tableRows, supabaseAdmin } = vi.hoisted(() => {
+  const inserted: Array<{ table: string; row: any }> = [];
+  const updated: Array<{ table: string; patch: any }> = [];
+  const tableRows: Record<string, Row> = {};
 
-function makeChain(table: string, row: Row) {
-  const filters: Array<[string, unknown]> = [];
-  const chain: any = {
-    _row: row,
-    select: () => chain,
-    eq: (col: string, val: unknown) => {
-      filters.push([col, val]);
-      return chain;
-    },
-    order: () => chain,
-    gte: () => chain,
-    lte: () => chain,
-    limit: () => chain,
-  };
-  const applyFilters = (arr: Row[]) =>
-    arr.filter((r) =>
-      filters.every(([c, v]) => (r as Record<string, unknown>)[c] === v),
-    );
-  chain.maybeSingle = async () => {
-    const list = Array.isArray(chain._row)
-      ? applyFilters(chain._row as Row[])
-      : chain._row
-        ? applyFilters([chain._row])
-        : [];
-    return { data: list[0] ?? null, error: null };
-  };
-  chain.then = (cb: (r: { data: Row[]; error: null }) => void) =>
-    cb({
-      data: Array.isArray(chain._row)
+  function makeChain(table: string, row: Row) {
+    const filters: Array<[string, unknown]> = [];
+    const chain: any = {
+      _row: row,
+      select: () => chain,
+      eq: (col: string, val: unknown) => {
+        filters.push([col, val]);
+        return chain;
+      },
+      order: () => chain,
+      gte: () => chain,
+      lte: () => chain,
+      limit: () => chain,
+    };
+    const applyFilters = (arr: Row[]) =>
+      arr.filter((r) =>
+        filters.every(([c, v]) => (r as Record<string, unknown>)[c] === v),
+      );
+    chain.maybeSingle = async () => {
+      const list = Array.isArray(chain._row)
         ? applyFilters(chain._row as Row[])
         : chain._row
           ? applyFilters([chain._row])
-          : [],
-      error: null,
-    });
-  chain.insert = (r: any) => {
-    inserted.push({ table, row: r });
-    return { then: (cb: any) => cb({ data: null, error: null }) };
+          : [];
+      return { data: list[0] ?? null, error: null };
+    };
+    chain.then = (cb: (r: { data: Row[]; error: null }) => void) =>
+      cb({
+        data: Array.isArray(chain._row)
+          ? applyFilters(chain._row as Row[])
+          : chain._row
+            ? applyFilters([chain._row])
+            : [],
+        error: null,
+      });
+    chain.insert = (r: any) => {
+      inserted.push({ table, row: r });
+      return { then: (cb: any) => cb({ data: null, error: null }) };
+    };
+    chain.update = (patch: any) => {
+      updated.push({ table, patch });
+      return { eq: async () => ({ error: null }) };
+    };
+    return chain;
+  }
+
+  const supabaseAdmin: any = {
+    from: vi.fn((t: string) => makeChain(t, tableRows[t] ?? null)),
   };
-  chain.update = (patch: any) => {
-    updated.push({ table, patch });
-    return { eq: async () => ({ error: null }) };
-  };
-  return chain;
-}
-const supabaseAdmin: any = {
-  from: vi.fn((t: string) => makeChain(t, tableRows[t] ?? null)),
-};
+
+  return { inserted, updated, tableRows, supabaseAdmin };
+});
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin }));
 
 // ---------- Spy postGraph ----------
@@ -75,8 +81,20 @@ vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
 
 // ---------- Seed base ----------
 function seedHappy() {
+  tableRows.companies = { id: "c1" };
+  tableRows.conversations = {
+    id: "conv-1",
+    company_id: "c1",
+    lead_id: "lead-1",
+    channel: "whatsapp",
+    ai_reply_enabled: true,
+    ai_status: null,
+    human_takeover_at: null,
+  };
   tableRows.leads = {
     id: "lead-1",
+    company_id: "c1",
+    channel: "whatsapp",
     phone: "11999999999",
     external_id: "11999999999",
     integration_id: "int-1",
@@ -110,6 +128,15 @@ function seedHappy() {
   };
 }
 
+async function validAuthorization(source: "human" | "automatic" | "followup" = "human") {
+  return authorizeWhatsappSend({
+    companyId: "c1",
+    conversationId: "conv-1",
+    leadId: "lead-1",
+    source,
+  });
+}
+
 beforeEach(() => {
   postGraphSpy.mockReset();
   inserted.length = 0;
@@ -137,6 +164,7 @@ describe("sendWhatsappTemplate — paridade de request via MetaOutbound", () => 
       leadId: "lead-1",
       purpose: "quote_no_reply",
       variables: { var1: "Ana" },
+      authorization: await validAuthorization(),
     });
 
     expect(out.ok).toBe(true);
@@ -189,6 +217,7 @@ describe("sendWhatsappTemplate — paridade de request via MetaOutbound", () => 
       conversationId: "conv-1",
       leadId: "lead-1",
       purpose: "quote_no_reply",
+      authorization: await validAuthorization(),
     });
 
     expect(out.ok).toBe(true);
@@ -231,6 +260,7 @@ describe("sendWhatsappTemplate — paridade de request via MetaOutbound", () => 
       conversationId: "conv-1",
       leadId: "lead-1",
       purpose: "quote_no_reply",
+      authorization: await validAuthorization(),
     });
 
     expect(out.ok).toBe(false);
@@ -260,12 +290,57 @@ describe("sendWhatsappTemplate — paridade de request via MetaOutbound", () => 
       conversationId: "conv-1",
       leadId: "lead-1",
       purpose: "quote_no_reply",
+      authorization: await validAuthorization(),
     });
 
     expect(out.ok).toBe(false);
     if (out.ok) return;
     expect(out.error).toBe("network: socket hang up");
     expect(inserted.find((r) => r.table === "messages")).toBeUndefined();
+  });
+
+  describe("source and authorization coherence", () => {
+    async function sendWith(source: string, authorizationSource: "human" | "automatic" | "followup") {
+      postGraphSpy.mockResolvedValueOnce({
+        success: true,
+        simulated: true,
+        environment: "staging",
+        externalRequestSent: false,
+        simulationId: "sim-source",
+      });
+      const { sendWhatsappTemplate } = await import("@/lib/wa-templates.server");
+      return sendWhatsappTemplate({
+        companyId: "c1",
+        conversationId: "conv-1",
+        leadId: "lead-1",
+        purpose: "quote_no_reply",
+        source,
+        authorization: await validAuthorization(authorizationSource),
+      });
+    }
+
+    it.each([
+      ["wa_template_manual", "human"],
+      ["op_template:visit_confirmed", "automatic"],
+      ["followup_template", "followup"],
+      ["followup_template", "human"],
+    ] as const)("allows source %s with %s authorization", async (source, authorizationSource) => {
+      const out = await sendWith(source, authorizationSource);
+      expect(out.ok).toBe(true);
+      expect(postGraphSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["op_template:visit_confirmed", "human"],
+      ["followup:quote_no_reply", "human"],
+      ["wa_template_manual", "automatic"],
+      ["followup_template", "automatic"],
+      ["wa_template_manual", "followup"],
+    ] as const)("rejects source %s with %s authorization", async (source, authorizationSource) => {
+      const out = await sendWith(source, authorizationSource);
+      expect(out).toEqual({ ok: false, simulated: false, error: "whatsapp_send_source_mismatch" });
+      expect(postGraphSpy).not.toHaveBeenCalled();
+    });
   });
 });
 

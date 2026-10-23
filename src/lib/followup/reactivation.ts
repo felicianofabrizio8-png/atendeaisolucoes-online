@@ -79,7 +79,7 @@ export async function runReactivation(
       try {
         const { data: conv } = await supabaseAdmin
           .from("conversations")
-          .select("id")
+          .select("id, company_id, lead_id, ai_status, human_takeover_at, ai_handling")
           .eq("company_id", companyId)
           .eq("lead_id", lead.id)
           .order("last_message_at", { ascending: false })
@@ -87,6 +87,14 @@ export async function runReactivation(
           .maybeSingle();
         if (!conv) {
           out.skipped.push({ leadId: lead.id, reason: "sem conversa" });
+          continue;
+        }
+        if (conv.company_id !== companyId || conv.lead_id !== lead.id) {
+          out.skipped.push({ leadId: lead.id, reason: "conversation_context_mismatch" });
+          continue;
+        }
+        if (conv.ai_handling || conv.ai_status === "assumido_humano" || conv.ai_status === "aguardando_humano" || conv.human_takeover_at) {
+          out.skipped.push({ leadId: lead.id, reason: "atendimento assumido ou em processamento" });
           continue;
         }
 

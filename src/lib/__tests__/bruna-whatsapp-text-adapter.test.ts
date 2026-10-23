@@ -982,7 +982,7 @@ describe("Bruna WhatsApp text adapter", () => {
         companyId: string;
         conversationId: string;
         leadId: string;
-        source: "human" | "automatic" | "followup";
+        source: "human" | "automatic" | "followup" | "campaign";
       }) =>
         ({
           ...authorization,

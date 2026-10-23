@@ -54,6 +54,14 @@ vi.mock("@/integrations/supabase/client.server", () => {
 // ---------- Transporte ----------
 const sendText = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/ai-agent.server", () => ({ sendWhatsappText: sendText }));
+// O comprovante de envio tem testes próprios; aqui o foco é o fluxo da main.
+const sendAuth = vi.hoisted(() => ({ deny: null as string | null }));
+vi.mock("@/lib/whatsapp-send-authorization.server", () => ({
+  authorizeWhatsappSend: async (input: Record<string, unknown>) => {
+    if (sendAuth.deny) throw new Error(sendAuth.deny);
+    return { ...input, integrationId: "integration-test" };
+  },
+}));
 
 const tpl = vi.hoisted(() => ({
   approved: {} as Record<string, any>,
@@ -302,6 +310,18 @@ describe("dispatchFollowup — fora da janela: chamar_novamente contextual", () 
     expect(r.status).toBe("simulated");
     expect(followUps()[0].metadata).toMatchObject({ simulated: true, simulation_id: "sim-1" });
     expect(followUps()[0].metadata.external_id).toBeUndefined();
+  });
+
+  it("sem comprovante de envio (ex.: takeover humano) não envia e registra o bloqueio", async () => {
+    sendAuth.deny = "whatsapp_send_not_permitted";
+    try {
+      const r = await dispatchFollowup(input());
+      expect(r).toMatchObject({ status: "blocked", reason: "whatsapp_send_not_permitted" });
+      expect(tpl.send).not.toHaveBeenCalled();
+      expect(followUps()[0]).toMatchObject({ status: "blocked" });
+    } finally {
+      sendAuth.deny = null;
+    }
   });
 });
 

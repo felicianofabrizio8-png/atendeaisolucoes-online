@@ -81,6 +81,7 @@ beforeEach(() => {
   operationEvents.length = 0;
   supabaseAdmin.from.mockClear();
   Object.keys(tableRows).forEach((k) => delete tableRows[k]);
+  tableRows.companies = { id: "company-1" };
 });
 
 // =====================================================
@@ -182,9 +183,9 @@ describe("api.whatsapp.send-location — migração B.1", () => {
     tableRows.company_settings = {
       location: { name: "Loja", address: "Rua X", latitude: -23.5, longitude: -46.6 },
     };
-    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", channel: "whatsapp", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 
@@ -263,9 +264,9 @@ describe("api.whatsapp.send-reply — migração B.1", () => {
       id: "orig-1", conversation_id: "conv-1", company_id: "company-1",
       external_id: "wamid.ORIG", text: "olá", role: "lead", source_subtype: null,
     };
-    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", channel: "whatsapp", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 
@@ -334,11 +335,11 @@ describe("api.whatsapp.send — guards de envio manual", () => {
       id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1",
     };
     tableRows.leads = {
-      id: "lead-1", company_id: "company-1", status: "novo", closed_at: null,
+      id: "lead-1", company_id: "company-1", channel: "whatsapp", status: "novo", closed_at: null,
       phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
     };
     tableRows.integrations = {
-      id: "int-1", company_id: "company-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
     windowSpy.mockResolvedValue({ inside: true, lastLeadAt: null });
   });
@@ -422,8 +423,8 @@ describe("api.whatsapp.send-reply — guards de tenant e fechamento", () => {
     tableRows.profiles = { company_id: "company-1" };
     tableRows.conversations = { id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1" };
     tableRows.messages = { id: "orig-1", conversation_id: "conv-1", company_id: "company-1", external_id: "wamid.ORIG", text: "oi", role: "lead", source_subtype: null };
-    tableRows.leads = { id: "lead-1", company_id: "company-1", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
-    tableRows.integrations = { id: "int-1", company_id: "company-1", access_token: "EAAG-token", external_account_id: "PHONE-ID" };
+    tableRows.leads = { id: "lead-1", company_id: "company-1", channel: "whatsapp", status: "novo", closed_at: null, phone: "11999998888", external_id: "5511999998888", integration_id: "int-1" };
+    tableRows.integrations = { id: "int-1", company_id: "company-1", channel: "whatsapp", active: true, access_token: "EAAG-token", external_account_id: "PHONE-ID" };
     windowSpy.mockResolvedValue({ inside: true, lastLeadAt: null });
   });
 

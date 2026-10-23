@@ -8,6 +8,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
+import { authorizeWhatsappSend } from "@/lib/whatsapp-send-authorization.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
@@ -157,15 +158,29 @@ export const Route = createFileRoute("/api/whatsapp/send-reply")({
         }
 
         // 8. Integração
-        const integrationQuery = supabaseAdmin
+        let authorization: Awaited<ReturnType<typeof authorizeWhatsappSend>>;
+        try {
+          authorization = await authorizeWhatsappSend({
+            companyId,
+            conversationId,
+            leadId: conv.lead_id,
+            source: "human",
+          });
+        } catch {
+          return Response.json(
+            { error: "WhatsApp não conectado para esta empresa" },
+            { status: 400 },
+          );
+        }
+
+        const { data: integration } = await supabaseAdmin
           .from("integrations")
           .select("id, access_token, external_account_id")
           .eq("company_id", companyId)
           .eq("channel", "whatsapp")
-          .eq("active", true);
-        const { data: integration } = lead?.integration_id
-          ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
-          : await integrationQuery.limit(1).maybeSingle();
+          .eq("active", true)
+          .eq("id", authorization.integrationId)
+          .maybeSingle();
         if (!integration?.access_token || !integration.external_account_id) {
           return Response.json(
             { error: "WhatsApp não conectado para esta empresa" },

@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+import { authorizeWhatsappSend } from "@/lib/whatsapp-send-authorization.server";
 
 
 
@@ -16,7 +17,32 @@ interface SendBody {
   leadId?: string;
   phone?: string;
   contactName?: string;
+  integrationId?: string;
+  phoneNumberId?: string;
   text: string;
+}
+
+type WhatsappLeadIntegration = {
+  id: string;
+  access_token: string | null;
+  external_account_id: string | null;
+};
+
+export function chooseWhatsappLeadIntegration(
+  integrations: WhatsappLeadIntegration[],
+  selector: { integrationId?: string; phoneNumberId?: string } = {},
+): WhatsappLeadIntegration {
+  const valid = integrations.filter(
+    (integration) => Boolean(integration.id && integration.access_token?.trim() && integration.external_account_id?.trim()),
+  );
+  const selected = selector.integrationId
+    ? valid.filter((integration) => integration.id === selector.integrationId)
+    : selector.phoneNumberId
+      ? valid.filter((integration) => integration.external_account_id === selector.phoneNumberId)
+      : valid;
+  if (selected.length === 1) return selected[0];
+  if (selected.length > 1 || valid.length > 1) throw new Error("whatsapp_integration_ambiguous");
+  throw new Error("whatsapp_not_connected");
 }
 
 export const Route = createFileRoute("/api/whatsapp/send")({
@@ -108,6 +134,25 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           if (existingLead?.id) {
             leadId = existingLead.id;
           } else {
+            const { data: activeIntegrations } = await supabaseAdmin
+              .from("integrations")
+              .select("id, access_token, external_account_id")
+              .eq("company_id", companyId)
+              .eq("channel", "whatsapp")
+              .eq("active", true);
+            let leadIntegration: WhatsappLeadIntegration;
+            try {
+              leadIntegration = chooseWhatsappLeadIntegration(activeIntegrations ?? [], {
+                integrationId: body.integrationId,
+                phoneNumberId: body.phoneNumberId,
+              });
+            } catch (error) {
+              const code = error instanceof Error ? error.message : "whatsapp_not_connected";
+              return Response.json(
+                { error: code === "whatsapp_integration_ambiguous" ? "informe o número de origem do WhatsApp" : "WhatsApp não conectado para esta empresa", code },
+                { status: 409 },
+              );
+            }
             const { data: newLead, error: newLeadErr } = await supabaseAdmin
               .from("leads")
               .insert({
@@ -116,6 +161,7 @@ export const Route = createFileRoute("/api/whatsapp/send")({
                 name: body.contactName?.trim() || `+${phoneDigits}`,
                 phone: phoneDigits,
                 external_id: externalId,
+                integration_id: leadIntegration.id,
               })
               .select("id")
               .single();
@@ -219,17 +265,21 @@ export const Route = createFileRoute("/api/whatsapp/send")({
           return Response.json({ error: "telefone inválido" }, { status: 400 });
         }
 
-        // Integração: usa a vinculada ao lead, senão a primeira ativa da empresa
-        let integrationId = lead.integration_id ?? null;
+        // Integração: usa somente a integração ativa e validada já vinculada ao lead.
+        let authorization;
+        try {
+          authorization = await authorizeWhatsappSend({ companyId, conversationId: conversationId!, leadId: leadId!, source: "human" });
+        } catch (error) {
+          return Response.json({ error: error instanceof Error ? error.message : "envio não autorizado" }, { status: 409 });
+        }
+        let integrationId = authorization.integrationId;
         const integrationQuery = supabaseAdmin
           .from("integrations")
           .select("id, access_token, external_account_id")
           .eq("company_id", companyId)
           .eq("channel", "whatsapp")
           .eq("active", true);
-        const { data: integration } = integrationId
-          ? await integrationQuery.eq("id", integrationId).maybeSingle()
-          : await integrationQuery.limit(1).maybeSingle();
+        const { data: integration } = await integrationQuery.eq("id", integrationId).maybeSingle();
 
         if (!integration?.access_token || !integration.external_account_id) {
           return Response.json(

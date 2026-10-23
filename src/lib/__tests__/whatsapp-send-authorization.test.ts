@@ -8,6 +8,8 @@ const rows: Record<string, Record<string, unknown> | null> = {
   leads: { id: "lead-1", company_id: "company-1", channel: "whatsapp", integration_id: "integration-1" },
   integrations: { id: "integration-1" },
 };
+// Integrações WhatsApp ativas da empresa (consulta em lista, sem maybeSingle).
+let activeIntegrations: Array<{ id: string }> = [{ id: "integration-1" }];
 
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: { from: (table: string) => {
@@ -19,6 +21,8 @@ vi.mock("@/integrations/supabase/client.server", () => ({
         return chain;
       },
       limit: () => chain,
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve(resolve({ data: table === "integrations" ? activeIntegrations : [], error: null })),
       maybeSingle: async () => ({
         data: table === "integrations" && requestedId && requestedId !== rows.integrations?.id
           ? null
@@ -35,10 +39,26 @@ describe("WhatsApp send authorization", () => {
     const authorization = await authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "human" });
     expect(authorization.integrationId).toBe("integration-1");
   });
-  it("recusa lead sem integration_id mesmo com integração ativa na empresa", async () => {
+  it("recusa lead sem integration_id quando a empresa tem mais de uma integração ativa", async () => {
     rows.leads = { ...rows.leads, integration_id: null };
+    activeIntegrations = [{ id: "integration-1" }, { id: "integration-2" }];
     await expect(authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "human" })).rejects.toThrow("whatsapp_send_context_invalid");
+    activeIntegrations = [];
+    await expect(authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "human" })).rejects.toThrow("whatsapp_send_context_invalid");
+    activeIntegrations = [{ id: "integration-1" }];
     rows.leads = { ...rows.leads, integration_id: "integration-1" };
+  });
+  it("lead antigo sem integration_id usa a única integração ativa da empresa", async () => {
+    rows.leads = { ...rows.leads, integration_id: null };
+    const authorization = await authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "followup" });
+    expect(authorization.integrationId).toBe("integration-1");
+    rows.leads = { ...rows.leads, integration_id: "integration-1" };
+  });
+  it("campanha do lojista valida o tenant sem depender da ativação da IA", async () => {
+    rows.conversations = { ...rows.conversations, ai_reply_enabled: false };
+    const authorization = await authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "campaign" });
+    expect(authorization.source).toBe("campaign");
+    rows.conversations = { ...rows.conversations, ai_reply_enabled: true };
   });
   it("bloqueia training_session na origem, antes do sink", async () => {
     await expect(authorizeWhatsappSendFromExecutionScope({ kind: "training_session", companyId: "company-1", scopeId: "session-1", capabilities: TRAINING_SESSION_CAPABILITIES }, { leadId: "lead-1", source: "automatic" })).rejects.toThrow("whatsapp_send_scope_not_allowed");

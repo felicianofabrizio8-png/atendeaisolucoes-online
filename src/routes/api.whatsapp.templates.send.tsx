@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { renderTemplateBody, type TemplateRow } from "@/lib/wa-templates.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+import { authorizeWhatsappSend } from "@/lib/whatsapp-send-authorization.server";
 
 
 async function resolveCompany(request: Request) {
@@ -67,7 +68,7 @@ export const Route = createFileRoute("/api/whatsapp/templates/send")({
         // Lead + telefone
         const { data: lead } = await supabaseAdmin
           .from("leads")
-          .select("phone, external_id, integration_id")
+          .select("id, phone, external_id, integration_id, company_id, channel")
           .eq("id", conv.lead_id)
           .maybeSingle();
         if (!lead) return Response.json({ error: "lead não encontrado" }, { status: 404 });
@@ -83,9 +84,13 @@ export const Route = createFileRoute("/api/whatsapp/templates/send")({
           .eq("company_id", ctx.companyId)
           .eq("channel", "whatsapp")
           .eq("active", true);
-        const { data: integration } = lead.integration_id
-          ? await intQuery.eq("id", lead.integration_id).maybeSingle()
-          : await intQuery.limit(1).maybeSingle();
+        let authorization;
+        try {
+          authorization = await authorizeWhatsappSend({ companyId: ctx.companyId, conversationId, leadId: conv.lead_id, source: "human" });
+        } catch (error) {
+          return Response.json({ error: error instanceof Error ? error.message : "envio não autorizado" }, { status: 409 });
+        }
+        const { data: integration } = await intQuery.eq("id", authorization.integrationId).maybeSingle();
         if (!integration?.access_token || !integration.external_account_id) {
           return Response.json({ error: "WhatsApp Cloud não conectado" }, { status: 400 });
         }

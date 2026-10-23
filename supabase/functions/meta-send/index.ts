@@ -15,15 +15,18 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v21.0";
 
+const CONFIGURED_ORIGINS = (Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+
 const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
+  // Mantidas enquanto a produção roda no Lovable (frente "saída do Lovable").
   /^https:\/\/([a-z0-9-]+\.)*lovable\.app$/i,
   /^https:\/\/([a-z0-9-]+\.)*lovableproject\.com$/i,
-  /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
   /^http:\/\/localhost(:\d+)?$/i,
 ];
 function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
-  const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+  const allowed = CONFIGURED_ORIGINS.includes(origin) || ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
   return {
     "Access-Control-Allow-Origin": allowed ? origin : "null",
     "Vary": "Origin",
@@ -98,6 +101,8 @@ Deno.serve(async (req) => {
     subtype?: string;
     origin?: string;
     provider_type?: string;
+    integrationId?: string;
+    phoneNumberId?: string;
     attemptId?: string;
   };
   try {
@@ -165,6 +170,33 @@ Deno.serve(async (req) => {
         if (existing?.id) {
           leadId = existing.id;
         } else {
+          const { data: activeIntegrations } = await sb
+            .from("integrations")
+            .select("id, access_token, external_account_id")
+            .eq("company_id", companyId)
+            .eq("channel", "whatsapp")
+            .eq("active", true);
+          const validIntegrations = (activeIntegrations ?? []).filter(
+            (candidate) => Boolean(candidate.id && candidate.access_token?.trim() && candidate.external_account_id?.trim()),
+          );
+          const selectedIntegrations = body.integrationId
+            ? validIntegrations.filter((candidate) => candidate.id === body.integrationId)
+            : body.phoneNumberId
+              ? validIntegrations.filter((candidate) => candidate.external_account_id === body.phoneNumberId)
+              : validIntegrations;
+          if (selectedIntegrations.length !== 1) {
+            const ambiguous = selectedIntegrations.length > 1 || validIntegrations.length > 1;
+            return json(
+              {
+                ok: false,
+                code: ambiguous ? "whatsapp_integration_ambiguous" : "whatsapp_not_connected",
+                error: ambiguous ? "informe o número de origem do WhatsApp" : "WhatsApp não conectado para esta empresa",
+                requestId,
+                attemptId,
+              },
+              409,
+            );
+          }
           const { data: newLead, error: leadErr } = await sb
             .from("leads")
             .insert({
@@ -173,6 +205,7 @@ Deno.serve(async (req) => {
               name: body.contactName?.trim() || `+${phoneDigits}`,
               phone: phoneDigits,
               external_id: externalId,
+              integration_id: selectedIntegrations[0].id,
             })
             .select("id")
             .single();
@@ -236,7 +269,7 @@ Deno.serve(async (req) => {
       .eq("active", true);
     const { data: integration } = lead.integration_id
       ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
-      : await integrationQuery.limit(1).maybeSingle();
+      : { data: null };
     console.log("META_SEND_INTEGRATION_FOUND", {
       requestId,
       attemptId,
@@ -398,7 +431,7 @@ Deno.serve(async (req) => {
           text: imgUrl,
           at: new Date().toISOString(),
           external_id: imgExternalId,
-          integration_id: integration?.id ?? null,
+          integration_id: integration.id,
         });
         await sb.from("whatsapp_messages").insert({
           company_id: companyId,
@@ -530,7 +563,7 @@ Deno.serve(async (req) => {
         text,
         at: sentAt,
         external_id: externalId,
-        integration_id: integration?.id ?? null,
+          integration_id: integration.id,
       })
       .select("id")
       .single();

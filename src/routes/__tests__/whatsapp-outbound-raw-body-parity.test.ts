@@ -150,15 +150,17 @@ afterAll(() => {
 describe("send-audio — rawBody parity (B.2.1)", () => {
   beforeEach(() => {
     tableRows.profiles = { company_id: "company-1" };
+    tableRows.companies = { id: "company-1" };
     tableRows.conversations = {
       id: "conv-1", company_id: "company-1", channel: "whatsapp", lead_id: "lead-1",
     };
     tableRows.leads = {
-      id: "lead-1", company_id: "company-1",
+      id: "lead-1", company_id: "company-1", channel: "whatsapp",
       phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true,
+      access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 
@@ -254,6 +256,7 @@ describe("send-audio — rawBody parity (B.2.1)", () => {
 describe("forward-message — rawBody parity (B.2.1)", () => {
   beforeEach(() => {
     tableRows.profiles = { company_id: "company-1" };
+    tableRows.companies = { id: "company-1" };
     tableRows.messages = {
       id: "src-1", company_id: "company-1", role: "lead",
       source_subtype: "image",
@@ -267,14 +270,15 @@ describe("forward-message — rawBody parity (B.2.1)", () => {
       },
     };
     tableRows.leads = {
-      id: "lead-target", company_id: "company-1",
+      id: "lead-target", company_id: "company-1", channel: "whatsapp",
       phone: "11888887777", external_id: "5511888887777", integration_id: "int-1",
     };
     tableRows.conversations = {
       id: "conv-t", company_id: "company-1", channel: "whatsapp", lead_id: "lead-target",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true,
+      access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 

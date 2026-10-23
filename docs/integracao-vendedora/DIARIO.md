@@ -59,3 +59,32 @@ testes. Conflitos resolvidos: `sales-agent-mode` (as duas funções novas mantid
 Testes da camada: 161/163. As 2 falhas (`bruna-status-contract`) leem o código da função
 `meta-webhook`, que entra na camada 2. `consultative-sales-response.test` e
 `consultative-shadow-settings.test` dependem de campos do motor (camada 3).
+
+## Camada 2: caminhos de envio
+
+Portados: rotas `api.whatsapp.*` (envio, resposta, mídia, localização, áudio, modelos) com o
+comprovante de envio emitido no servidor, `wa-templates`, conciliação de status no `meta-webhook`
+(RPC `record_whatsapp_send_status`, filtro por empresa, `failed` não rebaixa `delivered`/`read`),
+escolha explícita de integração no `meta-send` quando a empresa tem mais de um número.
+
+Decisões:
+- Follow-ups: a main reescreveu tudo (V2 por ciclos, envio único em `dispatch.ts`); ficou a main.
+  A revalidação da main já filtra por empresa e takeover. A autorização da Bruna foi levada ao
+  `dispatch.ts`: disparo manual = origem "humano"; automático/reativação = "follow-up" (bloqueia
+  em takeover). Sem comprovante, o envio é bloqueado e registrado (teste novo).
+- Reativação: mantidas as checagens extras da Bruna (empresa/lead da conversa, takeover, IA em
+  processamento, aguardando humano), com o `select` corrigido para trazer esses campos.
+  Mudança de comportamento: não reativa conversa "aguardando humano".
+- Campanhas de relacionamento (só existem na main): nova origem `campaign` no comprovante; valida
+  o tenant sem depender da ativação da IA. Sem comprovante, o destinatário vai para `failed` com
+  nova tentativa (mesmo caminho de falha de envio).
+- Lead sem `integration_id` (leads antigos/manuais): a Bruna recusava. Para preservar a função da
+  main sem enfraquecer a proteção, o comprovante usa a integração da empresa só quando ela é a
+  única ativa; com duas ou mais, continua recusando por ambiguidade (testes atualizados). O envio
+  de modelo passou a usar a integração resolvida pelo comprovante.
+- `meta-send`: mantida a regra da main (token do ambiente só para o mesmo número) e autorização de
+  equipe; da Bruna, a escolha explícita de integração. CORS: origens do Lovable mantidas (a Bruna
+  as removia; produção ainda roda no Lovable) e a lista configurável `CORS_ALLOWED_ORIGINS` somada.
+
+Testes: camada 2 136/136; follow-ups e campanhas 183/183. Testes da main ajustados para o
+comprovante (simulado onde o foco é o fluxo, real no teste de envio de modelo).

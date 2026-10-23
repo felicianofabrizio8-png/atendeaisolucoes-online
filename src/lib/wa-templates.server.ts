@@ -14,6 +14,7 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { renderBodyWithParameters, templateBodyText } from "@/lib/wa-template-contract";
+import { isWhatsappSendAuthorization, type WhatsappSendAuthorization } from "./whatsapp-send-authorization.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 
@@ -287,9 +288,32 @@ export async function sendWhatsappTemplate(params: {
   variables?: Record<string, string>;
   source?: string;
   sourceMetadata?: Record<string, unknown>;
+  authorization: WhatsappSendAuthorization;
 }): Promise<SendTemplateResult> {
   const { companyId, conversationId, leadId, purpose } = params;
   const variables = params.variables ?? {};
+  const authorization = params.authorization;
+  if (!isWhatsappSendAuthorization(authorization) || authorization.companyId !== companyId || authorization.conversationId !== conversationId || authorization.leadId !== leadId) return { ok: false, simulated: false, error: "whatsapp_send_not_authorized" };
+  const source = params.source ?? "wa_template";
+  const sourceKind = source.startsWith("op_template:")
+    ? "automatic"
+    : source.startsWith("followup")
+      ? "followup"
+      : source === "relationship_campaign"
+        ? "campaign"
+        : "human";
+  // The manual follow-up action is a legacy human flow and intentionally keeps
+  // its existing source while using human authorization.
+  const isLegacyManualFollowup = source === "followup_template" && authorization.source === "human";
+  if (
+    (authorization.source === "human" && sourceKind !== "human" && !isLegacyManualFollowup) ||
+    (authorization.source === "automatic" && sourceKind !== "automatic") ||
+    (authorization.source === "followup" && sourceKind !== "followup") ||
+    (authorization.source === "campaign" && sourceKind !== "campaign") ||
+    (sourceKind === "campaign" && authorization.source !== "campaign")
+  ) {
+    return { ok: false, simulated: false, error: "whatsapp_send_source_mismatch" };
+  }
 
   // 1) Lead + telefone
   const { data: lead } = await supabaseAdmin
@@ -310,9 +334,12 @@ export async function sendWhatsappTemplate(params: {
     .eq("company_id", companyId)
     .eq("channel", "whatsapp")
     .eq("active", true);
-  const { data: integration } = lead.integration_id
-    ? await intQuery.eq("id", lead.integration_id).maybeSingle()
-    : await intQuery.limit(1).maybeSingle();
+  // A autorização já resolveu o número: o do lead ou, sem ele, a única integração ativa.
+  if (lead.integration_id && lead.integration_id !== authorization.integrationId) {
+    return { ok: false, simulated: false, error: "whatsapp_send_integration_mismatch" };
+  }
+  const { data: integration } = await intQuery.eq("id", authorization.integrationId).maybeSingle();
+  if (integration?.id !== authorization.integrationId) return { ok: false, simulated: false, error: "whatsapp_send_integration_mismatch" };
   if (!integration?.access_token || !integration.external_account_id) {
     return { ok: false, simulated: false, error: "WhatsApp Cloud não conectado" };
   }
@@ -537,6 +564,7 @@ export async function sendOperationalTemplate(params: {
     | "reactivation";
   variables?: Record<string, string>;
   source?: string;
+  authorization: WhatsappSendAuthorization;
 }) {
   return sendWhatsappTemplate({
     companyId: params.companyId,
@@ -545,6 +573,7 @@ export async function sendOperationalTemplate(params: {
     purpose: params.kind,
     variables: params.variables,
     source: params.source ?? `op_template:${params.kind}`,
+    authorization: params.authorization,
   });
 }
 

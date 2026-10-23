@@ -693,6 +693,7 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
                 const { data: orig } = await sb
                   .from("messages")
                   .select("id, role, text, source_subtype, source_metadata")
+                  .eq("company_id", companyId)
                   .eq("integration_id", integrationId)
                   .eq("external_id", ctxId)
                   .maybeSingle();
@@ -798,9 +799,30 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
         const errMessage = err0?.message ?? errTitle ?? null;
         const errDetails = err0?.error_data ?? err0 ?? null;
 
+        // The durable status RPC is the single monotonic boundary for Bruna
+        // attempts. It is explicitly tenant-scoped and also stores orphan
+        // callbacks, so an early/out-of-order provider event is not lost.
+        const { error: statusError } = await sb.rpc(
+          "record_whatsapp_send_status",
+          {
+            p_company_id: companyId,
+            p_integration_id: integrationId,
+            p_provider_message_id: externalId,
+            p_provider_status: status,
+            p_status_at: statusAt,
+            p_error_code: errCode,
+            p_error_message: errMessage,
+            p_payload: st,
+          },
+        );
+        if (statusError) {
+          console.error("META_WEBHOOK_WA_STATUS_RPC_ERROR", statusError.message);
+        }
+
         const { data: msg } = await sb
           .from("messages")
           .select("id, conversation_id, source_subtype, delivery_status")
+          .eq("company_id", companyId)
           .eq("integration_id", integrationId)
           .eq("external_id", externalId)
           .maybeSingle();
@@ -834,13 +856,19 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
 
         if (!msg?.id) continue;
 
-        // ordem: sent < delivered < read < failed; nunca rebaixa
-        const rank: Record<string, number> = { sent: 1, delivered: 2, read: 3, failed: 4 };
+        // `failed` is a side branch: it must not overwrite delivered/read.
+        // The RPC above applies the same rule to durable Bruna attempts.
+        const rank: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
         const currentStatus =
           typeof msg.delivery_status === "string" ? msg.delivery_status : "";
         const currentRank = rank[currentStatus] ?? 0;
         const incomingRank = rank[status] ?? 0;
-        if (incomingRank === 0 || incomingRank < currentRank) continue;
+        if (
+          incomingRank === 0 ||
+          incomingRank < currentRank ||
+          (status === "failed" && ["delivered", "read"].includes(currentStatus)) ||
+          (status === currentStatus && currentStatus !== "failed")
+        ) continue;
 
         await sb
           .from("messages")
@@ -851,7 +879,9 @@ async function handleWhatsAppEntry(sb: Sb, entry: any): Promise<void> {
             delivery_error_details: errDetails as any,
             status_updated_at: statusAt,
           })
-          .eq("id", msg.id);
+          .eq("company_id", companyId)
+          .eq("id", msg.id)
+          .eq("delivery_status", currentStatus);
       } catch (e) {
         console.error("META_WEBHOOK_WA_STATUS_ERROR", e instanceof Error ? e.message : String(e));
       }

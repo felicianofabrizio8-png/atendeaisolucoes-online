@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isWithin24hWindow } from "@/lib/wa-templates.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+import { authorizeWhatsappSend } from "@/lib/whatsapp-send-authorization.server";
 
 type MediaKind = "image" | "video";
 
@@ -110,15 +111,19 @@ export const Route = createFileRoute("/api/whatsapp/send-media")({
           return Response.json({ error: "lead sem telefone válido" }, { status: 400 });
         }
 
+        let authorization;
+        try {
+          authorization = await authorizeWhatsappSend({ companyId, conversationId, leadId: conv.lead_id, source: "human" });
+        } catch (error) {
+          return Response.json({ error: error instanceof Error ? error.message : "envio não autorizado" }, { status: 409 });
+        }
         const integrationQuery = supabaseAdmin
           .from("integrations")
           .select("id, access_token, external_account_id")
           .eq("company_id", companyId)
           .eq("channel", "whatsapp")
           .eq("active", true);
-        const { data: integration } = lead.integration_id
-          ? await integrationQuery.eq("id", lead.integration_id).maybeSingle()
-          : await integrationQuery.limit(1).maybeSingle();
+        const { data: integration } = await integrationQuery.eq("id", authorization.integrationId).maybeSingle();
         if (!integration?.access_token || !integration.external_account_id) {
           return Response.json(
             { error: "WhatsApp não conectado para esta empresa" },

@@ -24,6 +24,10 @@ import {
   type TemplatePurpose,
   type TemplateRow,
 } from "@/lib/wa-templates.server";
+import {
+  authorizeWhatsappSend,
+  type WhatsappSendAuthorization,
+} from "@/lib/whatsapp-send-authorization.server";
 
 import { generateResumePhrase, loadResumeContext } from "./resume";
 import type { FollowupRule } from "./types";
@@ -244,6 +248,26 @@ function bodyText(template: TemplateRow): string {
   return templateBodyText(template.components);
 }
 
+/**
+ * Comprovante de envio emitido no servidor: o disparo manual é do atendente;
+ * os automáticos e de reativação são follow-up (bloqueados durante takeover).
+ */
+async function authorizeDispatch(
+  input: DispatchInput,
+): Promise<{ ok: true; authorization: WhatsappSendAuthorization } | { ok: false; reason: string }> {
+  try {
+    const authorization = await authorizeWhatsappSend({
+      companyId: input.companyId,
+      conversationId: input.conversationId,
+      leadId: input.leadId,
+      source: input.trigger.kind === "manual" ? "human" : "followup",
+    });
+    return { ok: true, authorization };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "whatsapp_send_not_authorized" };
+  }
+}
+
 export async function dispatchFollowup(input: DispatchInput): Promise<DispatchResult> {
   // Revalida antes do trabalho caro (contexto + IA)…
   const early = await revalidateFollowup(input);
@@ -371,6 +395,19 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     };
   }
 
+  const authorized = await authorizeDispatch(input);
+  if (!authorized.ok) {
+    const result: DispatchResult = {
+      status: "blocked",
+      reason: authorized.reason,
+      via: "template",
+      templateName: template.name,
+      message,
+      messagePreview,
+    };
+    await persist(input, result, { purpose, reason: "send_not_authorized" });
+    return result;
+  }
   const send = await sendWhatsappTemplate({
     companyId: input.companyId,
     conversationId: input.conversationId,
@@ -378,6 +415,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     purpose,
     variables,
     source: "followup_template",
+    authorization: authorized.authorization,
   });
   const outcome: Outcome = !send.ok
     ? { status: "failed", error: send.error }

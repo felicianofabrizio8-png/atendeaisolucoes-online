@@ -73,6 +73,14 @@ vi.mock("@/integrations/supabase/client.server", () => {
 });
 
 // ---------- Templates: renderTemplateBody REAL; busca e envio simulados ----------
+// O comprovante de envio tem testes próprios; aqui o foco é o fluxo da main.
+const sendAuth = vi.hoisted(() => ({ deny: null as string | null }));
+vi.mock("@/lib/whatsapp-send-authorization.server", () => ({
+  authorizeWhatsappSend: async (input: Record<string, unknown>) => {
+    if (sendAuth.deny) throw new Error(sendAuth.deny);
+    return { ...input, integrationId: "integration-test" };
+  },
+}));
 const tpl = vi.hoisted(() => ({ approved: {} as Record<string, any>, send: vi.fn() }));
 vi.mock("@/lib/wa-templates.server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/wa-templates.server")>();

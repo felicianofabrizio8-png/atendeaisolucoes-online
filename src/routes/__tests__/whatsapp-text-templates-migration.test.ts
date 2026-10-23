@@ -99,15 +99,17 @@ beforeEach(() => {
 describe("api.whatsapp.send — migração B.3 (texto)", () => {
   beforeEach(() => {
     tableRows.profiles = { company_id: "company-1" };
+    tableRows.companies = { id: "company-1" };
     tableRows.conversations = {
       id: "conv-1", company_id: "company-1", lead_id: "lead-1", channel: "whatsapp",
     };
     tableRows.leads = {
-      id: "lead-1", company_id: "company-1",
+      id: "lead-1", company_id: "company-1", channel: "whatsapp",
       phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true,
+      access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 
@@ -210,8 +212,9 @@ describe("api.whatsapp.send — migração B.3 (texto)", () => {
 describe("api.whatsapp.templates.send — migração B.3 (template)", () => {
   beforeEach(() => {
     tableRows.profiles = { company_id: "company-1" };
+    tableRows.companies = { id: "company-1" };
     tableRows.conversations = {
-      id: "conv-1", company_id: "company-1", lead_id: "lead-1",
+      id: "conv-1", company_id: "company-1", lead_id: "lead-1", channel: "whatsapp",
     };
     tableRows.whatsapp_templates = {
       id: "tpl-1", company_id: "company-1",
@@ -221,11 +224,12 @@ describe("api.whatsapp.templates.send — migração B.3 (template)", () => {
       variables: ["nome"],
     };
     tableRows.leads = {
-      id: "lead-1", company_id: "company-1",
+      id: "lead-1", company_id: "company-1", channel: "whatsapp",
       phone: "11999998888", external_id: "5511999998888", integration_id: "int-1",
     };
     tableRows.integrations = {
-      id: "int-1", access_token: "EAAG-token", external_account_id: "PHONE-ID",
+      id: "int-1", company_id: "company-1", channel: "whatsapp", active: true,
+      access_token: "EAAG-token", external_account_id: "PHONE-ID",
     };
   });
 

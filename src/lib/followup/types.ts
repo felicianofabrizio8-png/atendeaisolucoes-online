@@ -130,6 +130,7 @@ export interface ReactivationResult {
   /** Envios bloqueados por EnvironmentGuard. Nenhuma reativação real. */
   simulated?: number;
   skipped: Array<{ leadId: string; reason: string }>;
+  errors?: string[];
 }
 
 export interface ManualFollowupResult {

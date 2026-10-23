@@ -14,15 +14,18 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
 const INSTAGRAM_GRAPH = "https://graph.instagram.com/v21.0";
 
+const CONFIGURED_ORIGINS = (Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+
 const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
+  // Mantidas enquanto a produção roda no Lovable (frente "saída do Lovable").
   /^https:\/\/([a-z0-9-]+\.)*lovable\.app$/i,
   /^https:\/\/([a-z0-9-]+\.)*lovableproject\.com$/i,
-  /^https:\/\/([a-z0-9-]+\.)*atendeaisolucoes\.online$/i,
   /^http:\/\/localhost(:\d+)?$/i,
 ];
 function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
-  const allowed = ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
+  const allowed = CONFIGURED_ORIGINS.includes(origin) || ALLOWED_ORIGIN_PATTERNS.some((re) => re.test(origin));
   return {
     "Access-Control-Allow-Origin": allowed ? origin : "null",
     "Vary": "Origin",

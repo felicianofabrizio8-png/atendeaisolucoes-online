@@ -10,6 +10,7 @@ import {
   sendWhatsappTemplate,
   type TemplatePurpose,
 } from "@/lib/wa-templates.server";
+import { authorizeWhatsappSend } from "@/lib/whatsapp-send-authorization.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isLeadInSegment, parseSegmentDefinition } from "@/lib/relationship-campaigns.server";
 import { generateResumePhrase, loadResumeContext } from "@/lib/followup/resume";
@@ -774,21 +775,32 @@ export async function dispatchRelationshipRecipient(input: {
   if (!claimed)
     return { status: "idempotent" as const, reason: "destinatário mudou ou já foi reservado; nada enviado" };
 
-  // Exatamente o var1 salvo na prévia (conteúdo interno, sem {{ }}).
-  const send = await sendWhatsappTemplate({
+  // Comprovante de envio no servidor; sem ele o destinatário segue o caminho de falha.
+  const authorization = await authorizeWhatsappSend({
     companyId: input.companyId,
     conversationId,
     leadId: lead.id,
-    purpose: prepared.purpose as TemplatePurpose,
-    variables: prepared.variables,
-    source: "relationship_campaign",
-    sourceMetadata: {
-      relationship_campaign_id: input.relationshipCampaignId,
-      relationship_recipient_id: recipient.id,
-      dispatch_key: dispatchKey,
-      relationship_purpose: prepared.purpose,
-    },
-  });
+    source: "campaign",
+  }).catch((error: unknown) => (error instanceof Error ? error.message : "whatsapp_send_not_authorized"));
+
+  // Exatamente o var1 salvo na prévia (conteúdo interno, sem {{ }}).
+  const send = typeof authorization === "string"
+    ? { ok: false as const, simulated: false as const, error: authorization }
+    : await sendWhatsappTemplate({
+        companyId: input.companyId,
+        conversationId,
+        leadId: lead.id,
+        purpose: prepared.purpose as TemplatePurpose,
+        variables: prepared.variables,
+        source: "relationship_campaign",
+        sourceMetadata: {
+          relationship_campaign_id: input.relationshipCampaignId,
+          relationship_recipient_id: recipient.id,
+          dispatch_key: dispatchKey,
+          relationship_purpose: prepared.purpose,
+        },
+        authorization,
+      });
 
   if (!send.ok || send.simulated) {
     const nextAttempt = new Date(
