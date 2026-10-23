@@ -24,11 +24,11 @@ BEGIN
   INSERT INTO public.integrations (id, company_id, channel, display_name) VALUES (i1, c1, 'whatsapp', 'reconcile-a'), (i2, c2, 'whatsapp', 'reconcile-b');
   INSERT INTO public.leads (id, company_id, name, channel) VALUES (l1, c1, 'reconcile-a', 'whatsapp'), (l2, c2, 'reconcile-b', 'whatsapp');
   INSERT INTO public.conversations (id, company_id, lead_id, channel) VALUES (cv1, c1, l1, 'whatsapp'), (cv2, c2, l2, 'whatsapp');
-  INSERT INTO public.whatsapp_send_attempts (id, company_id, integration_id, conversation_id, lead_id, idempotency_key, request_fingerprint, status)
-    VALUES (a_accept, c1, i1, cv1, l1, 'reconcile-accept', 'fp-accept', 'sending'),
-           (a_complete, c1, i1, cv1, l1, 'reconcile-complete', 'fp-complete', 'accepted'),
-           (a_failed, c1, i1, cv1, l1, 'reconcile-failed', 'fp-failed', 'sending'),
-           (a_other, c2, i2, cv2, l2, 'reconcile-other', 'fp-other', 'sending');
+  INSERT INTO public.whatsapp_send_attempts (id, company_id, integration_id, conversation_id, lead_id, idempotency_key, request_fingerprint, status, accepted_at)
+    VALUES (a_accept, c1, i1, cv1, l1, 'reconcile-accept', 'fp-accept', 'sending', NULL),
+           (a_complete, c1, i1, cv1, l1, 'reconcile-complete', 'fp-complete', 'accepted', now()),
+           (a_failed, c1, i1, cv1, l1, 'reconcile-failed', 'fp-failed', 'sending', NULL),
+           (a_other, c2, i2, cv2, l2, 'reconcile-other', 'fp-other', 'sending', NULL);
 
   -- Out-of-order sent/delivered/read callbacks; the duplicate is deduped.
   INSERT INTO public.whatsapp_send_status_events (company_id, integration_id, provider_message_id, provider_status, status_at)

@@ -4,7 +4,7 @@ export type ConversationControlAction = "takeover" | "resume";
 export type ConversationControlState = {
   ai_status: string | null;
   ai_handling: boolean;
-  ai_reply_enabled: boolean;
+  sales_agent_auto_reply: boolean;
   human_takeover_at: string | null;
 };
 

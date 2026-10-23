@@ -2821,7 +2821,6 @@ export type Database = {
       conversations: {
         Row: {
           ai_handling: boolean
-          ai_reply_enabled: boolean
           ai_status: string | null
           auto_reply_count: number
           awaiting_reply: boolean
@@ -2852,7 +2851,6 @@ export type Database = {
         }
         Insert: {
           ai_handling?: boolean
-          ai_reply_enabled?: boolean
           ai_status?: string | null
           auto_reply_count?: number
           awaiting_reply?: boolean
@@ -2883,7 +2881,6 @@ export type Database = {
         }
         Update: {
           ai_handling?: boolean
-          ai_reply_enabled?: boolean
           ai_status?: string | null
           auto_reply_count?: number
           awaiting_reply?: boolean

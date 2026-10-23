@@ -21,7 +21,7 @@ describe("conversation control", () => {
       conversation: {
         ai_status: "assumido_humano",
         ai_handling: false,
-        ai_reply_enabled: false,
+        sales_agent_auto_reply: false,
         human_takeover_at: "2026-10-22T12:00:00Z",
       },
     }), { status: 200 }));

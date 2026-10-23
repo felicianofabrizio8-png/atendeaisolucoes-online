@@ -88,3 +88,39 @@ Decisões:
 
 Testes: camada 2 136/136; follow-ups e campanhas 183/183. Testes da main ajustados para o
 comprovante (simulado onde o foco é o fluxo, real no teste de envio de modelo).
+
+## Camada 3: controles unificados e migrations
+
+Modelo único de ativação da IA (`isAutomaticReplyAllowed`, usado pelo tick, pelo comprovante de
+envio e pela tela). Precedência:
+1. chave-mestra `company_settings.sales_agent_master_enabled = false` bloqueia tudo;
+2. takeover humano (`assumido_humano`, `aguardando_humano`, `human_takeover_at`) bloqueia;
+3. empresa: com a Vendedora V2, o modo decide (silent nunca; automatic sempre; assisted só com
+   opt-in da conversa); sem V2, o escopo `ai_auto_reply_scope` (desligado nunca; geral sempre;
+   teste só com opt-in);
+4. conversa: opt-in único `conversations.sales_agent_auto_reply` (coluna da main).
+
+A coluna `conversations.ai_reply_enabled` da Bruna (migration nunca aplicada) foi removida da
+migration `20261022090000`; todo o código passou a usar `sales_agent_auto_reply`. A tela de
+controle passou a mostrar exatamente a decisão da política: a Bruna mostrava "IA desativada" para
+conversa sem opt-in no escopo geral, mas a política dela respondia mesmo assim.
+**Decisão pendente**: se o desligamento por conversa deve valer também nos modos geral/automático
+(hoje, nas duas versões, quem para a IA numa conversa nesses modos é o takeover).
+
+Banco local descartável (pilha Supabase própria `vendedora-unificada-validacao`, portas 4732x,
+sem tocar em outros contêineres): as 189 migrations (179 da main + 10 da Bruna) aplicadas em
+ordem sem erro. Aplicação feita como superusuário dentro do contêiner porque uma migration
+antiga da main altera `realtime.messages`, de outro dono no Supabase local (limitação do ambiente,
+não da integração). Testes SQL: `whatsapp-attempts-phase1` (inclui disputa concorrente: duas
+sessões, mesma tentativa, 1 registro), `whatsapp-status-reconciliation` e
+`whatsapp-attempts-phase1-homolog` (RLS positiva/negativa, privilégios, corrida) passam.
+
+Defeitos corrigidos nos roteiros SQL da Bruna (nunca tinham rodado até o fim): `$$` aninhado em
+bloco `DO $$`; `dblink_exec` com `SELECT`; `dblink_is_busy` usado como booleano; conexão não
+drenada; fixture de tentativa `accepted` sem `accepted_at`; fixture de perfil incompatível com o
+gatilho real de cadastro e sem vínculo/papel exigidos desde as permissões de equipe da main;
+guarda que passava vazia com nulo (`<>` → `IS DISTINCT FROM`). Ajustes só do ambiente local
+(não versionados): conexões `dblink` por TCP/superusuário, porque o contêiner usa `trust`/`peer`.
+
+Padrões conferidos no banco: consultivo, shadow e V2 desligados; escopo `desligado` para empresas
+novas; empresas existentes convertidas do campo legado (`geral` se respondiam, senão `desligado`).

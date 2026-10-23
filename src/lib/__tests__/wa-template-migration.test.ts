@@ -87,7 +87,7 @@ function seedHappy() {
     company_id: "c1",
     lead_id: "lead-1",
     channel: "whatsapp",
-    ai_reply_enabled: true,
+    sales_agent_auto_reply: true,
     ai_status: null,
     human_takeover_at: null,
   };

@@ -133,6 +133,9 @@ BEGIN
     (id, email, raw_user_meta_data, created_at)
   VALUES
     (u1, 'wa-homolog-a@example.test', '{"display_name":"Homolog A"}'::jsonb, now());
+  -- O gatilho real de cadastro pode ter criado um perfil em outra empresa;
+  -- a empresa do perfil é imutável, então a fixture recria o perfil.
+  DELETE FROM public.profiles WHERE id = u1;
   INSERT INTO public.profiles(id, company_id, display_name, email, created_at, updated_at)
     VALUES (u1, c1, 'Homolog A', 'wa-homolog-a@example.test', now(), now())
     ON CONFLICT (id) DO UPDATE
@@ -145,6 +148,9 @@ BEGIN
     (id, email, raw_user_meta_data, created_at)
   VALUES
     (u2, 'wa-homolog-b@example.test', '{"display_name":"Homolog B"}'::jsonb, now());
+  -- O gatilho real de cadastro pode ter criado um perfil em outra empresa;
+  -- a empresa do perfil é imutável, então a fixture recria o perfil.
+  DELETE FROM public.profiles WHERE id = u2;
   INSERT INTO public.profiles(id, company_id, display_name, email, created_at, updated_at)
     VALUES (u2, c2, 'Homolog B', 'wa-homolog-b@example.test', now(), now())
     ON CONFLICT (id) DO UPDATE
@@ -153,6 +159,10 @@ BEGIN
           email = EXCLUDED.email,
           updated_at = EXCLUDED.updated_at;
 
+  -- Desde as permissões de equipe, a empresa atual exige acesso ativo e papel.
+  INSERT INTO public.company_member_access(company_id, user_id, active) VALUES (c1, u1, true), (c2, u2, true)
+    ON CONFLICT DO NOTHING;
+  INSERT INTO public.user_roles(company_id, user_id, role) VALUES (c1, u1, 'atendente'), (c2, u2, 'atendente');
   IF (SELECT count(*) FROM auth.users WHERE id IN (u1, u2)) <> 2
      OR (SELECT count(*) FROM public.profiles WHERE id IN (u1, u2)) <> 2
      OR (SELECT count(*) FROM public.profiles WHERE company_id IN (c1, c2)) <> 2 THEN
@@ -256,7 +266,7 @@ DO $rls$
 DECLARE n bigint;
 BEGIN
   IF auth.uid() <> '10000000-0000-0000-0000-000000000010'
-     OR private.current_company_id() <> '10000000-0000-0000-0000-000000000001' THEN
+     OR private.current_company_id() IS DISTINCT FROM '10000000-0000-0000-0000-000000000001' THEN
     RAISE EXCEPTION 'auth.users/profiles nao resolveram a empresa A';
   END IF;
   SELECT count(*) INTO n FROM public.whatsapp_send_attempts;
@@ -281,7 +291,7 @@ SELECT set_config('request.jwt.claim.sub', '20000000-0000-0000-0000-000000000010
 DO $rls_negative$
 BEGIN
   IF auth.uid() <> '20000000-0000-0000-0000-000000000010'
-     OR private.current_company_id() <> '20000000-0000-0000-0000-000000000001' THEN
+     OR private.current_company_id() IS DISTINCT FROM '20000000-0000-0000-0000-000000000001' THEN
     RAISE EXCEPTION 'auth.users/profiles nao resolveram a empresa B';
   END IF;
   IF EXISTS (SELECT 1 FROM public.whatsapp_send_attempts WHERE company_id = '10000000-0000-0000-0000-000000000001') THEN

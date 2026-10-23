@@ -52,7 +52,7 @@ export async function authorizeWhatsappSend(
     supabaseAdmin
       .from("conversations")
       .select(
-        "id, company_id, lead_id, channel, ai_reply_enabled, sales_agent_auto_reply, ai_status, human_takeover_at",
+        "id, company_id, lead_id, channel, sales_agent_auto_reply, ai_status, human_takeover_at",
       )
       .eq("id", input.conversationId)
       .eq("company_id", input.companyId)
@@ -84,7 +84,6 @@ export async function authorizeWhatsappSend(
     company_id?: string;
     lead_id?: string;
     channel?: string;
-    ai_reply_enabled?: boolean | null;
     sales_agent_auto_reply?: boolean | null;
     ai_status?: string | null;
     human_takeover_at?: string | null;
@@ -111,13 +110,14 @@ export async function authorizeWhatsappSend(
     const { data: companySettings } = await supabaseAdmin
       .from("company_settings")
       .select(
-        "ai_auto_reply_enabled, ai_auto_reply_scope, sales_agent_v2_enabled, sales_agent_v2_mode",
+        "ai_auto_reply_enabled, ai_auto_reply_scope, sales_agent_master_enabled, sales_agent_v2_enabled, sales_agent_v2_mode",
       )
       .eq("company_id", input.companyId)
       .maybeSingle();
 
     const settings = companySettings as {
       ai_auto_reply_enabled?: boolean | null;
+      sales_agent_master_enabled?: boolean | null;
       ai_auto_reply_scope?: unknown;
       sales_agent_v2_enabled?: boolean | null;
       sales_agent_v2_mode?: unknown;
@@ -130,11 +130,10 @@ export async function authorizeWhatsappSend(
     }
 
     const replyPermission = isAutomaticReplyAllowed({
+      masterEnabled: settings?.sales_agent_master_enabled,
       mode: effectiveMode,
-      scope: settings?.ai_auto_reply_scope ??
-        (conversationRow.ai_reply_enabled === true ? "geral" : "desligado"),
-      legacyEnabled: settings?.ai_auto_reply_enabled ?? conversationRow.ai_reply_enabled ?? undefined,
-      conversationEnabled: conversationRow.ai_reply_enabled,
+      scope: settings?.ai_auto_reply_scope,
+      legacyEnabled: settings?.ai_auto_reply_enabled ?? false,
       salesAgentAutoReply: conversationRow.sales_agent_auto_reply,
       aiStatus: conversationRow.ai_status,
       humanTakeoverAt: conversationRow.human_takeover_at,

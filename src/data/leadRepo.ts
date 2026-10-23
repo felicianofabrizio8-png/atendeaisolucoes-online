@@ -231,7 +231,7 @@ type DbConversation = {
   interaction_type?: string;
   ai_status?: string | null;
   ai_handling?: boolean;
-  ai_reply_enabled?: boolean;
+  sales_agent_auto_reply?: boolean;
   auto_reply_count?: number;
   human_takeover_at?: string | null;
   last_auto_reply_at?: string | null;
@@ -264,7 +264,7 @@ function toConversation(r: DbConversation, slaMinutes: number): Conversation {
       | "comment",
     aiStatus: r.ai_status ?? null,
     aiHandling: r.ai_handling ?? false,
-    aiReplyEnabled: r.ai_reply_enabled ?? false,
+    aiReplyEnabled: r.sales_agent_auto_reply ?? false,
     autoReplyCount: r.auto_reply_count ?? 0,
     humanTakeoverAt: r.human_takeover_at ?? null,
     lastAutoReplyAt: r.last_auto_reply_at ?? null,
@@ -324,7 +324,7 @@ function toMessage(r: DbMessage): Message {
 const LEAD_SELECT =
   "id,company_id,name,phone,handle,channel,status,tags,assigned_to,estimated_value,product,next_action_label,next_action_due_at,loss_reason,lost_at,closed_value,closed_at,created_at";
 const CONVERSATION_SELECT =
-  "id,company_id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,ai_reply_enabled,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections";
+  "id,company_id,lead_id,channel,last_message_at,unread,awaiting_reply,interaction_type,ai_status,ai_handling,sales_agent_auto_reply,auto_reply_count,human_takeover_at,last_auto_reply_at,detected_city,detected_state,detected_pool_size,detected_intent,detected_interest,detected_budget,purchase_timing,customer_stage,lead_temperature,lead_score,lead_ready_to_close,detected_objections";
 type InboxLatestMessagesRpc = (
   fn: string,
   args: Record<string, unknown>,

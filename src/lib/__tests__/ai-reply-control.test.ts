@@ -28,3 +28,28 @@ describe("Atendimento 2.0: escopo e autorização", () => {
     expect(parseAiConversationAction({})).toBeNull();
   });
 });
+
+describe("precedência única: chave-mestra > takeover > empresa > conversa", () => {
+  it.each([
+    ["chave-mestra desligada vence modo automático", { masterEnabled: false, mode: "automatic" }, "master_disabled"],
+    ["chave-mestra desligada vence escopo geral", { masterEnabled: false, scope: "geral" }, "master_disabled"],
+    ["takeover vence modo automático", { mode: "automatic", humanTakeoverAt: "2026-10-23T10:00:00Z" }, "human_active"],
+    ["aguardando humano vence escopo geral", { scope: "geral", aiStatus: "aguardando_humano" }, "human_active"],
+    ["silent nunca responde, mesmo com opt-in", { mode: "silent", salesAgentAutoReply: true }, "disabled"],
+    ["assisted exige opt-in da conversa", { mode: "assisted", salesAgentAutoReply: false }, "conversation_not_authorized"],
+    ["escopo teste exige opt-in da conversa", { scope: "teste", salesAgentAutoReply: false }, "conversation_not_authorized"],
+    ["escopo desligado não responde", { scope: "desligado", salesAgentAutoReply: true }, "disabled"],
+  ] as const)("%s", (_label, input, reason) => {
+    expect(isAutomaticReplyAllowed(input)).toEqual({ ok: false, reason });
+  });
+
+  it.each([
+    ["automático da empresa", { mode: "automatic" }],
+    ["assisted com opt-in", { mode: "assisted", salesAgentAutoReply: true }],
+    ["teste com opt-in", { scope: "teste", salesAgentAutoReply: true }],
+    ["geral sem opt-in", { scope: "geral" }],
+    ["chave-mestra ausente (padrão ligado)", { masterEnabled: null, mode: "automatic" }],
+  ] as const)("permite: %s", (_label, input) => {
+    expect(isAutomaticReplyAllowed(input)).toEqual({ ok: true });
+  });
+});

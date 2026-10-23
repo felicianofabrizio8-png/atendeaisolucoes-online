@@ -199,16 +199,19 @@ BEGIN
     INSERT INTO public.leads(id,company_id,name,channel) VALUES ('%s','%s','race','whatsapp');
     INSERT INTO public.conversations(id,company_id,lead_id,channel) VALUES ('%s','%s','%s','whatsapp');
   $sql$, c, i, c, l, c, v, c, l));
-  PERFORM dblink_exec(conn1, $$SELECT set_config('request.jwt.claim.role','service_role',false)$$);
-  PERFORM dblink_exec(conn2, $$SELECT set_config('request.jwt.claim.role','service_role',false)$$);
+  PERFORM dblink_exec(conn1, $q$SET request.jwt.claim.role = 'service_role'$q$);
+  PERFORM dblink_exec(conn2, $q$SET request.jwt.claim.role = 'service_role'$q$);
   PERFORM dblink_send_query(conn1, format($sql$SELECT id::text FROM public.create_whatsapp_send_attempt('%s','%s','%s','%s','race-key','race-fp','{}')$sql$, c, i, v, l));
   PERFORM dblink_send_query(conn2, format($sql$SELECT id::text FROM public.create_whatsapp_send_attempt('%s','%s','%s','%s','race-key','race-fp','{}')$sql$, c, i, v, l));
-  WHILE (dblink_is_busy(conn1) OR dblink_is_busy(conn2)) AND n < 500 LOOP
+  WHILE (dblink_is_busy(conn1) = 1 OR dblink_is_busy(conn2) = 1) AND n < 500 LOOP
     PERFORM pg_sleep(0.01); n := n + 1;
   END LOOP;
-  IF dblink_is_busy(conn1) OR dblink_is_busy(conn2) THEN RAISE EXCEPTION 'concurrency calls timed out'; END IF;
+  IF dblink_is_busy(conn1) = 1 OR dblink_is_busy(conn2) = 1 THEN RAISE EXCEPTION 'concurrency calls timed out'; END IF;
   SELECT id INTO r1 FROM dblink_get_result(conn1) AS x(id uuid);
   SELECT id INTO r2 FROM dblink_get_result(conn2) AS x(id uuid);
+  -- Drena o fim do resultado de cada conexão antes do próximo comando.
+  PERFORM 1 FROM dblink_get_result(conn1) AS x(id uuid);
+  PERFORM 1 FROM dblink_get_result(conn2) AS x(id uuid);
   IF r1 IS NULL OR r1 <> r2 THEN RAISE EXCEPTION 'concurrent idempotent calls returned different ids'; END IF;
   IF (SELECT count(*) FROM public.whatsapp_send_attempts WHERE company_id = c AND idempotency_key = 'race-key') <> 1 THEN
     RAISE EXCEPTION 'concurrent calls created more than one attempt';

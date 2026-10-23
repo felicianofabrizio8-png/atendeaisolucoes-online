@@ -4,9 +4,10 @@ import { ASSISTED_SUGGESTION_CAPABILITIES, TRAINING_SESSION_CAPABILITIES } from 
 
 const rows: Record<string, Record<string, unknown> | null> = {
   companies: { id: "company-1" },
-  conversations: { id: "conversation-1", company_id: "company-1", lead_id: "lead-1", channel: "whatsapp", ai_reply_enabled: true, ai_status: null, human_takeover_at: null },
+  conversations: { id: "conversation-1", company_id: "company-1", lead_id: "lead-1", channel: "whatsapp", sales_agent_auto_reply: true, ai_status: null, human_takeover_at: null },
   leads: { id: "lead-1", company_id: "company-1", channel: "whatsapp", integration_id: "integration-1" },
   integrations: { id: "integration-1" },
+  company_settings: { ai_auto_reply_scope: "teste", ai_auto_reply_enabled: true, sales_agent_master_enabled: true, sales_agent_v2_enabled: false },
 };
 // Integrações WhatsApp ativas da empresa (consulta em lista, sem maybeSingle).
 let activeIntegrations: Array<{ id: string }> = [{ id: "integration-1" }];
@@ -55,10 +56,10 @@ describe("WhatsApp send authorization", () => {
     rows.leads = { ...rows.leads, integration_id: "integration-1" };
   });
   it("campanha do lojista valida o tenant sem depender da ativação da IA", async () => {
-    rows.conversations = { ...rows.conversations, ai_reply_enabled: false };
+    rows.conversations = { ...rows.conversations, sales_agent_auto_reply: false };
     const authorization = await authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "campaign" });
     expect(authorization.source).toBe("campaign");
-    rows.conversations = { ...rows.conversations, ai_reply_enabled: true };
+    rows.conversations = { ...rows.conversations, sales_agent_auto_reply: true };
   });
   it("bloqueia training_session na origem, antes do sink", async () => {
     await expect(authorizeWhatsappSendFromExecutionScope({ kind: "training_session", companyId: "company-1", scopeId: "session-1", capabilities: TRAINING_SESSION_CAPABILITIES }, { leadId: "lead-1", source: "automatic" })).rejects.toThrow("whatsapp_send_scope_not_allowed");
@@ -83,9 +84,14 @@ describe("WhatsApp send authorization", () => {
     rows.conversations = { ...rows.conversations, lead_id: "lead-1" };
   });
   it("recusa automático sem permissão da conversa", async () => {
-    rows.conversations = { ...rows.conversations, ai_reply_enabled: false };
+    rows.conversations = { ...rows.conversations, sales_agent_auto_reply: false };
     await expect(authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "automatic" })).rejects.toThrow("whatsapp_send_not_permitted");
-    rows.conversations = { ...rows.conversations, ai_reply_enabled: true };
+    rows.conversations = { ...rows.conversations, sales_agent_auto_reply: true };
+  });
+  it("recusa automático com a chave-mestra da empresa desligada", async () => {
+    rows.company_settings = { ...rows.company_settings, sales_agent_master_enabled: false };
+    await expect(authorizeWhatsappSend({ companyId: "company-1", conversationId: "conversation-1", leadId: "lead-1", source: "automatic" })).rejects.toThrow("whatsapp_send_not_permitted");
+    rows.company_settings = { ...rows.company_settings, sales_agent_master_enabled: true };
   });
   it("recusa followup durante takeover humano", async () => {
     rows.conversations = { ...rows.conversations, human_takeover_at: new Date().toISOString() };
