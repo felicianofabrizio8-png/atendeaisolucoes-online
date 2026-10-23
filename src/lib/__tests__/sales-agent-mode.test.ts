@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canMutateCommercialState,
   canSalesAgentSend,
   isConversationAutoReply,
   resolveSalesAgentMode,
@@ -27,6 +28,12 @@ describe("sales-agent-mode", () => {
     expect(canSalesAgentSend("automatic")).toBe(true);
     expect(salesAgentModeReason("silent")).toBe("v2_silent");
     expect(salesAgentModeReason("assisted")).toBe("v2_assisted_approval_required");
+  });
+
+  it("mantém o turno assisted sem mutações comerciais até aprovação humana", () => {
+    expect(canMutateCommercialState("assisted")).toBe(false);
+    expect(canMutateCommercialState("automatic")).toBe(true);
+    expect(canMutateCommercialState(null)).toBe(true);
   });
 
   it("integra o contrato de company_settings com o gate de execução", () => {

@@ -74,3 +74,8 @@ export function withConversationAutoReply<T extends SalesAgentModeSettings>(sett
 export function isConversationAutoReply(settings: SalesAgentModeSettings): boolean {
   return settings.sales_agent_v2_mode_source === "conversation" && resolveSalesAgentMode(settings) === "automatic";
 }
+
+/** Background assisted turns are read-only until a human approves a suggestion. */
+export function canMutateCommercialState(mode: SalesAgentMode | null): boolean {
+  return mode !== "assisted";
+}

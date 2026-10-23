@@ -187,3 +187,8 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+/** Read-only variant for presentational components that also work in isolated tests/previews. */
+export function useOptionalAuth() {
+  return useContext(AuthCtx);
+}

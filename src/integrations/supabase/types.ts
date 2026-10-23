@@ -2396,6 +2396,10 @@ export type Database = {
           ai_agent_name: string
           ai_auto_reply_enabled: boolean
           ai_followup_business_days: number[]
+          ai_auto_reply_scope: string
+          consultative_capability_profile: Json | null
+          consultative_sales_enabled: boolean
+          consultative_shadow_enabled: boolean
           ai_followup_business_hours_only: boolean
           ai_followup_daily_limit: number
           ai_followup_delay_jitter_minutes: number
@@ -2456,6 +2460,10 @@ export type Database = {
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
           ai_followup_business_days?: number[]
+          ai_auto_reply_scope?: string
+          consultative_capability_profile?: Json | null
+          consultative_sales_enabled?: boolean
+          consultative_shadow_enabled?: boolean
           ai_followup_business_hours_only?: boolean
           ai_followup_daily_limit?: number
           ai_followup_delay_jitter_minutes?: number
@@ -2516,6 +2524,10 @@ export type Database = {
           ai_agent_name?: string
           ai_auto_reply_enabled?: boolean
           ai_followup_business_days?: number[]
+          ai_auto_reply_scope?: string
+          consultative_capability_profile?: Json | null
+          consultative_sales_enabled?: boolean
+          consultative_shadow_enabled?: boolean
           ai_followup_business_hours_only?: boolean
           ai_followup_daily_limit?: number
           ai_followup_delay_jitter_minutes?: number
@@ -2809,6 +2821,7 @@ export type Database = {
       conversations: {
         Row: {
           ai_handling: boolean
+          ai_reply_enabled: boolean
           ai_status: string | null
           auto_reply_count: number
           awaiting_reply: boolean
@@ -2839,6 +2852,7 @@ export type Database = {
         }
         Insert: {
           ai_handling?: boolean
+          ai_reply_enabled?: boolean
           ai_status?: string | null
           auto_reply_count?: number
           awaiting_reply?: boolean
@@ -2869,6 +2883,7 @@ export type Database = {
         }
         Update: {
           ai_handling?: boolean
+          ai_reply_enabled?: boolean
           ai_status?: string | null
           auto_reply_count?: number
           awaiting_reply?: boolean

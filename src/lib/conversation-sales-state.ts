@@ -23,7 +23,8 @@ export type ConversationCatalogQueryStatus =
   | "no_match"
   | "ambiguous"
   | "empty_catalog"
-  | "query_error";
+  | "query_error"
+  | "not_requested";
 
 export interface LastCatalogQuery {
   status: ConversationCatalogQueryStatus;
@@ -101,6 +102,7 @@ const LAST_CATALOG_QUERY_STATUSES = new Set<ConversationCatalogQueryStatus>([
   "ambiguous",
   "empty_catalog",
   "query_error",
+  "not_requested",
 ]);
 
 function finiteNonNegative(value: unknown): number | undefined {

@@ -78,6 +78,29 @@ describe("auditoria da Vendedora V2", () => {
     );
   });
 
+  it("registra correlation_id sanitizado sem aceitar segredo", () => {
+    const payload = buildSalesAgentAuditPayload({
+      companyId: "company-1",
+      conversationId: "conversation-1",
+      mode: "silent",
+      decision: "skipped",
+      result: "external_fallback",
+      blocked: "timeout",
+      correlationId: "corr-1234",
+      latencyMs: 2500,
+    });
+    expect(payload.correlation_id).toBe("corr-1234");
+    expect(buildSalesAgentAuditPayload({
+      companyId: "company-1",
+      conversationId: "conversation-1",
+      mode: "silent",
+      decision: "skipped",
+      result: "external_fallback",
+      correlationId: "authorization bearer-secret",
+      latencyMs: 1,
+    }).correlation_id).toBe("redacted_correlation");
+  });
+
   it("mascara identificador na saída", () => {
     expect(maskAuditIdentifier("conversation-1234")).toBe("conv…1234");
     expect(maskAuditIdentifier(null)).toBe("-");

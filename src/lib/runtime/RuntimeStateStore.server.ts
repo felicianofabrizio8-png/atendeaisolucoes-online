@@ -225,6 +225,96 @@ export async function tryDedupe(params: {
   }
 }
 
+export type MessageClaim = {
+  claimed: boolean;
+  status: "processing" | "observed" | "sent" | "failed_retryable" | "uncertain";
+  claim_token?: string;
+  attempt_count?: number;
+};
+
+export type MessageClaimFailure = "rpc_error" | "invalid_response";
+export type MessageClaimResult = {
+  claim: MessageClaim | null;
+  failure?: MessageClaimFailure;
+};
+
+export async function claimMessageDetailed(params: {
+  companyId: string;
+  messageId: string;
+  leaseSeconds?: number;
+}): Promise<MessageClaimResult> {
+  try {
+    const { data, error } = await rpc()("runtime_claim_message", {
+      _company_id: params.companyId,
+      _message_id: params.messageId,
+      _lease_seconds: params.leaseSeconds ?? 600,
+    });
+    if (error) return { claim: null, failure: "rpc_error" };
+    if (!data || typeof data !== "object") return { claim: null, failure: "invalid_response" };
+    const row = data as Record<string, unknown>;
+    const status = row.status;
+    if (status !== "processing" && status !== "observed" && status !== "sent" && status !== "failed_retryable" && status !== "uncertain") {
+      return { claim: null, failure: "invalid_response" };
+    }
+    return {
+      claim: {
+        claimed: row.claimed === true,
+        status,
+        ...(typeof row.claim_token === "string" ? { claim_token: row.claim_token } : {}),
+        ...(typeof row.attempt_count === "number" ? { attempt_count: row.attempt_count } : {}),
+      },
+    };
+  } catch {
+    return { claim: null, failure: "rpc_error" };
+  }
+}
+
+export async function claimMessage(params: {
+  companyId: string;
+  messageId: string;
+  leaseSeconds?: number;
+}): Promise<MessageClaim | null> {
+  return (await claimMessageDetailed(params)).claim;
+}
+
+export async function markMessageOutboundStarted(params: {
+  companyId: string;
+  messageId: string;
+  claimToken: string;
+}): Promise<boolean> {
+  try {
+    const { data, error } = await rpc()("runtime_mark_message_outbound_started", {
+      _company_id: params.companyId,
+      _message_id: params.messageId,
+      _claim_token: params.claimToken,
+    });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function finishMessageClaim(params: {
+  companyId: string;
+  messageId: string;
+  claimToken: string;
+  status: "observed" | "sent" | "failed_retryable" | "uncertain";
+  error?: string;
+}): Promise<boolean> {
+  try {
+    const { data, error } = await rpc()("runtime_finish_message_claim", {
+      _company_id: params.companyId,
+      _message_id: params.messageId,
+      _claim_token: params.claimToken,
+      _status: params.status,
+      _error: params.error ?? null,
+    });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Locks distribuídos
 // ---------------------------------------------------------------------------

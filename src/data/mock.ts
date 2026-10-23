@@ -60,6 +60,7 @@ export interface Conversation {
   // Qualificação IA (Fase 2)
   aiStatus?: string | null;
   aiHandling?: boolean;
+  aiReplyEnabled?: boolean;
   autoReplyCount?: number;
   humanTakeoverAt?: string | null;
   lastAutoReplyAt?: string | null;

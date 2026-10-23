@@ -45,6 +45,8 @@ export interface PostGraphInput {
   guardDeps?: GuardDeps;
   /** fetch injetável p/ testes. */
   fetchImpl?: typeof fetch;
+  /** Sinal opcional de cancelamento, preservando o comportamento dos chamadores existentes. */
+  signal?: AbortSignal;
 }
 
 function isRetryable(status: number): boolean {
@@ -63,7 +65,8 @@ export async function postGraph<TRaw = unknown>(
     action: input.action,
     targetUrl: input.url,
     method,
-    payload: input.logicalPayload ?? tryParseBody(typeof input.body === "string" ? input.body : undefined),
+    payload:
+      input.logicalPayload ?? tryParseBody(typeof input.body === "string" ? input.body : undefined),
   };
 
   const decision = await assertOutbound(action, input.guardDeps);
@@ -87,6 +90,7 @@ export async function postGraph<TRaw = unknown>(
       method,
       headers: input.headers,
       body: input.body,
+      ...(input.signal ? { signal: input.signal } : {}),
     });
   } catch (e) {
     return {

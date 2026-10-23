@@ -16,6 +16,7 @@ export type SalesAgentAuditInput = {
   latencyMs: number;
   tokensAvailable?: number | null;
   fallbackReason?: string | null;
+  correlationId?: string | null;
 };
 
 export type SalesAgentAuditPayload = {
@@ -29,6 +30,7 @@ export type SalesAgentAuditPayload = {
   latency_ms: number;
   tokens_available: number | null;
   fallback_reason?: string;
+  correlation_id?: string;
 };
 
 const SAFE_RESULT = /^[a-zA-Z0-9_.:-]{1,120}$/;
@@ -96,6 +98,9 @@ export function buildSalesAgentAuditPayload(input: SalesAgentAuditInput): SalesA
         : safePositiveInteger(input.tokensAvailable),
     ...(input.fallbackReason
       ? { fallback_reason: operationalCode(input.fallbackReason, "redacted_fallback") }
+      : {}),
+    ...(input.correlationId
+      ? { correlation_id: safeCode(input.correlationId, "redacted_correlation") }
       : {}),
   };
 }

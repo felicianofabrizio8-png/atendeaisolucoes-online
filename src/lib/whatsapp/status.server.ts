@@ -82,6 +82,40 @@ export async function processStatusEvents(args: {
 
       const at = toIso(evt.timestamp);
 
+      // Bruna attempts use the same durable, tenant-scoped status contract as
+      // the webhook function. The optional guard keeps this processor usable
+      // by older test adapters and deployments while the additive migration is
+      // being rolled out. RPC errors never prevent reconciliation of the
+      // legacy message/recovery tables.
+      const rpc = (
+        supabaseAdmin as unknown as {
+          rpc?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+        }
+      ).rpc;
+      if (typeof rpc === "function") {
+        try {
+          await rpc.call(supabaseAdmin, "record_whatsapp_send_status", {
+            p_company_id: args.companyId,
+            p_integration_id: args.integrationId,
+            p_provider_message_id: externalId,
+            p_provider_status: incoming,
+            p_status_at: at,
+            p_error_code:
+              incoming === "failed" ? String(evt.errors?.[0]?.code ?? "") || null : null,
+            p_error_message:
+              incoming === "failed"
+                ? String(evt.errors?.[0]?.title ?? evt.errors?.[0]?.message ?? "") || null
+                : null,
+            p_payload: evt,
+          });
+        } catch (error) {
+          console.error(
+            "[wa-status] falha na persistencia do status duravel",
+            sanitizeForLog(String(error)),
+          );
+        }
+      }
+
       // 1) mensagem — sempre escopada por empresa + integração.
       const { data: message } = await supabaseAdmin
         .from("messages")
