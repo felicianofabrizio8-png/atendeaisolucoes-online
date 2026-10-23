@@ -82,6 +82,8 @@ vi.mock("@/lib/outbound/MetaOutbound.server", () => ({
 // ---------- Seed base ----------
 function seedHappy() {
   tableRows.companies = { id: "c1" };
+  // Política explícita da empresa: o comprovante automático não deduz permissão da conversa.
+  tableRows.company_settings = { company_id: "c1", ai_auto_reply_scope: "geral", ai_auto_reply_enabled: true, sales_agent_master_enabled: true, sales_agent_v2_enabled: false };
   tableRows.conversations = {
     id: "conv-1",
     company_id: "c1",
