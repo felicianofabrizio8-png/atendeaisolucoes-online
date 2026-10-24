@@ -7,6 +7,15 @@ export function isSalesAgentShadowEnabled(env: NodeJS.ProcessEnv = process.env):
   return env.SALES_AGENT_OPENAI_SHADOW === "enabled";
 }
 
+/** Shadow do atendimento é opt-in por empresa; a flag global sozinha não basta. */
+export function isSalesAgentShadowEnabledForCompany(
+  companyId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const pilotCompanyId = env.SALES_AGENT_OPENAI_SHADOW_COMPANY_ID?.trim();
+  return Boolean(companyId && pilotCompanyId && isSalesAgentShadowEnabled(env) && pilotCompanyId === companyId);
+}
+
 export interface SalesAgentShadowReport {
   companyId: string;
   ok: boolean;

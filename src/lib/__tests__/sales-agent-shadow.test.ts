@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isSalesAgentShadowEnabled, runSalesAgentShadow } from "@/lib/sales-agent-shadow.server";
+import { isSalesAgentShadowEnabled, isSalesAgentShadowEnabledForCompany, runSalesAgentShadow } from "@/lib/sales-agent-shadow.server";
 import type { AgentDecision, SalesAgentCompletionRequest } from "@/lib/sales-agent-core";
 
 const request = (index: number): SalesAgentCompletionRequest => ({
@@ -16,6 +16,16 @@ describe("shadow mode do fluxo principal da Bruna", () => {
   it("fica desligado por padrão", () => {
     expect(isSalesAgentShadowEnabled({} as NodeJS.ProcessEnv)).toBe(false);
     expect(isSalesAgentShadowEnabled({ SALES_AGENT_OPENAI_SHADOW: "enabled" } as NodeJS.ProcessEnv)).toBe(true);
+  });
+
+  it("exige allowlist de uma empresa além da flag global", () => {
+    const env = {
+      SALES_AGENT_OPENAI_SHADOW: "enabled",
+      SALES_AGENT_OPENAI_SHADOW_COMPANY_ID: "company-pilot",
+    } as NodeJS.ProcessEnv;
+    expect(isSalesAgentShadowEnabledForCompany("company-pilot", env)).toBe(true);
+    expect(isSalesAgentShadowEnabledForCompany("company-other", env)).toBe(false);
+    expect(isSalesAgentShadowEnabledForCompany("company-pilot", { SALES_AGENT_OPENAI_SHADOW: "enabled" } as NodeJS.ProcessEnv)).toBe(false);
   });
 
   it("compara 100 cenários sem executar ferramentas, mídia, memória ou envio", async () => {

@@ -12,7 +12,7 @@ import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContrac
 import { isBrunaWhatsappTextAdapterEnabled } from "@/lib/bruna-whatsapp-feature-flag";
 import { isSalesAgentOpenAiResponsesEnabled } from "./sales-agent-openai-feature-flag";
 import { completeSalesAgentWithOpenAi } from "./sales-agent-openai-adapter.server";
-import { isSalesAgentShadowEnabled, runSalesAgentShadow } from "./sales-agent-shadow.server";
+import { isSalesAgentShadowEnabledForCompany, runSalesAgentShadow } from "./sales-agent-shadow.server";
 import { sendBrunaWhatsappText } from "@/lib/bruna-whatsapp-text-adapter.server";
 import {
   authorizeWhatsappSend,
@@ -1163,7 +1163,7 @@ export async function runAgentTurn(params: {
     focusProductIds,
     consultativeGuidance,
   });
-  if (isSalesAgentShadowEnabled() && shadowRequest) {
+  if (isSalesAgentShadowEnabledForCompany(params.ctx.settings.company_id) && shadowRequest) {
     void runSalesAgentShadow({
       companyId: params.ctx.settings.company_id,
       request: shadowRequest,
