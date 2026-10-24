@@ -70,6 +70,7 @@ export interface AiUsage {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
+  reasoningTokens: number;
 }
 
 export interface ResponsesResult {
@@ -81,6 +82,8 @@ export interface ResponsesResult {
   latencyMs: number;
   attempts: number;
   estimatedCostUsd: number | null;
+  status?: string;
+  incompleteReason?: string | null;
 }
 
 export interface ChatCompatibilityResponse {

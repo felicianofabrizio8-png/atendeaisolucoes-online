@@ -15,6 +15,7 @@ export interface AiUsageSink {
     model: string;
     inputTokens: number;
     outputTokens: number;
+    reasoningTokens: number;
     estimatedCostUsd: number | null;
     latencyMs: number;
   }): Promise<void> | void;
@@ -25,7 +26,14 @@ interface ResponsesPayload {
   model?: unknown;
   output?: unknown;
   output_text?: unknown;
-  usage?: { input_tokens?: unknown; output_tokens?: unknown; input_tokens_details?: { cached_tokens?: unknown } };
+  status?: unknown;
+  incomplete_details?: { reason?: unknown } | null;
+  usage?: {
+    input_tokens?: unknown;
+    output_tokens?: unknown;
+    input_tokens_details?: { cached_tokens?: unknown };
+    output_tokens_details?: { reasoning_tokens?: unknown };
+  };
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -65,19 +73,30 @@ function parseResponse(payload: ResponsesPayload, modelFallback: string, latency
     }
   }
   const usage = payload.usage || {};
+  const outputText = typeof payload.output_text === "string" ? payload.output_text : outputTextParts.join("");
+  if (!outputText.trim() && toolCalls.length === 0) {
+    throw new AiPlatformError(
+      "ai_invalid_response",
+      "OpenAI Responses response completed without text or tool call",
+    );
+  }
   return {
     id: payload.id,
     model: typeof payload.model === "string" ? payload.model : modelFallback,
-    outputText: typeof payload.output_text === "string" ? payload.output_text : outputTextParts.join(""),
+    outputText,
     toolCalls,
     usage: {
       inputTokens: asNumber(usage.input_tokens),
       outputTokens: asNumber(usage.output_tokens),
       cachedInputTokens: asNumber(usage.input_tokens_details?.cached_tokens),
+      reasoningTokens: asNumber(usage.output_tokens_details?.reasoning_tokens),
     },
     latencyMs,
     attempts,
     estimatedCostUsd: cost,
+    status: typeof payload.status === "string" ? payload.status : undefined,
+    incompleteReason:
+      typeof payload.incomplete_details?.reason === "string" ? payload.incomplete_details.reason : null,
   };
 }
 
@@ -138,7 +157,7 @@ export class OpenAiResponsesGateway {
           const inputTokens = asNumber(usage.input_tokens);
           const outputTokens = asNumber(usage.output_tokens);
           const result = parseResponse(payload, model, latencyMs, attempt, estimateCostUsd(model, inputTokens, outputTokens));
-          await this.usageSink?.record({ companyId: request.companyId, capability: request.capability, model: result.model, inputTokens, outputTokens, estimatedCostUsd: result.estimatedCostUsd, latencyMs });
+          await this.usageSink?.record({ companyId: request.companyId, capability: request.capability, model: result.model, inputTokens, outputTokens, reasoningTokens: result.usage.reasoningTokens, estimatedCostUsd: result.estimatedCostUsd, latencyMs });
           return result;
         }
       } catch (error) {

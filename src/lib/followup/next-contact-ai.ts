@@ -39,7 +39,7 @@ export async function suggestNextContactDate(args: {
     if (followupOpenAiEnabled()) {
       const resp = await runFollowupOpenAi({
         companyId: args.companyId,
-        maxTokens: 80,
+        maxTokens: 256,
         tags: { feature: "followup_next_contact", prompt_version: NEXT_CONTACT_PROMPT_VERSION },
         messages: [
           {

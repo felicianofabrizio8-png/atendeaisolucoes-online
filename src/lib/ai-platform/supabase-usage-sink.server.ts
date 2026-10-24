@@ -10,7 +10,7 @@ export function createSupabaseAiUsageSink(writer: SupabaseClient<Database>): AiU
   const health = new HealthCollector(writer);
   return {
     async record(event) {
-      const metadata = { capability: event.capability, model: event.model };
+      const metadata = { capability: event.capability, model: event.model, reasoning_tokens: event.reasoningTokens };
       const usage = [
         { companyId: event.companyId, metric: "llm_calls", value: 1, provider: "openai", metadata },
         { companyId: event.companyId, metric: "llm_tokens_in", value: event.inputTokens, unit: "tokens", provider: "openai", metadata },

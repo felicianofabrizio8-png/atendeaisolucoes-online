@@ -357,3 +357,13 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   a disponibilidade ficam separados por pontuação/espaço adequado.
 - Rehomologação: 15 cenários simulados aprovados; 5 mensagens finais conferidas manualmente;
   testes direcionados 67/67 e TypeScript aprovados. Nenhuma chamada paga ou envio real.
+
+## Correção do retorno vazio OpenAI (2026-10-24)
+
+- Causa comprovada: o modelo `gpt-6-luna` retornou `reasoning` antes de `message/output_text`;
+  com `max_output_tokens=80`, os 80 tokens foram consumidos pelo raciocínio e não houve texto.
+- O gateway passou a extrair o texto de `output[].content[].type=output_text`, expor status,
+  incompletude e tokens de raciocínio, e falhar explicitamente quando não houver texto/tool call.
+- O orçamento mínimo do adaptador de follow-up passou para 256 tokens, sem alterar flags.
+- Mocks: 78 testes aprovados. TypeScript aprovado. Reteste real: 3/3 gerações completas com
+  contexto fictício, custo estimado US$ 0,0001671 e mensagens `chamar_novamente` válidas.

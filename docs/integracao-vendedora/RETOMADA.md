@@ -124,3 +124,14 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Fallbacks de orçamento, objeção, produto, decisão e ausência de contexto agora também são
   perguntas naturais. A disponibilidade permanece separada por espaço após a pergunta.
 - Rehomologação local: 15 cenários válidos; TypeScript sem erros. Flags continuam desligadas.
+
+## Correção do retorno vazio OpenAI (2026-10-24)
+
+- Auditoria real da Responses API: resposta `200`, dois itens em `output` (`reasoning` e
+  `message`), conteúdo `output_text` dentro de `message`; `output_text` no topo não foi
+  fornecido. O teste anterior usava limite 80 e consumia os tokens em raciocínio, sem mensagem.
+- Gateway agora extrai explicitamente `output_text`, registra `status`, motivo de incompletude e
+  `reasoning_tokens`, e rejeita resposta sem texto nem tool call como erro explícito.
+- Follow-up usa orçamento mínimo de 256 tokens; flags permanecem desligadas.
+- Reteste real com três contextos fictícios: 3/3 respostas completas e mensagens finais montadas;
+  custo estimado total US$ 0,0001671. Sem WhatsApp, produção ou deploy.

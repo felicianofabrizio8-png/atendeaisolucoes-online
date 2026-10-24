@@ -32,7 +32,7 @@ export async function runFollowupOpenAi(args: {
     instructions: system,
     input,
     store: false,
-    maxOutputTokens: args.maxTokens,
+    maxOutputTokens: Math.max(args.maxTokens, 256),
     tags: args.tags,
   });
   return { text: result.outputText };

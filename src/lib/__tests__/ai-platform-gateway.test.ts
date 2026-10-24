@@ -26,7 +26,7 @@ describe("OpenAI Responses gateway", () => {
       return response({ id: "resp_test", model: "gpt-6-luna", output: [
         { type: "message", content: [{ type: "output_text", text: "Olá" }] },
         { type: "function_call", call_id: "call_1", name: "lookup", arguments: '{"sku":"1"}' },
-      ], usage: { input_tokens: 10, output_tokens: 4, input_tokens_details: { cached_tokens: 2 } } });
+      ], usage: { input_tokens: 10, output_tokens: 4, input_tokens_details: { cached_tokens: 2 }, output_tokens_details: { reasoning_tokens: 1 } } });
     });
     const sink = { record: vi.fn() };
     const gateway = new OpenAiResponsesGateway(config, { fetchImpl, usageSink: sink });
@@ -44,7 +44,7 @@ describe("OpenAI Responses gateway", () => {
 
   it("retries rate limits and does not retry client errors", async () => {
     const sleep = vi.fn(async () => undefined);
-    const fetchImpl = vi.fn().mockResolvedValueOnce(response({ error: "busy" }, 429)).mockResolvedValueOnce(response({ id: "resp_2", model: "gpt-6-luna", output: [], usage: { input_tokens: 1, output_tokens: 1 } }));
+    const fetchImpl = vi.fn().mockResolvedValueOnce(response({ error: "busy" }, 429)).mockResolvedValueOnce(response({ id: "resp_2", model: "gpt-6-luna", output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }], usage: { input_tokens: 1, output_tokens: 1 } }));
     const gateway = new OpenAiResponsesGateway(config, { fetchImpl, sleep });
     await expect(gateway.run({ companyId: "company-a", capability: "followup", input: "Oi" })).resolves.toMatchObject({ id: "resp_2", attempts: 2 });
     expect(sleep).toHaveBeenCalledTimes(1);
@@ -52,6 +52,21 @@ describe("OpenAI Responses gateway", () => {
     const clientGateway = new OpenAiResponsesGateway(config, { fetchImpl: clientError });
     await expect(clientGateway.run({ companyId: "company-a", capability: "followup", input: "Oi" })).rejects.toMatchObject({ code: "ai_provider_error", retryable: false });
     expect(clientError).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejeita resposta sem texto ou tool call, sem mascarar saída vazia", async () => {
+    const gateway = new OpenAiResponsesGateway(config, {
+      fetchImpl: async () => response({
+        id: "resp_empty",
+        status: "incomplete",
+        output: [{ type: "reasoning", summary: [] }],
+        incomplete_details: { reason: "max_output_tokens" },
+        usage: { input_tokens: 10, output_tokens: 80, output_tokens_details: { reasoning_tokens: 80 } },
+      }),
+    });
+    await expect(gateway.run({ companyId: "company-a", capability: "followup", input: "Oi", maxOutputTokens: 80 })).rejects.toMatchObject({
+      code: "ai_invalid_response",
+    });
   });
 
   it("requires tenant context and validates HTTPS configuration", async () => {
