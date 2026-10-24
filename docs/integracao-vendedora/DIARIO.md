@@ -232,6 +232,5 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   alterados pela integração e já existem no `HEAD`; nenhuma regressão foi corrigida.
 - Docker: CLI encontrada, daemon indisponível por permissão no pipe
   `dockerDesktopLinuxEngine`. As migrations não foram executadas e nenhum container foi tocado.
-- Commit local ainda pendente: o worktree Git compartilhado recusou criar
-  `.git/worktrees/atendeai-vendedora-unificada/index.lock`. Não houve push, deploy, migration
-  remota ou envio real.
+- Commit local: `6352bd61` (`feat(vendedora): integrar adaptador WhatsApp atrás de flag`). Não
+  houve push, deploy, migration remota ou envio real.

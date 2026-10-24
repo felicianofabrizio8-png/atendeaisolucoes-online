@@ -13,7 +13,7 @@ Worktree: `C:\Users\AMD\atendeai-vendedora-unificada` — branch local `integrac
 | 3 Controles unificados da IA | concluída | `3da01459`, `12dda31d` |
 | 4 Motor | concluída | `62edb9e8` |
 | 5 Política de desconto | concluída | ver `git log -1` |
-| 6 Adaptador de envio da Bruna/lease atrás de chave desligada | concluída localmente | pendente commit local |
+| 6 Adaptador de envio da Bruna/lease atrás de chave desligada | concluída | `6352bd61` |
 | 7 Testes completos, build, migrations, relatório final | parcialmente concluída | Docker indisponível para migrations |
 
 Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIARIO.md`.
@@ -49,5 +49,4 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   o teste passa isoladamente com os mesmos erros não tratados do ambiente.
 - Docker CLI existe, mas o daemon recusou acesso ao pipe `dockerDesktopLinuxEngine`; migrations
   não foram executadas nem houve alteração de configuração ou containers.
-- Pendências: criar o commit local quando o índice Git compartilhado permitir e executar a
-  validação SQL no banco descartável existente.
+- Pendência: executar a validação SQL no banco descartável existente.
