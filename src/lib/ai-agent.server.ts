@@ -10,6 +10,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
 import { isBrunaWhatsappTextAdapterEnabled } from "@/lib/bruna-whatsapp-feature-flag";
+import { isSalesAgentOpenAiResponsesEnabled } from "./sales-agent-openai-feature-flag";
+import { completeSalesAgentWithOpenAi } from "./sales-agent-openai-adapter.server";
 import { sendBrunaWhatsappText } from "@/lib/bruna-whatsapp-text-adapter.server";
 import {
   authorizeWhatsappSend,
@@ -1107,6 +1109,14 @@ export async function runAgentTurn(params: {
     const timeoutMs = internalLlmTimeoutMs(params.deadlineAt);
     if (timeoutMs === null) return { ok: false, reason: "gateway_budget_exhausted" };
     try {
+      if (isSalesAgentOpenAiResponsesEnabled()) {
+        const openAiCompletion = await completeSalesAgentWithOpenAi({
+          companyId: params.ctx.settings.company_id,
+          request: payload,
+        });
+        if (openAiCompletion.ok) return openAiCompletion;
+        console.warn("[SALES_AGENT_OPENAI_FALLBACK]", { reason: openAiCompletion.reason });
+      }
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), timeoutMs);
       res = await fetch(endpoint, {
