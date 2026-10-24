@@ -331,3 +331,18 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   aprovado, com avisos já conhecidos do bundler/Nitro.
 - Pendência: disponibilizar cópia local/autorizada do template real por empresa e então migrar a
   geração de `{{1}}` atrás de flag, com avaliação comparativa sem envio.
+
+## Etapa 2B — personalização do template (2026-10-24)
+
+- Implementado `buildResumeTemplateVariable` para preencher apenas `{{1}}`; prefixo, sufixo,
+  quebras de linha e texto aprovado de `chamar_novamente` não são reescritos.
+- A composição é determinística: primeiro nome + `tudo bem?` + trecho contextual da IA +
+  `Estou à disposição para o que precisarem`. A IA recebe o contexto já existente e é instruída
+  a devolver somente o trecho, sem nome, saudação, disponibilidade, preço ou promessa inventada.
+- Validação rejeita placeholders, valores monetários, quebras de linha, pontuação duplicada,
+  corpos incompatíveis e mensagens acima de 1.024 caracteres. Sem contexto, usa fallback sem IA.
+- O dispatch só usa essa composição quando `FOLLOWUP_OPENAI_ADAPTER=enabled` e
+  `FOLLOWUP_RESUME_META_VALIDATED=enabled`; por padrão segue o caminho anterior. A confirmação
+  autorizada de compatibilidade Meta ainda é pendência, portanto a personalização está desativada.
+- Testes cobrem decisão familiar, orçamento pendente, vendedor/promessa via contexto, fallback e
+  rejeições de fatos inválidos. Direcionados: 75 aprovados; TypeScript e build aprovados.

@@ -105,3 +105,14 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - A geração de `{{1}}` não foi alterada: o template Meta real não estava disponível no banco local;
   somente fixtures sintéticas existem nos testes. O contrato atual permanece intacto.
 - Não houve envio real, migration, produção, push ou deploy.
+
+## Etapa 2B — personalização do template (2026-10-24)
+
+- Implementado montador determinístico de `{{1}}` preservando byte a byte o corpo aprovado:
+  nome, saudação/pergunta contextual validada e frase fixa de disponibilidade.
+- A OpenAI recebe o contexto existente e deve retornar somente o trecho contextual; fatos,
+  valores, placeholders, quebras de linha, tamanho e pontuação são validados localmente.
+- Fallback usa o contexto determinístico de orçamento/produto/objeção e evita chamada quando não
+  há contexto.
+- O caminho personalizado exige simultaneamente `FOLLOWUP_OPENAI_ADAPTER=enabled` e
+  `FOLLOWUP_RESUME_META_VALIDATED=enabled`; ambas permanecem desligadas. Nenhum envio foi feito.

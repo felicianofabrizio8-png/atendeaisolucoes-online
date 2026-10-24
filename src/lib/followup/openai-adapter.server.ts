@@ -6,6 +6,13 @@ export function followupOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boo
   return env.FOLLOWUP_OPENAI_ADAPTER === "enabled";
 }
 
+/** Requer opt-in OpenAI e confirmação autorizada da compatibilidade Meta. */
+export function followupResumePersonalizationEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return followupOpenAiEnabled(env) && env.FOLLOWUP_RESUME_META_VALIDATED === "enabled";
+}
+
 export async function runFollowupOpenAi(args: {
   companyId: string;
   messages: ChatMessage[];

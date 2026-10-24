@@ -128,6 +128,53 @@ export function fallbackResumePhrase(ctx: ResumeContext): {
 }
 
 export const RESUME_PROMPT_VERSION = "2026-09-29.a";
+export const RESUME_AVAILABILITY_PHRASE = "Estou à disposição para o que precisarem";
+
+function firstName(name: string | null): string {
+  return clean(name)?.split(/\s+/)[0] ?? "";
+}
+
+/** Monta somente {{1}}; prefixo, sufixo e corpo aprovado permanecem intactos. */
+export function buildResumeTemplateVariable(args: {
+  leadName: string | null;
+  contextualPhrase: string;
+  templateBody: string;
+}): string | null {
+  const marker = "{{1}}";
+  const at = args.templateBody.indexOf(marker);
+  if (at < 0 || args.templateBody.indexOf(marker, at + marker.length) >= 0) return null;
+  const suffix = args.templateBody.slice(at + marker.length);
+  const context = normalizeResumePhrase(args.contextualPhrase, { leadName: args.leadName });
+  if (!context) return null;
+  const greeting = firstName(args.leadName)
+    ? `${firstName(args.leadName)}, tudo bem?`
+    : "Tudo bem?";
+  const value = `${greeting} ${context} ${RESUME_AVAILABILITY_PHRASE}`
+    .replace(/[\t\r\n]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const fitted = suffix.trim() ? value.replace(/[\s,.;:!?…]+$/u, "").trim() : value;
+  const rendered = `${args.templateBody.slice(0, at)}${fitted}${suffix}`;
+  if (!rendered.trim() || /\{\{|\}\}|[\t\r\n]/.test(fitted)) return null;
+  if (/[,.!?]{2,}/.test(rendered) || rendered.length > 1024) return null;
+  return fitted;
+}
+
+/** A IA recebe o contexto, mas devolve exclusivamente o trecho contextual. */
+export function buildResumeContextPrompt(
+  ctx: ResumeContext,
+  templateBody: string,
+): Array<{ role: "system" | "user"; content: string }> {
+  const [system, user] = buildResumePrompt(ctx, templateBody);
+  return [
+    {
+      role: "system",
+      content: `${system.content}
+Retorne SOMENTE o trecho contextual. Não escreva nome, saudação, disponibilidade, valores ou o texto fixo do template.`,
+    },
+    user,
+  ];
+}
 
 /** Mensagens para a IA gerar a frase. `templateBody` é o corpo com {{1}}. */
 export function buildResumePrompt(

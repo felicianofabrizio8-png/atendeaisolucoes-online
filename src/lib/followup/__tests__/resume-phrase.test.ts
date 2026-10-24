@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildResumeTemplateVariable,
   buildResumePrompt,
   fallbackResumePhrase,
   GENERIC_RESUME_PHRASE,
@@ -136,5 +137,50 @@ describe("hasResumeContext / buildResumePrompt", () => {
     expect(user.content).toContain("ar split 12000");
     expect(user.content).toContain("Cliente: Qual o prazo?");
     expect(`${system.content}\n${user.content}`).not.toMatch(/Mariana|Souza/);
+  });
+});
+
+describe("montador determinístico do {{1}}", () => {
+  const body =
+    "Olá {{1}}, tudo bem?\n\nPor favor, confirme o recebimento desta mensagem respondendo por aqui.\n\nObrigado.";
+
+  it("personaliza conversa aguardando decisão familiar sem alterar o corpo", () => {
+    const variable = buildResumeTemplateVariable({
+      leadName: "Maria Oliveira",
+      contextualPhrase: "Conseguiu conversar com seu esposo?",
+      templateBody: body,
+    });
+    expect(variable).toBe(
+      "Maria, tudo bem? Conseguiu conversar com seu esposo? Estou à disposição para o que precisarem",
+    );
+    expect(body.replace("{{1}}", variable!)).toContain(
+      "Olá Maria, tudo bem? Conseguiu conversar com seu esposo? Estou à disposição para o que precisarem, tudo bem?",
+    );
+  });
+
+  it("aceita contexto de orçamento pendente e rejeita valor inventável", () => {
+    const pending = buildResumeTemplateVariable({
+      leadName: "Carlos Silva",
+      contextualPhrase:
+        "estou passando para retomar nossa conversa sobre o orçamento da Piscina 8x4 e saber se ficou alguma dúvida",
+      templateBody: body,
+    });
+    expect(pending).toContain("Carlos, tudo bem?");
+    expect(
+      buildResumeTemplateVariable({
+        leadName: "Carlos Silva",
+        contextualPhrase: "O orçamento de R$ 1.200 continua válido?",
+        templateBody: body,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejeita placeholder, quebra de linha e template sem {{1}}", () => {
+    expect(
+      buildResumeTemplateVariable({ leadName: "Ana", contextualPhrase: "Podemos retomar?", templateBody: "Olá Ana" }),
+    ).toBeNull();
+    expect(
+      buildResumeTemplateVariable({ leadName: "Ana", contextualPhrase: "Podemos {{1}}?", templateBody: body }),
+    ).toBeNull();
   });
 });

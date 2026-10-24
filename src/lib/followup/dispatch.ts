@@ -29,7 +29,12 @@ import {
   type WhatsappSendAuthorization,
 } from "@/lib/whatsapp-send-authorization.server";
 
-import { generateResumePhrase, loadResumeContext } from "./resume";
+import {
+  generatePersonalizedResumeVariable,
+  generateResumePhrase,
+  loadResumeContext,
+  resumePersonalizationEnabled,
+} from "./resume";
 import type { FollowupRule } from "./types";
 
 export type FollowupTrigger =
@@ -354,11 +359,17 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
       return result;
     }
     const context = await loadResumeContext(input.companyId, input.conversationId, input.leadId);
-    const phrase = await generateResumePhrase({
-      companyId: input.companyId,
-      context,
-      templateBody: bodyText(template),
-    });
+    const phrase = resumePersonalizationEnabled()
+      ? await generatePersonalizedResumeVariable({
+          companyId: input.companyId,
+          context,
+          templateBody: bodyText(template),
+        })
+      : await generateResumePhrase({
+          companyId: input.companyId,
+          context,
+          templateBody: bodyText(template),
+        });
     resumePhrase = phrase;
     if (phrase.aiError) console.warn("[followup] retomada sem IA:", phrase.aiError);
     if (firstVar) variables = { [firstVar]: phrase.text };

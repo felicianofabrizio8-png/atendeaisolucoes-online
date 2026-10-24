@@ -7,7 +7,9 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
+  buildResumeContextPrompt,
   buildResumePrompt,
+  buildResumeTemplateVariable,
   fallbackResumePhrase,
   hasResumeContext,
   normalizeResumePhrase,
@@ -16,6 +18,10 @@ import {
   type ResumePhraseSource,
 } from "./resume-phrase";
 import { fitVar1ToTemplate } from "@/lib/wa-template-contract";
+import {
+  followupResumePersonalizationEnabled,
+  runFollowupOpenAi,
+} from "./openai-adapter.server";
 
 const RESUME_MODEL = "google/gemini-2.5-flash";
 
@@ -88,6 +94,53 @@ export interface ResumePhrase {
   source: ResumePhraseSource;
   /** Motivo de não ter usado a IA, quando for o caso. */
   aiError?: string;
+}
+
+export function resumePersonalizationEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return followupResumePersonalizationEnabled(env);
+}
+
+export async function generatePersonalizedResumeVariable(args: {
+  companyId: string;
+  context: ResumeContext;
+  templateBody: string;
+}): Promise<ResumePhrase> {
+  const fallback = fallbackResumePhrase(args.context);
+  const fallbackText = buildResumeTemplateVariable({
+    leadName: args.context.leadName,
+    contextualPhrase: fallback.text,
+    templateBody: args.templateBody,
+  });
+  if (!followupResumePersonalizationEnabled()) {
+    return fallbackText ? { ...fallback, text: fallbackText } : fallback;
+  }
+  if (!hasResumeContext(args.context)) {
+    return fallbackText ? { ...fallback, text: fallbackText } : fallback;
+  }
+  try {
+    const response = await runFollowupOpenAi({
+      companyId: args.companyId,
+      maxTokens: 120,
+      tags: { feature: "followup_resume_phrase", prompt_version: RESUME_PROMPT_VERSION },
+      messages: buildResumeContextPrompt(args.context, args.templateBody),
+    });
+    const contextual = normalizeResumePhrase(response.text, args.context);
+    const text = contextual
+      ? buildResumeTemplateVariable({
+          leadName: args.context.leadName,
+          contextualPhrase: contextual,
+          templateBody: args.templateBody,
+        })
+      : null;
+    if (text) return { text, source: "ai" };
+    return fallbackText
+      ? { text: fallbackText, source: fallback.source, aiError: "personalização reprovada na validação" }
+      : { ...fallback, aiError: "personalização reprovada na validação" };
+  } catch (error) {
+    return fallbackText
+      ? { text: fallbackText, source: fallback.source, aiError: error instanceof Error ? error.message : String(error) }
+      : { ...fallback, aiError: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /**
