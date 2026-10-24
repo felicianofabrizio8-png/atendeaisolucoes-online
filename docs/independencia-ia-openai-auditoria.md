@@ -1,5 +1,25 @@
 # Etapa 2 — auditoria e plano de migração de IA para OpenAI
 
+## Entrega incremental 2A — camada central sem migração de consumidores
+
+Foi implementada a fundação server-only em `src/lib/ai-platform/`, sem alterar os consumidores
+existentes. Ela usa o endpoint Responses API, traduz mensagens/tools do contrato Chat Completions,
+normaliza texto e function calls, aplica modelos por capability, timeout e retry seguro, e valida a
+resposta antes de devolvê-la. A API Responses organiza o retorno em itens como `message` e
+`function_call`, e `store` pode ser desligado explicitamente; por isso o padrão desta camada é
+`store=false` e o adaptador preserva o contrato atual. [Documentação oficial da Responses API](https://developers.openai.com/api/docs/guides/migrate-to-responses)
+
+O gateway exige `companyId`, usa somente configuração server-side e oferece sink Supabase para
+contabilizar chamadas, tokens, latência e custo estimado por empresa, sem registrar prompts,
+respostas, PII ou chaves. Nenhuma capability está conectada à camada nesta entrega; Bruna,
+vendedora antiga, vendedora externa e serviços Lovable seguem inalterados.
+
+Rollback: não há migration, alteração de secret ou mudança de estado. Antes de cada migração futura,
+ativar a camada apenas atrás de flag por capability, executar golden fixtures comparativas, manter
+fallback para o adaptador anterior e desligar a flag para reverter. A ordem recomendada começa por
+follow-up/recovery, depois Coach/marketing/narrativa, e deixa Bruna, mídia e áudio para depois de
+validar ferramentas, catálogo, preços, imagens, orçamento e handoff.
+
 ## Escopo e estado
 
 Auditoria somente de leitura realizada na branch `codex/independencia-build-lovable`.

@@ -71,3 +71,25 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Etapa 2 — auditoria e plano OpenAI registrados em `docs/independencia-ia-openai-auditoria.md`.
   Não houve implementação. O inventário separa Bruna já OpenAI-compatible dos consumidores ainda
   dependentes de `ai.gateway.lovable.dev`, com migração por capability e critérios de eval.
+
+## Etapa 2A — camada central OpenAI (2026-10-23)
+
+- Implementada camada server-only em `src/lib/ai-platform/`, baseada na Responses API e com
+  adaptador Chat Completions compatível. Nenhum consumidor existente foi migrado.
+- Prontos para adoção controlada: configuração por capability, `store=false` por padrão, timeout,
+  retries com backoff somente para rede/timeout/429/5xx, validação de resposta, tradução de tools,
+  erro tipado, estimativa de custo e sink opcional Supabase com métricas sem prompts/PII.
+- O `companyId` é obrigatório no gateway e não é aceito da configuração do cliente; a chave fica
+  exclusivamente no processo server. A Bruna, a vendedora antiga, a vendedora externa e os
+  serviços Lovable continuam inalterados.
+- Testes simulados cobrem texto, function calls, compatibilidade, isolamento de tenant, HTTPS,
+  store desligado e retry. Não houve chamada real à OpenAI, alteração de secrets, banco ou deploy.
+- Validação final desta entrega: testes direcionados 4/4; TypeScript sem erros; build independente
+  concluído. A suíte completa teve 3.695 testes aprovados, 9 ignorados, 2 falhas sob carga em
+  `quote-wizard` e 5 erros `matchMedia` não tratados em marketing/jsdom; isoladamente os 7 testes
+  passaram, mantendo os erros preexistentes já documentados. O `quote-wizard` também passou isolado.
+- Rollback: não há migration nem mudança de runtime nesta entrega; basta não instanciar o gateway
+  nos consumidores. Cada migração futura deve usar flag por capability, comparar golden fixtures e
+  reverter para o adaptador anterior sem alterar estados de atendimento.
+- Próximo passo seguro: migrar uma capability auxiliar de baixo risco (follow-up/recovery) atrás
+  de flag, com avaliação comparativa; não migrar Bruna antes de concluir essa validação.

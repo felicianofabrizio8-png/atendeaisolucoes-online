@@ -293,3 +293,24 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - Plano: adaptador server-only OpenAI, schemas versionados, isolamento por empresa, ledger de uso,
   quotas, custo por tenant, migração por capability e golden set comparativo. Nenhuma migração foi
   implementada nesta etapa.
+
+## Etapa 2A — implementação incremental da camada OpenAI (2026-10-23)
+
+- Criada `src/lib/ai-platform/` com cliente server-only nativo para Responses API, configuração
+  de modelos por capability, timeout, retry seguro, erros tipados, parsing de `message` e
+  `function_call`, estimativa de custo e adaptadores Chat Completions compatíveis.
+- Criado sink opcional para `BillingCollector`/`HealthCollector`, registrando empresa, capability,
+  modelo, tokens, latência e custo em micro-USD; nenhum prompt, resposta, dado pessoal ou chave é
+  gravado. `store` permanece desligado por padrão.
+- Nenhum consumidor foi alterado: Bruna, vendedora antiga/externa, follow-ups, Coach, marketing,
+  mídia, áudio, memória, Meta e infraestrutura continuam no caminho atual. Não houve migration,
+  alteração de secrets, chamada real à OpenAI, push ou deploy.
+- Validação da nova camada: 4 testes simulados passaram; TypeScript passou. Teste inicial revelou
+  retry sem backoff para 429 e foi corrigido antes da validação final.
+- Validação final: suíte completa com 3.695 testes passando, 9 ignorados, 2 falhas de timeout/estado
+  somente sob carga em `quote-wizard` e 5 erros não tratados `matchMedia` no marketing/jsdom. Os
+  7 testes de marketing passaram isoladamente (os 5 erros continuam preexistentes) e o `quote-wizard`
+  passou isoladamente. Build independente passou com os avisos já conhecidos do bundler.
+- Rollback desta entrega é por ausência de adoção: remover a instanciação/flag do consumidor futuro
+  mantém o adaptador atual. Próxima migração deve ser uma capability auxiliar, com fixtures
+  comparativas, limite por empresa, observabilidade e fallback explícito.
