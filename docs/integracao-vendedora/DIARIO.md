@@ -280,3 +280,16 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   ignoradas pelo bundler e opção Rollup `platform` desconhecida; presentes no build e sem falha.
 - Pendência: os usos restantes de gateway/serviços Lovable em IA auxiliar, preview auth, CORS e
   documentação não foram tratados nesta etapa. Nenhum deploy, push, migration ou produção foi tocado.
+## Etapa 2 — auditoria e planejamento de IA OpenAI (2026-10-23)
+
+- Auditoria somente de leitura concluída; nenhum código, banco, credencial, serviço ou ambiente
+  remoto foi alterado.
+- Inventário completo registrado em `docs/independencia-ia-openai-auditoria.md`, incluindo Bruna,
+  vendedora externa, Coach, follow-ups, memória, treinamento, Lume, marketing, recuperação,
+  narrativa executiva, visão, áudio, transcrição e geração de imagens.
+- Constatação principal: Bruna/Lume/Coach suggest já usam endpoints OpenAI-compatible em parte do
+  sistema; follow-ups, Coach Interpreter/Teach Mode, marketing, recovery, narrativa, mídia e várias
+  rotas `api.ai.*` ainda usam diretamente o gateway Lovable.
+- Plano: adaptador server-only OpenAI, schemas versionados, isolamento por empresa, ledger de uso,
+  quotas, custo por tenant, migração por capability e golden set comparativo. Nenhuma migração foi
+  implementada nesta etapa.

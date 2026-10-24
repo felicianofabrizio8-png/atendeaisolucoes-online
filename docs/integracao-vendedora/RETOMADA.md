@@ -68,3 +68,6 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Não foram alterados gateways de IA, infraestrutura, autenticação, APIs, banco ou produção.
 - Próximo bloqueio para hospedagem independente: substituir os usos restantes de gateway/serviços
   Lovable fora do escopo desta Etapa 1 e validar o runtime escolhido em homologação.
+- Etapa 2 — auditoria e plano OpenAI registrados em `docs/independencia-ia-openai-auditoria.md`.
+  Não houve implementação. O inventário separa Bruna já OpenAI-compatible dos consumidores ainda
+  dependentes de `ai.gateway.lovable.dev`, com migração por capability e critérios de eval.
