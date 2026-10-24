@@ -9,9 +9,15 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 
 const GATEWAY_CHAT = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const GATEWAY_IMG = "https://ai.gateway.lovable.dev/v1/images/generations";
+
+export function creativeGeneratorOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CREATIVE_GENERATOR_OPENAI_RESPONSES === "enabled";
+}
 
 type Mode = "analyze" | "generate-texts" | "generate-image" | "score";
 
@@ -91,6 +97,31 @@ function aiError(status: number) {
   return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
 }
 
+function isQuestion(text: string): boolean {
+  return text.trim().endsWith("?");
+}
+
+/** Bloqueia apenas alegações sem fato fornecido; perguntas comerciais continuam válidas. */
+export function findUnsupportedCommercialClaim(
+  text: string,
+  config: GenerateTextsReq["config"],
+): string | null {
+  const normalized = text.toLocaleLowerCase("pt-BR");
+  const hasPriceFact = Boolean(config.price?.trim() || config.promo_price?.trim());
+  const hasPromoFact = Boolean(config.promo_price?.trim());
+  const hasPricePattern = /r\$\s?\d|\bpor\s+(apenas|só|somente)\b|\bpreço\s+(especial|exclusivo|imperdível)\b/i.test(normalized);
+  const hasStockClaim = /\b(disponível|disponiveis|disponíveis|em estoque|últimas? unidades?|ultimas? unidades?|pronta entrega)\b/i.test(normalized);
+  const hasPromoClaim = /\b(desconto|promoção|promocao|oferta)\b/i.test(normalized);
+  if (!hasPriceFact && hasPricePattern && !isQuestion(normalized)) return "preço não autorizado";
+  if (!hasPromoFact && hasPromoClaim && !isQuestion(normalized)) return "promoção/desconto não autorizado";
+  if (hasStockClaim && !isQuestion(normalized)) return "estoque/disponibilidade não autorizado";
+  if (hasPriceFact && /r\$\s?\d/i.test(normalized)) {
+    const authorized = [config.price, config.promo_price].filter(Boolean).map((value) => String(value).toLocaleLowerCase("pt-BR"));
+    if (!authorized.some((value) => normalized.includes(value))) return "valor diferente do autorizado";
+  }
+  return null;
+}
+
 export const Route = createFileRoute("/api/ai/creative-generator")({
   server: {
     handlers: {
@@ -101,11 +132,23 @@ export const Route = createFileRoute("/api/ai/creative-generator")({
         const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(accessToken);
         if (userErr || !userRes.user) return Response.json({ error: "sessão inválida" }, { status: 401 });
 
-        const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
-
         let body: ReqBody;
         try { body = await request.json(); } catch { return Response.json({ error: "JSON inválido" }, { status: 400 }); }
+
+        const apiKey = process.env.LOVABLE_API_KEY;
+        const openAiTextPath = body.mode === "generate-texts" && creativeGeneratorOpenAiEnabled();
+        if (!apiKey && !openAiTextPath) return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
+
+        let companyId: string | null = null;
+        if (openAiTextPath) {
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("company_id")
+            .eq("id", userRes.user.id)
+            .maybeSingle();
+          companyId = (profile as { company_id?: string } | null)?.company_id ?? null;
+          if (!companyId) return Response.json({ error: "perfil sem empresa" }, { status: 403 });
+        }
 
         // ============ ANALYZE ============
         if (body.mode === "analyze") {
@@ -245,17 +288,7 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
             }],
             tool_choice: { type: "function", function: { name: "generate_variants" } },
           };
-          const res = await fetch(GATEWAY_CHAT, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          if (!res.ok) return aiError(res.status);
-          const data = await res.json();
-          const tc = data?.choices?.[0]?.message?.tool_calls?.[0];
-          if (!tc?.function?.arguments) return Response.json({ error: "Resposta sem dados" }, { status: 502 });
-          try {
-            const parsed = JSON.parse(tc.function.arguments);
+          const validateParsed = (parsed: Record<string, any>) => {
             // Trim headlines
             for (const k of ["emotion", "offer", "urgency"] as const) {
               const v = parsed[k];
@@ -264,9 +297,66 @@ Regras: se houver título/subtítulo/descrição/CTA sugeridos pelo usuário, re
                 if (h.length > 40) { const cut = h.slice(0, 38); const sp = cut.lastIndexOf(" "); h = (sp > 18 ? cut.slice(0, sp) : cut).trim(); }
                 v.headline = h;
               }
+              for (const field of ["headline", "primary_text", "description"] as const) {
+                const claim = typeof v?.[field] === "string" ? findUnsupportedCommercialClaim(v[field], cfg) : null;
+                if (claim) throw new Error(`unsupported_commercial_claim:${claim}`);
+              }
             }
-            return Response.json(parsed);
-          } catch { return Response.json({ error: "Parse falhou" }, { status: 502 }); }
+            return parsed;
+          };
+
+          if (openAiTextPath) {
+            try {
+              const result = await new OpenAiResponsesGateway(undefined, {
+                usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+              }).run({
+                companyId: companyId!,
+                capability: "marketing",
+                instructions: `${sys}\nNão afirme estoque, preço, promoção, desconto ou disponibilidade sem dado autorizado. Perguntas legítimas sobre esses temas são permitidas. Use somente os valores fornecidos.`,
+                input: userContent === userTxt
+                  ? userTxt
+                  : [{ role: "user", content: [
+                      { type: "input_text", text: userTxt },
+                      { type: "input_image", image_url: body.image_url },
+                    ] }],
+                tools: [{
+                  type: "function",
+                  name: "generate_variants",
+                  description: "Gera 3 variantes de copy.",
+                  parameters: payload.tools[0].function.parameters,
+                  strict: false,
+                }],
+                toolChoice: { type: "function", name: "generate_variants" },
+                store: false,
+                maxOutputTokens: 1400,
+                tags: { feature: "creative_generator_text", prompt_version: "2026-10-24.a" },
+              });
+              const call = result.toolCalls.find((item) => item.name === "generate_variants");
+              if (!call?.arguments) throw new Error("structured_output_missing");
+              return Response.json(validateParsed(JSON.parse(call.arguments)));
+            } catch (error) {
+              console.warn("[creative-generator] OpenAI text path failed; using Lovable fallback", error instanceof Error ? error.message : "provider_error");
+              if (!apiKey) return Response.json({ error: "Texto não pôde ser validado com segurança" }, { status: 502 });
+            }
+          }
+
+          try {
+            const res = await fetch(GATEWAY_CHAT, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!res.ok) return aiError(res.status);
+            const data = await res.json();
+            const tc = data?.choices?.[0]?.message?.tool_calls?.[0];
+            if (!tc?.function?.arguments) return Response.json({ error: "Resposta sem dados" }, { status: 502 });
+            return Response.json(validateParsed(JSON.parse(tc.function.arguments)));
+          } catch (error) {
+            if (error instanceof Error && error.message.startsWith("unsupported_commercial_claim:")) {
+              return Response.json({ error: "A resposta contém afirmação comercial não comprovada" }, { status: 422 });
+            }
+            return Response.json({ error: "Parse falhou" }, { status: 502 });
+          }
         }
 
         // ============ GENERATE-IMAGE ============
