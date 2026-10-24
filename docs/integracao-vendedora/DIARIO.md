@@ -394,3 +394,17 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   Suíte final: 154/154 testes;
   TypeScript e build aprovados.
 - Flags de produção continuam desligadas; não houve envio real, push, deploy ou alteração remota.
+
+## Auditoria de carteiras para follow-up — 2026-10-24
+
+- Encontrado somente `billing_usage_events`: medição append-only de tokens/chamadas/mensagens,
+  sem saldo financeiro. O `credits_exhausted` existente é erro do provedor em fluxo específico,
+  não carteira do Atende Aí.
+- Não existem reservas, débitos idempotentes, estornos ou saldo Meta/WhatsApp por empresa; não foi
+  seguro implementar bloqueio ou cobrança sem inventar uma fonte de saldo.
+- Plano mínimo: `company_wallets`, `wallet_ledger` e `wallet_reservations`, com unicidade de
+  idempotency key, RPCs transacionais reserve/commit/release, tabela de preços versionada,
+  isolamento RLS e proteção server-only. Débito só após sucesso; falha libera/estorna reserva.
+- Manual humano permanece fora do bloqueio automático por padrão; essa política precisa ser
+  aprovada antes da implementação. Nenhuma alteração de código, banco ou serviço foi feita.
+- Testes de regressão dos três modos: 154/154 aprovados.

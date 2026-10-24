@@ -155,6 +155,20 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   continuam impedidos. Gates diário/horário permanecem ativos; saldo de créditos ainda não é
   uma regra implementada no motor e permanece pendente.
 - 154 testes passaram; TypeScript e build passaram. Nenhuma flag foi ativada nem houve envio real.
+
+## Carteiras financeiras — auditoria e plano (2026-10-24)
+
+- O projeto possui apenas `billing_usage_events`, append-only, para métricas de uso por empresa.
+  Não há carteira, saldo, reserva, débito, estorno ou controle financeiro Meta/WhatsApp reutilizável.
+- Nenhum saldo foi inventado e nenhum bloqueio de créditos foi adicionado aos três modos.
+- Plano mínimo antes da integração: carteira por empresa; ledger com chave idempotente; reservas
+  transacionais com expiração; débito no sucesso; estorno em falha; RLS/service-role; e tabela de
+  preços versionada para IA e Meta. As RPCs devem ser atômicas e auditáveis.
+- Dependências de produto ainda necessárias: preços/currency oficiais, política para envios manuais
+  quando o saldo acaba, fonte de cobrança Meta e integração de recarga. Atendimento humano deve
+  permanecer independente do bloqueio automático.
+- Etapa não implementada: sem migration, cobrança, alteração dos modos, envio real ou commit de
+  código.
 - A trava impede duplicidade entre motores, sem chamada OpenAI para a verificação rotineira. Opt-out,
   autorização, takeover humano, limites, templates e idempotência existentes permanecem ativos.
 - Nenhuma migration ou alteração remota foi necessária; flags continuam desligadas.
