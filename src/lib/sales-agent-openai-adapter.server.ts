@@ -4,6 +4,12 @@ import { AiPlatformError } from "@/lib/ai-platform/types";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { SalesAgentCompletionRequest, SalesAgentCompletionResponse } from "./sales-agent-core";
 
+function resolveOpenAiSalesAgentModel(requestedModel: string): string | undefined {
+  const configured = process.env.AI_MODEL_SALES_AGENT?.trim() || process.env.OPENAI_MODEL?.trim();
+  if (configured) return configured;
+  return requestedModel.startsWith("gpt-") ? requestedModel : undefined;
+}
+
 export async function completeSalesAgentWithOpenAi(params: {
   companyId: string;
   request: SalesAgentCompletionRequest;
@@ -16,7 +22,7 @@ export async function completeSalesAgentWithOpenAi(params: {
     const result = await gateway.runChatCompatibility({
       companyId: params.companyId,
       capability: "sales_agent",
-      model: params.request.model,
+      model: resolveOpenAiSalesAgentModel(params.request.model),
       messages: params.request.messages,
       tools: params.request.tools as Array<{
         type: "function";

@@ -12,6 +12,7 @@ import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContrac
 import { isBrunaWhatsappTextAdapterEnabled } from "@/lib/bruna-whatsapp-feature-flag";
 import { isSalesAgentOpenAiResponsesEnabled } from "./sales-agent-openai-feature-flag";
 import { completeSalesAgentWithOpenAi } from "./sales-agent-openai-adapter.server";
+import { isSalesAgentShadowEnabled, runSalesAgentShadow } from "./sales-agent-shadow.server";
 import { sendBrunaWhatsappText } from "@/lib/bruna-whatsapp-text-adapter.server";
 import {
   authorizeWhatsappSend,
@@ -52,6 +53,7 @@ import {
   type SalesAgentCatalogSearch,
   type AgentDecision,
   type AgentSettings,
+  type SalesAgentCompletionRequest,
 } from "./sales-agent-core";
 import {
   loadRelevantSalesAgentQuickReplies,
@@ -1102,7 +1104,9 @@ export async function runAgentTurn(params: {
     if (deferred) return deferred;
   }
 
+  let shadowRequest: SalesAgentCompletionRequest | null = null;
   const core = new SalesAgentCore(async (payload) => {
+    shadowRequest = payload;
     let res: Response;
     // Só o que resta do tick (menos a margem e o pós-decisão). Sem tempo útil, não chama o provedor:
     // a falha segue o caminho seguro existente (política cadastrada ou handoff).
@@ -1159,6 +1163,17 @@ export async function runAgentTurn(params: {
     focusProductIds,
     consultativeGuidance,
   });
+  if (isSalesAgentShadowEnabled() && shadowRequest) {
+    void runSalesAgentShadow({
+      companyId: params.ctx.settings.company_id,
+      request: shadowRequest,
+      currentDecision: modelDecision,
+    }).then((report) => {
+      console.info("[SALES_AGENT_OPENAI_SHADOW]", report);
+    }).catch(() => {
+      console.warn("[SALES_AGENT_OPENAI_SHADOW_FAILED]");
+    });
+  }
   // A memória consultiva pode recomendar humano (objeção não autorizada): preservado.
   const guardedDecision: AgentDecision = consultativeGuidance?.handoffRecommended && modelDecision.kind === "reply"
     ? {

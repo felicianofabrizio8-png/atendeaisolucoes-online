@@ -379,9 +379,15 @@ export interface SalesAgentCompletionRequest {
 }
 
 export interface SalesAgentCompletionResponse {
+  model?: string;
   choices?: Array<{
     message?: { tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> };
   }>;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export type SalesAgentCompletion = (
