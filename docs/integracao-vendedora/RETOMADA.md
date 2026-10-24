@@ -219,14 +219,14 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 
 ## Configuração operacional proposta do piloto shadow (2026-10-24)
 
-- Valores compatíveis com o guard: orçamento mensal de US$1 = `1000000` micro-USD; `20` chamadas/hora; `50` chamadas/dia. A configuração somente fica válida quando `SALES_AGENT_OPENAI_SHADOW_RESERVATION_USD_MICRO` também for definido e não exceder `1000000`.
-- O valor da reserva por chamada permanece bloqueado até fixar um limite máximo de tokens/saída do request. Sem esse teto, não há como provar que uma única chamada não ultrapassará a reserva; reconciliar depois não desfaz custo já incorrido.
-- O guard atual aceita um único limiar de custo (`SALES_AGENT_OPENAI_SHADOW_ALERT_COST_USD_MICRO`), não três percentuais simultâneos. Para US$1, os limiares desejados seriam `500000`, `800000` e `1000000`; 50% pode ser configurado no guard, enquanto 80%/100% exigem alerting externo ou evolução posterior do código.
+- Valores compatíveis com o guard: orçamento mensal de US$1 = `1000000` micro-USD; `20` chamadas/hora; `50` chamadas/dia. A reserva agora é calculada automaticamente pelo pior caso de tokens e preço validado do modelo.
+- `SALES_AGENT_OPENAI_SHADOW_MAX_INPUT_TOKENS` e `SALES_AGENT_OPENAI_SHADOW_MAX_OUTPUT_TOKENS` são obrigatórios; o segundo é propagado como `max_tokens` para o gateway. Modelo sem preço validado, input acima do limite ou custo máximo acima do orçamento bloqueiam antes da chamada.
+- Alertas de orçamento suportam simultaneamente `50,80,100` por `SALES_AGENT_OPENAI_SHADOW_ALERT_COST_THRESHOLDS_PERCENT`; cada limiar é reivindicado uma única vez por empresa/período por RPC idempotente.
 
 ### Procedimento futuro, sem executar agora
 
 1. Validar autorização da empresa, consentimento para contexto real, catálogo/políticas, tratamento LGPD, teto de custo e acesso aos logs.
 2. Aplicar a migration somente no banco autorizado, após backup/plano de recuperação. Simulação local usada: `Get-Content -Raw .\supabase\migrations\20261024133000_sales_agent_shadow_controls.sql | docker exec -i supabase_db_vendedora-unificada-validacao psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f -`; para o piloto real, usar o pipeline oficial de migrations, nunca este container.
-3. Configurar no ambiente server-only, sem commitar valores: `SALES_AGENT_OPENAI_SHADOW_GUARD=enabled`, `SALES_AGENT_OPENAI_SHADOW=enabled`, `SALES_AGENT_OPENAI_SHADOW_COMPANY_ID=<UUID_AUTORIZADO>`, `SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO=1000000`, `SALES_AGENT_OPENAI_SHADOW_RESERVATION_USD_MICRO=<TETO_POR_CHAMADA_VALIDADO>`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR=20`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY=50` e o limiar de alerta aprovado.
+3. Configurar no ambiente server-only, sem commitar valores: `SALES_AGENT_OPENAI_SHADOW_GUARD=enabled`, `SALES_AGENT_OPENAI_SHADOW=enabled`, `SALES_AGENT_OPENAI_SHADOW_COMPANY_ID=<UUID_AUTORIZADO>`, `SALES_AGENT_OPENAI_SHADOW_MODEL=gpt-6-luna`, `SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO=1000000`, `SALES_AGENT_OPENAI_SHADOW_MAX_INPUT_TOKENS=<LIMITE_VALIDADO>`, `SALES_AGENT_OPENAI_SHADOW_MAX_OUTPUT_TOKENS=<LIMITE_VALIDADO>`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR=20`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY=50` e `SALES_AGENT_OPENAI_SHADOW_ALERT_COST_THRESHOLDS_PERCENT=50,80,100`.
 4. Manter `SALES_AGENT_OPENAI_RESPONSES` e qualquer envio Meta desligados; executar somente shadow e confirmar que apenas o `company_id` autorizado aparece nos relatórios.
 5. Rollback imediato: remover `SALES_AGENT_OPENAI_SHADOW_COMPANY_ID` ou definir `SALES_AGENT_OPENAI_SHADOW_GUARD=disabled`; não apagar tabelas nem executar migration destrutiva durante o piloto.

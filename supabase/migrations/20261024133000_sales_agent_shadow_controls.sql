@@ -32,13 +32,27 @@ CREATE TABLE IF NOT EXISTS public.sales_agent_shadow_budget_reservations (
     ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS public.sales_agent_shadow_alert_claims (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  period_start TIMESTAMPTZ NOT NULL,
+  alert_kind TEXT NOT NULL,
+  threshold_percent INTEGER NOT NULL CHECK (threshold_percent > 0 AND threshold_percent <= 100),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (company_id, period_start, alert_kind, threshold_percent)
+);
+
 ALTER TABLE public.sales_agent_shadow_budget_periods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_agent_shadow_budget_reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sales_agent_shadow_alert_claims ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "shadow budget admin read" ON public.sales_agent_shadow_budget_periods
   FOR SELECT TO authenticated
   USING (public.has_role(auth.uid(), company_id, 'admin'::app_role));
 CREATE POLICY "shadow reservation admin read" ON public.sales_agent_shadow_budget_reservations
+  FOR SELECT TO authenticated
+  USING (public.has_role(auth.uid(), company_id, 'admin'::app_role));
+CREATE POLICY "shadow alert admin read" ON public.sales_agent_shadow_alert_claims
   FOR SELECT TO authenticated
   USING (public.has_role(auth.uid(), company_id, 'admin'::app_role));
 
@@ -94,13 +108,16 @@ CREATE OR REPLACE FUNCTION public.sales_agent_shadow_budget_reconcile(
   p_commit BOOLEAN
 ) RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE reservation_row public.sales_agent_shadow_budget_reservations%ROWTYPE;
+DECLARE period_row public.sales_agent_shadow_budget_periods%ROWTYPE;
 DECLARE final_actual BIGINT := GREATEST(COALESCE(p_actual_microusd, 0), 0);
 BEGIN
   SELECT * INTO reservation_row FROM public.sales_agent_shadow_budget_reservations
     WHERE id = p_reservation_id AND company_id = p_company_id FOR UPDATE;
   IF reservation_row.id IS NULL THEN RETURN jsonb_build_object('ok', false, 'code', 'reservation_not_found'); END IF;
+  SELECT * INTO period_row FROM public.sales_agent_shadow_budget_periods
+    WHERE company_id = p_company_id AND period_start = reservation_row.period_start FOR UPDATE;
   IF reservation_row.status <> 'reserved' THEN
-    RETURN jsonb_build_object('ok', true, 'duplicate', true, 'status', reservation_row.status, 'actual_microusd', reservation_row.actual_microusd);
+    RETURN jsonb_build_object('ok', true, 'duplicate', true, 'status', reservation_row.status, 'actual_microusd', reservation_row.actual_microusd, 'consumed_microusd', period_row.consumed_microusd, 'budget_microusd', period_row.budget_microusd);
   END IF;
   IF p_commit AND final_actual > reservation_row.reserved_microusd THEN
     UPDATE public.sales_agent_shadow_budget_reservations SET status = 'released', updated_at = now() WHERE id = reservation_row.id;
@@ -119,8 +136,28 @@ BEGIN
     UPDATE public.sales_agent_shadow_budget_periods SET reserved_microusd = reserved_microusd - reservation_row.reserved_microusd, updated_at = now()
       WHERE company_id = p_company_id AND period_start = reservation_row.period_start;
   END IF;
-  RETURN jsonb_build_object('ok', true, 'duplicate', false, 'status', CASE WHEN p_commit THEN 'committed' ELSE 'released' END, 'actual_microusd', final_actual);
+  SELECT * INTO period_row FROM public.sales_agent_shadow_budget_periods
+    WHERE company_id = p_company_id AND period_start = reservation_row.period_start;
+  RETURN jsonb_build_object('ok', true, 'duplicate', false, 'status', CASE WHEN p_commit THEN 'committed' ELSE 'released' END, 'actual_microusd', final_actual, 'consumed_microusd', period_row.consumed_microusd, 'budget_microusd', period_row.budget_microusd);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.sales_agent_shadow_budget_reconcile(UUID, UUID, BIGINT, BOOLEAN) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sales_agent_shadow_budget_reconcile(UUID, UUID, BIGINT, BOOLEAN) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.sales_agent_shadow_alert_claim(
+  p_company_id UUID,
+  p_period_start TIMESTAMPTZ,
+  p_alert_kind TEXT,
+  p_threshold_percent INTEGER
+) RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE claimed_id UUID;
+BEGIN
+  INSERT INTO public.sales_agent_shadow_alert_claims(company_id, period_start, alert_kind, threshold_percent)
+  VALUES (p_company_id, p_period_start, p_alert_kind, p_threshold_percent)
+  ON CONFLICT (company_id, period_start, alert_kind, threshold_percent) DO NOTHING
+  RETURNING id INTO claimed_id;
+  RETURN jsonb_build_object('ok', true, 'claimed', claimed_id IS NOT NULL);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sales_agent_shadow_alert_claim(UUID, TIMESTAMPTZ, TEXT, INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sales_agent_shadow_alert_claim(UUID, TIMESTAMPTZ, TEXT, INTEGER) TO service_role;

@@ -6,10 +6,10 @@ import type { SalesAgentShadowReport } from "../sales-agent-shadow.server";
 const request = { model: "gpt-6-luna", messages: [{ role: "system", content: "fixture" }, { role: "user", content: "fixture" }], tools: [], tool_choice: "auto" } as SalesAgentCompletionRequest;
 const decision = { kind: "reply", message: "fixture" } as AgentDecision;
 const report = (overrides: Partial<SalesAgentShadowReport> = {}): SalesAgentShadowReport => ({ companyId: "company-a", ok: true, latencyMs: 100, inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0.00001, openAiKind: "reply", currentKind: "reply", openAiNextAction: null, currentNextAction: null, kindMatch: true, nextActionMatch: true, memoryMatch: true, safetyRisk: false, fallback: false, ...overrides });
-const env = { SALES_AGENT_OPENAI_SHADOW_GUARD: "enabled", SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO: "100", SALES_AGENT_OPENAI_SHADOW_RESERVATION_USD_MICRO: "20", SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR: "2", SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY: "3" } as NodeJS.ProcessEnv;
+const env = { SALES_AGENT_OPENAI_SHADOW_GUARD: "enabled", SALES_AGENT_OPENAI_SHADOW_MODEL: "gpt-6-luna", SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO: "100", SALES_AGENT_OPENAI_SHADOW_MAX_INPUT_TOKENS: "100", SALES_AGENT_OPENAI_SHADOW_MAX_OUTPUT_TOKENS: "100", SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR: "2", SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY: "3", SALES_AGENT_OPENAI_SHADOW_ALERT_COST_THRESHOLDS_PERCENT: "50,80,100" } as NodeJS.ProcessEnv;
 
 function dependencies() {
-  const budget = { reserve: vi.fn().mockResolvedValue({ reservationId: "r1", duplicate: false }), reconcile: vi.fn().mockResolvedValue(undefined) };
+  const budget = { reserve: vi.fn().mockResolvedValue({ reservationId: "r1", duplicate: false }), reconcile: vi.fn().mockResolvedValue({ consumedMicroUsd: 10, budgetMicroUsd: 100 }), claimAlert: vi.fn().mockResolvedValue(false) };
   const rate = { increment: vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(1) };
   return { budget, rate };
 }
@@ -26,7 +26,20 @@ describe("controles obrigatórios do shadow OpenAI", () => {
     const result = await runSalesAgentShadowWithControls({ companyId: "company-a", request, currentDecision: decision, execute, env, budgetStore: deps.budget, rateLimits: deps.rate });
     expect(result.executed).toBe(true);
     expect(deps.budget.reserve).toHaveBeenCalledBefore(execute);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-6-luna", max_tokens: 100 }));
     expect(deps.budget.reconcile).toHaveBeenCalledWith({ companyId: "company-a", reservationId: "r1", actualMicroUsd: 10, commit: true });
+  });
+
+  it("calcula a reserva pelo pior caso e deduplica os alertas de 50/80/100%", async () => {
+    const deps = dependencies();
+    deps.budget.reconcile.mockResolvedValue({ consumedMicroUsd: 50, budgetMicroUsd: 100 });
+    deps.budget.claimAlert.mockResolvedValue(true);
+    const alerts: Array<{ kind: string; threshold?: number }> = [];
+    const result = await runSalesAgentShadowWithControls({ companyId: "company-a", request, currentDecision: decision, execute: vi.fn().mockResolvedValue(report()), env, budgetStore: deps.budget, rateLimits: deps.rate, alert: (event) => alerts.push(event) });
+    expect(result.executed).toBe(true);
+    expect(resolveShadowControlConfig(env).reservationMicroUsd).toBe(60);
+    expect(deps.budget.claimAlert).toHaveBeenCalledTimes(1);
+    expect(alerts).toContainEqual({ companyId: "company-a", kind: "budget_percent", threshold: 50, value: 50 });
   });
 
   it("impede duplicidade sem nova chamada nem novo rate limit", async () => {
@@ -48,7 +61,8 @@ describe("controles obrigatórios do shadow OpenAI", () => {
         await Promise.resolve();
         return { reservationId: "r1", duplicate: false };
       }),
-      reconcile: vi.fn().mockResolvedValue(undefined),
+      reconcile: vi.fn().mockResolvedValue({ consumedMicroUsd: 10, budgetMicroUsd: 100 }),
+      claimAlert: vi.fn().mockResolvedValue(false),
     };
     const rate = { increment: vi.fn().mockResolvedValue(1) };
     const execute = vi.fn().mockResolvedValue(report());

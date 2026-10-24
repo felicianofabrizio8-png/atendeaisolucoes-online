@@ -372,6 +372,7 @@ export interface SalesAgentSessionCorrection {
 
 export interface SalesAgentCompletionRequest {
   model: string;
+  max_tokens?: number;
   reasoning_effort?: "none";
   messages: Array<{ role: "system" | "user"; content: string }>;
   tools: Array<Record<string, unknown>>;

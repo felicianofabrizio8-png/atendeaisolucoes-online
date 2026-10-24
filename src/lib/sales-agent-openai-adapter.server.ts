@@ -13,6 +13,7 @@ function resolveOpenAiSalesAgentModel(requestedModel: string): string | undefine
 export async function completeSalesAgentWithOpenAi(params: {
   companyId: string;
   request: SalesAgentCompletionRequest;
+  modelOverride?: string;
   gateway?: Pick<OpenAiResponsesGateway, "runChatCompatibility">;
 }): Promise<{ ok: true; data: SalesAgentCompletionResponse } | { ok: false; reason: string }> {
   try {
@@ -22,13 +23,14 @@ export async function completeSalesAgentWithOpenAi(params: {
     const result = await gateway.runChatCompatibility({
       companyId: params.companyId,
       capability: "sales_agent",
-      model: resolveOpenAiSalesAgentModel(params.request.model),
+      model: params.modelOverride ?? resolveOpenAiSalesAgentModel(params.request.model),
       messages: params.request.messages,
       tools: params.request.tools as Array<{
         type: "function";
         function: { name: string; description?: string; parameters?: Record<string, unknown> };
       }>,
       toolChoice: "auto",
+      maxTokens: params.request.max_tokens,
     });
     return { ok: true, data: result };
   } catch (error) {

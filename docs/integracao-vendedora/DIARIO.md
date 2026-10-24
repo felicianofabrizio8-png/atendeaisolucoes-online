@@ -456,6 +456,6 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 ## Configuração operacional proposta do piloto shadow — 2026-10-24
 
 - A sugestão foi convertida para as unidades do guard: `SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO=1000000`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR=20` e `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY=50`. O guard aceita esses limites e continua desligado sem `SALES_AGENT_OPENAI_SHADOW_GUARD=enabled`.
-- Não foi definido um valor fictício para `SALES_AGENT_OPENAI_SHADOW_RESERVATION_USD_MICRO`: o request de compatibilidade ainda não fixa `max_tokens`, portanto um teto por chamada não pode ser comprovado. Esse é bloqueio obrigatório para segurança financeira estrita.
-- O código tem um limiar único de custo, não uma lista 50/80/100. Em US$1, os valores equivalem a 500.000/800.000/1.000.000 micro-USD; somente um pode ser ligado no guard atual. Alertas em três faixas dependem de monitor externo ou alteração futura.
+- A reserva deixou de ser configurável manualmente: é calculada pelo pior caso `max_input_tokens * preço_entrada + max_output_tokens * preço_saída`, com preço validado do modelo. O request rejeita modelo não precificado, input acima do limite e output acima de `max_tokens` antes da chamada.
+- `SALES_AGENT_OPENAI_SHADOW_ALERT_COST_THRESHOLDS_PERCENT=50,80,100` é suportado com claims idempotentes por empresa/período; cada faixa gera no máximo um alerta.
 - Procedimento documentado em `RETOMADA.md`: validar consentimento/LGPD, aplicar migration no ambiente autorizado, configurar somente secrets server-only, manter Responses/envios desligados, verificar isolamento e desligar flag/allowlist para rollback.

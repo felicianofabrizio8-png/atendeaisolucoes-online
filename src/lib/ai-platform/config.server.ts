@@ -70,11 +70,22 @@ export function resolveAiPlatformConfig(
   };
 }
 
-const MODEL_PRICES: Record<string, { input: number; output: number }> = {
+export const MODEL_PRICES: Record<string, { input: number; output: number }> = {
   "gpt-6.1-sol": { input: 2, output: 10 },
   "gpt-6-luna": { input: 0.1, output: 0.5 },
   "gpt-6-astra": { input: 10, output: 50 },
 };
+
+export function getModelPrice(model: string): { input: number; output: number } | null {
+  return MODEL_PRICES[model] ?? null;
+}
+
+/** Worst-case cost in micro-USD for bounded input/output token counts. */
+export function estimateWorstCaseCostMicroUsd(model: string, inputTokens: number, outputTokens: number): number | null {
+  const price = getModelPrice(model);
+  if (!price || !Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(outputTokens) || inputTokens < 0 || outputTokens < 0) return null;
+  return Math.ceil(inputTokens * price.input + outputTokens * price.output);
+}
 
 export function estimateCostUsd(
   model: string,

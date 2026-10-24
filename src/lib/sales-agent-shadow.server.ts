@@ -88,10 +88,11 @@ export async function runSalesAgentShadow(params: {
   companyId: string;
   request: SalesAgentCompletionRequest;
   currentDecision: AgentDecision;
+  modelOverride?: string;
   gateway?: Pick<OpenAiResponsesGateway, "runChatCompatibility">;
 }): Promise<SalesAgentShadowReport> {
   const startedAt = Date.now();
-  const result = await completeSalesAgentWithOpenAi({ companyId: params.companyId, request: params.request, gateway: params.gateway });
+  const result = await completeSalesAgentWithOpenAi({ companyId: params.companyId, request: params.request, modelOverride: params.modelOverride, gateway: params.gateway });
   if (!result.ok) {
     return {
       companyId: params.companyId,
