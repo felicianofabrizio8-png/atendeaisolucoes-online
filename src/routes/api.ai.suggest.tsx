@@ -1,8 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
+const LOVABLE_MODEL = "google/gemini-2.5-flash";
+const OPENAI_MAX_OUTPUT_TOKENS = 512;
+
+export function suggestOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SUGGEST_OPENAI_RESPONSES === "enabled";
+}
 
 interface IncomingMessage {
   role: "lead" | "agent" | "system";
@@ -62,7 +69,7 @@ export const Route = createFileRoute("/api/ai/suggest")({
         const companyId = profile.company_id;
 
         const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) {
+        if (!suggestOpenAiEnabled() && !apiKey) {
           return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
         }
 
@@ -179,7 +186,7 @@ Conversa:
 ${transcript}`;
 
         const payload = {
-          model: MODEL,
+          model: LOVABLE_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -209,58 +216,105 @@ ${transcript}`;
           tool_choice: { type: "function", function: { name: "atende_ai_suggestion" } },
         };
 
-        let aiRes: Response;
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 20000);
-          aiRes = await fetch(GATEWAY_URL, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-        } catch (e) {
-          console.error("[AI_SUGGEST_NETWORK_FAIL]", e);
-          return Response.json(
-            {
-              error: "Não foi possível consultar a IA. Recomendamos resposta humana neste momento.",
-              fallbackMessage: "✋ Atendimento humano recomendado.",
-            },
-            { status: 502 },
-          );
-        }
-
-        if (!aiRes.ok) {
-          if (aiRes.status === 429) {
-            return Response.json(
-              { error: "IA com muitas requisições. Tente novamente em alguns segundos." },
-              { status: 429 },
-            );
-          }
-          if (aiRes.status === 402) {
-            return Response.json(
-              { error: "Créditos da IA esgotados. Adicione créditos em Configurações > Workspace > Uso." },
-              { status: 402 },
-            );
-          }
-          const t = await aiRes.text();
-          console.error("[AI_SUGGEST_GATEWAY_ERR]", aiRes.status, t);
-          return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
-        }
-
-        const data = await aiRes.json();
-        const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall?.function?.arguments) {
-          return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
-        }
-
         let parsed: AISuggestionResponse;
-        try {
-          parsed = JSON.parse(toolCall.function.arguments);
-        } catch (e) {
-          console.error("[AI_SUGGEST_PARSE_ERR]", e);
-          return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+        let model = LOVABLE_MODEL;
+        const humanFallback = () => Response.json(
+          {
+            error: "Não foi possível consultar a IA. Recomendamos resposta humana neste momento.",
+            fallbackMessage: "✋ Atendimento humano recomendado.",
+          },
+          { status: 502 },
+        );
+        if (suggestOpenAiEnabled()) {
+          try {
+            const result = await new OpenAiResponsesGateway(undefined, {
+              usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+            }).run({
+              companyId,
+              capability: "copilot",
+              instructions: systemPrompt,
+              input: `${userPrompt}\n\nUse a ferramenta atende_ai_suggestion. Não invente dados comerciais.`,
+              tools: [{
+                type: "function",
+                name: "atende_ai_suggestion",
+                description: "Devolve análise e sugestão de resposta para revisão humana.",
+                parameters: payload.tools[0].function.parameters,
+                strict: false,
+              }],
+              toolChoice: { type: "function", name: "atende_ai_suggestion" },
+              store: false,
+              maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+              tags: { feature: "ai_suggest", prompt_version: "2026-10-24.a" },
+            });
+            const call = result.toolCalls.find((item) => item.name === "atende_ai_suggestion");
+            if (!call?.arguments) throw new Error("structured_output_missing");
+            parsed = JSON.parse(call.arguments) as AISuggestionResponse;
+            model = result.model;
+          } catch (error) {
+            console.warn(
+              "[AI_SUGGEST_OPENAI_FAIL] usando fallback Lovable",
+              error instanceof Error ? error.message : "provider_error",
+            );
+            if (!apiKey) return humanFallback();
+            let aiRes: Response;
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 20000);
+              aiRes = await fetch(GATEWAY_URL, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+              });
+              clearTimeout(timeoutId);
+            } catch (e) {
+              console.error("[AI_SUGGEST_NETWORK_FAIL]", e);
+              return humanFallback();
+            }
+            if (!aiRes.ok) {
+              if (aiRes.status === 429) return Response.json({ error: "IA com muitas requisições. Tente novamente em alguns segundos." }, { status: 429 });
+              if (aiRes.status === 402) return Response.json({ error: "Créditos da IA esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+              console.error("[AI_SUGGEST_GATEWAY_ERR]", aiRes.status);
+              return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
+            }
+            const data = await aiRes.json();
+            const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+            if (!toolCall?.function?.arguments) return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+            try { parsed = JSON.parse(toolCall.function.arguments) as AISuggestionResponse; } catch (e) {
+              console.error("[AI_SUGGEST_PARSE_ERR]", e);
+              return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+            }
+          }
+        } else {
+          if (!apiKey) return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
+          let aiRes: Response;
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
+            aiRes = await fetch(GATEWAY_URL, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+          } catch (e) {
+            console.error("[AI_SUGGEST_NETWORK_FAIL]", e);
+            return humanFallback();
+          }
+          if (!aiRes.ok) {
+            if (aiRes.status === 429) return Response.json({ error: "IA com muitas requisições. Tente novamente em alguns segundos." }, { status: 429 });
+            if (aiRes.status === 402) return Response.json({ error: "Créditos da IA esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+            console.error("[AI_SUGGEST_GATEWAY_ERR]", aiRes.status);
+            return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
+          }
+          const data = await aiRes.json();
+          const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+          if (!toolCall?.function?.arguments) return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+          try { parsed = JSON.parse(toolCall.function.arguments) as AISuggestionResponse; } catch (e) {
+            console.error("[AI_SUGGEST_PARSE_ERR]", e);
+            return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+          }
         }
 
         // --- log + contador ---
@@ -271,7 +325,7 @@ ${transcript}`;
             user_id: userId,
             conversation_id: body.conversationId ?? null,
             lead_id: body.leadId ?? null,
-            model: MODEL,
+            model,
             generated_text: parsed.suggestedReply ?? "",
             classification: parsed.classification ?? null,
             low_confidence: !!parsed.lowConfidence,
