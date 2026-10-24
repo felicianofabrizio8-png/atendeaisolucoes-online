@@ -21,7 +21,12 @@ import {
 import type { FollowupSettings } from "./types";
 
 export type CycleReason = "quote_no_reply" | "visit_no_return" | "hot_lead_idle" | "lead_silent";
-export type ScheduleSource = "client_deadline" | "ai_suggestion" | "policy" | "manual";
+export type ScheduleSource =
+  | "client_deadline"
+  | "agent_promise"
+  | "ai_suggestion"
+  | "policy"
+  | "manual";
 
 /** Orçamento/visita sem resposta valem por no máximo isto. */
 export const REFERENCE_MAX_AGE_DAYS = 30;
@@ -202,6 +207,17 @@ export function hasTemporalHint(text: string): boolean {
   );
 }
 
+/** Só trata prazo do atendente como compromisso quando há linguagem explícita de retorno. */
+export function parseAgentPromiseDeadline(
+  text: string,
+  writtenAt: Date,
+  timeZone: string,
+): { date: Date; evidence: string } | null {
+  const normalized = norm(text);
+  if (!/\b(te chamo|vou te chamar|te retorno|retorno|retornar|falo com voce|falo contigo|vamos falar|posso te chamar)\b/.test(normalized)) return null;
+  return parseClientDeadline(text, writtenAt, timeZone);
+}
+
 /**
  * Valida uma sugestão de data (IA). Aceita só se: a evidência aparece de
  * verdade numa mensagem do cliente, a data é real e está entre hoje e o
@@ -249,7 +265,7 @@ export interface NextContactInput {
   jitterMinutes: number;
   seed: string;
   /** Só vale para a 1ª tentativa do ciclo. */
-  deadline?: { date: Date; source: "client_deadline" | "ai_suggestion" } | null;
+  deadline?: { date: Date; source: "client_deadline" | "agent_promise" | "ai_suggestion" } | null;
 }
 
 export function computeNextFollowupAt(input: NextContactInput): {

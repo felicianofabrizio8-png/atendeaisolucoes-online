@@ -16,6 +16,7 @@ import {
   computeNextFollowupAt,
   hasTemporalHint,
   maxAttemptsFor,
+  parseAgentPromiseDeadline,
   parseClientDeadline,
   type CycleReason,
   type ScheduleSource,
@@ -86,7 +87,7 @@ async function resolveDeadline(
   companyId: string,
   c: Candidate,
   ctx: CycleContext,
-): Promise<{ date: Date; source: "client_deadline" | "ai_suggestion"; evidence?: string } | null> {
+): Promise<{ date: Date; source: "client_deadline" | "agent_promise" | "ai_suggestion"; evidence?: string } | null> {
   const since = new Date(Date.parse(c.referenceAt) - 7 * 24 * 3600_000).toISOString();
   const { data } = await supabaseAdmin
     .from("messages")
@@ -103,9 +104,16 @@ async function resolveDeadline(
     .map((m) => ({ role: m.role, text: m.text as string, at: m.at }));
 
   for (const m of msgs) {
-    if (m.role !== "lead") continue;
-    const hit = parseClientDeadline(m.text, new Date(m.at), ctx.calendar.timeZone);
-    if (hit) return { date: hit.date, source: "client_deadline", evidence: hit.evidence };
+    if (m.role === "lead") {
+      const hit = parseClientDeadline(m.text, new Date(m.at), ctx.calendar.timeZone);
+      if (hit) return { date: hit.date, source: "client_deadline", evidence: hit.evidence };
+    }
+  }
+  for (const m of msgs) {
+    if (m.role === "agent") {
+      const hit = parseAgentPromiseDeadline(m.text, new Date(m.at), ctx.calendar.timeZone);
+      if (hit) return { date: hit.date, source: "agent_promise", evidence: hit.evidence };
+    }
   }
   if (!msgs.some((m) => m.role === "lead" && hasTemporalHint(m.text))) return null;
   const ai = await suggestNextContactDate({

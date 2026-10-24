@@ -10,6 +10,7 @@ import {
   computeNextFollowupAt,
   delayHoursFor,
   maxAttemptsFor,
+  parseAgentPromiseDeadline,
   parseClientDeadline,
   validateSuggestedDate,
 } from "../next-contact";
@@ -93,6 +94,20 @@ describe("prazo explícito do cliente", () => {
     expect(parseClientDeadline("a segunda opção é melhor", wed, TZ)).toBeNull();
     expect(parseClientDeadline("vou pensar e te falo", wed, TZ)).toBeNull();
     expect(parseClientDeadline("quanto custa?", wed, TZ)).toBeNull();
+  });
+});
+
+describe("promessa explícita do atendente", () => {
+  const wed = brt(2026, 7, 15, 10);
+
+  it("aceita retorno prometido pelo vendedor", () => {
+    expect(
+      local(parseAgentPromiseDeadline("Te retorno na sexta-feira", wed, TZ)!.date),
+    ).toBe("2026-07-17 00:00");
+  });
+
+  it("não transforma uma data operacional sem promessa em prazo", () => {
+    expect(parseAgentPromiseDeadline("A visita será na sexta-feira", wed, TZ)).toBeNull();
   });
 });
 

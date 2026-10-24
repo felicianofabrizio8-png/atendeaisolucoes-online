@@ -314,3 +314,20 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - Rollback desta entrega é por ausência de adoção: remover a instanciação/flag do consumidor futuro
   mantém o adaptador atual. Próxima migração deve ser uma capability auxiliar, com fixtures
   comparativas, limite por empresa, observabilidade e fallback explícito.
+
+## Etapa 2B — follow-up inteligente (2026-10-24)
+
+- Criado `src/lib/followup/openai-adapter.server.ts`, server-only, usando a camada central de
+  Responses API. A adoção exige `FOLLOWUP_OPENAI_ADAPTER=enabled`; o padrão continua desligado.
+- `next-contact-ai.ts` seleciona OpenAI somente com a flag ligada, mantendo a validação local de
+  JSON, evidência literal e horizonte de 60 dias. O caminho Lovable continua como fallback.
+- `next-contact.ts` e `cycles.ts` reconhecem compromissos explícitos do atendente humano
+  (`agent_promise`) sem inferir datas de mensagens operacionais. O prazo do cliente é prioritário.
+- Geração econômica/coerente de `{{1}}` não foi migrada: o texto real de `chamar_novamente` não
+  estava acessível localmente; nenhum corpo aprovado foi presumido ou alterado.
+- O envio em massa permanece limitado aos fluxos existentes de simulação/dispatch; nenhum envio
+  real foi executado.
+- Testes direcionados: 4 arquivos, 77 testes aprovados. TypeScript sem erros. Build completo
+  aprovado, com avisos já conhecidos do bundler/Nitro.
+- Pendência: disponibilizar cópia local/autorizada do template real por empresa e então migrar a
+  geração de `{{1}}` atrás de flag, com avaliação comparativa sem envio.

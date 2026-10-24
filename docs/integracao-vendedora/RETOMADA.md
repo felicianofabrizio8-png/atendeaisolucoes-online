@@ -93,3 +93,15 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   reverter para o adaptador anterior sem alterar estados de atendimento.
 - Próximo passo seguro: migrar uma capability auxiliar de baixo risco (follow-up/recovery) atrás
   de flag, com avaliação comparativa; não migrar Bruna antes de concluir essa validação.
+
+## Etapa 2B — follow-up inteligente (2026-10-24)
+
+- Implementada a primeira fatia independente: o agendamento pode usar a camada central Responses
+  API por `FOLLOWUP_OPENAI_ADAPTER=enabled`; ausente ou diferente de `enabled` mantém Lovable.
+- O `companyId` segue obrigatório no gateway central, `store=false` é explícito e a validação
+  determinística de evidência/data continua aplicada antes de qualquer agendamento.
+- Promessas explícitas do atendente humano agora são reconhecidas como `agent_promise`; prazos
+  declarados pelo cliente continuam tendo precedência.
+- A geração de `{{1}}` não foi alterada: o template Meta real não estava disponível no banco local;
+  somente fixtures sintéticas existem nos testes. O contrato atual permanece intacto.
+- Não houve envio real, migration, produção, push ou deploy.

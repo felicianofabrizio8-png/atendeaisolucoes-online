@@ -10,6 +10,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { zonedParts } from "./calendar";
 import { validateSuggestedDate } from "./next-contact";
+import { followupOpenAiEnabled, runFollowupOpenAi } from "./openai-adapter.server";
 
 const MODEL = "google/gemini-2.5-flash";
 export const NEXT_CONTACT_PROMPT_VERSION = "2026-09-28.a";
@@ -35,6 +36,28 @@ export async function suggestNextContactDate(args: {
     .join("\n");
 
   try {
+    if (followupOpenAiEnabled()) {
+      const resp = await runFollowupOpenAi({
+        companyId: args.companyId,
+        maxTokens: 80,
+        tags: { feature: "followup_next_contact", prompt_version: NEXT_CONTACT_PROMPT_VERSION },
+        messages: [
+          {
+            role: "system",
+            content: `Hoje é ${today} (fuso ${args.timeZone}). Leia a conversa e diga QUANDO faz sentido o vendedor procurar o cliente de novo, com base só no que o CLIENTE disse sobre tempo (prazo, data, evento).
+Responda APENAS JSON: {"date":"YYYY-MM-DD" ou null,"evidence":"trecho EXATO copiado de uma mensagem do cliente"}.
+Se o cliente não indicou tempo, responda {"date":null,"evidence":""}. Nunca invente.`,
+          },
+          { role: "user", content: transcript },
+        ],
+      });
+      const parsed = JSON.parse(resp.text.replace(/^```(?:json)?|```$/g, "").trim()) as {
+        date?: unknown;
+        evidence?: unknown;
+      };
+      return validateSuggestedDate(parsed, { now: args.now, timeZone: args.timeZone, leadTexts });
+    }
+
     const [{ LLMGateway }, { LovableChatProvider }] = await Promise.all([
       import("@/lib/llm-gateway/LLMGateway.server"),
       import("@/lib/llm-gateway/providers/LovableChatProvider"),
