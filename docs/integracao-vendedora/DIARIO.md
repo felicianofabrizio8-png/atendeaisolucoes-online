@@ -252,3 +252,12 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   `authenticated` e disponíveis para `service_role`.
 - A etapa 7 está concluída para homologação local. Não houve acesso remoto, produção, push,
   deploy ou envio real.
+## Independência do Lovable — planejamento de crescimento (2026-10-23)
+
+- A estratégia progressiva foi registrada em `docs/independencia-lovable-crescimento.md`.
+- O objetivo é começar com aproximadamente 10–30 empresas e avançar por gatilhos observáveis
+  para 100, 250, 500 e 1.000+, sem afirmar capacidade antes de teste de carga.
+- Permanecem invariantes o isolamento por empresa, autorização server-side/RLS, filas, leases,
+  fencing, idempotência, limites por tenant e Bruna desligada por padrão.
+- A Etapa 1 foi mantida sem ampliação: build independente, homologação separada, baseline e
+  carga mínima. Nenhum código, banco, credencial, serviço, deploy ou push foi alterado.

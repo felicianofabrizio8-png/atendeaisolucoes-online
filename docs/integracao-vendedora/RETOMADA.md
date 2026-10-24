@@ -51,3 +51,10 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   executada exclusivamente nele, sem tocar nos demais containers.
 - Migrations/SQL: attempts Phase 1, reconciliação de status, política de descontos e leases
   passaram. A migration de descontos também foi reaplicada em transação e revertida com sucesso.
+## Independência do Lovable — crescimento progressivo
+
+- Planejamento registrado em `docs/independencia-lovable-crescimento.md`.
+- Meta comercial: 500 empresas, com evolução controlada por faixas de 10–30, 100, 250, 500 e
+  1.000+, sem declarar capacidade antes de testes de carga.
+- A Etapa 1 permanece limitada a build independente, homologação separada, baseline de métricas
+  e teste inicial de carga; não inclui superdimensionamento, sharding ou deploy de produção.
