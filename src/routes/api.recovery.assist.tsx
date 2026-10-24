@@ -11,6 +11,9 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
+import { AiPlatformError } from "@/lib/ai-platform/types";
 import {
   COACH_INVALID_OUTPUT_CONTRACT,
   COACH_PROVIDER_TIMEOUT_MS,
@@ -32,6 +35,10 @@ import {
 } from "@/lib/recovery-ai";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+export function recoveryAssistOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.RECOVERY_ASSIST_OPENAI_RESPONSES === "enabled";
+}
 
 interface AssistBody {
   conversation_id?: unknown;
@@ -76,7 +83,7 @@ export const Route = createFileRoute("/api/recovery/assist")({
         const force = body.force === true;
 
         const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) return Response.json({ error: "IA indisponível" }, { status: 500 });
+        if (!recoveryAssistOpenAiEnabled() && !apiKey) return Response.json({ error: "IA indisponível" }, { status: 500 });
 
         // ---- 4. Recovery Engine (Fase 6.1, intocado) ----
         const now = Date.now();
@@ -111,48 +118,93 @@ export const Route = createFileRoute("/api/recovery/assist")({
         }
 
         // ---- 6. consulta à IA ----
-        let aiRes: Response;
-        try {
-          aiRes = await fetch(GATEWAY_URL, {
-            method: "POST",
-            signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: RECOVERY_ASSIST_MODEL,
-              messages: [
-                { role: "system", content: buildSystemPrompt() },
-                { role: "user", content: buildUserPrompt(ctx) },
-              ],
-              tools: [RECOVERY_PLAN_TOOL],
-              tool_choice: { type: "function", function: { name: "recovery_plan" } },
-            }),
-          });
-        } catch {
-          console.error("[recovery/assist] provider unreachable or timed out");
-          return Response.json(COACH_TIMEOUT_CONTRACT, { status: COACH_TIMEOUT_CONTRACT.status });
-        }
+        let args: unknown;
+        const legacyPayload = {
+          model: RECOVERY_ASSIST_MODEL,
+          messages: [
+            { role: "system", content: buildSystemPrompt() },
+            { role: "user", content: buildUserPrompt(ctx) },
+          ],
+          tools: [RECOVERY_PLAN_TOOL],
+          tool_choice: { type: "function", function: { name: "recovery_plan" } },
+        };
 
-        if (!aiRes.ok) {
-          const raw = await aiRes.text().catch(() => "");
-          const contract = classifyGatewayFailure(aiRes.status, raw);
-          console.error(
-            `[recovery/assist] provider ${aiRes.status} code=${contract.code} body=${sanitizeProviderBody(raw)}`,
-          );
-          return Response.json(contract, { status: contract.status });
+        if (recoveryAssistOpenAiEnabled()) {
+          try {
+            const result = await new OpenAiResponsesGateway(undefined, {
+              usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+            }).run({
+              companyId,
+              capability: "recovery",
+              instructions: buildSystemPrompt(),
+              input: buildUserPrompt(ctx),
+              tools: [{
+                type: "function",
+                name: RECOVERY_PLAN_TOOL.function.name,
+                description: RECOVERY_PLAN_TOOL.function.description,
+                parameters: RECOVERY_PLAN_TOOL.function.parameters,
+                strict: false,
+              }],
+              toolChoice: { type: "function", name: RECOVERY_PLAN_TOOL.function.name },
+              store: false,
+              maxOutputTokens: 900,
+              tags: { feature: "recovery_assist", prompt_version: "2026-10-24.a" },
+            });
+            const toolCall = result.toolCalls.find((item) => item.name === RECOVERY_PLAN_TOOL.function.name);
+            args = toolCall ? JSON.parse(toolCall.arguments) : null;
+          } catch (error) {
+            const code = error instanceof AiPlatformError ? error.code : "ai_provider_error";
+            console.error(`[recovery/assist] OpenAI failure code=${code}; using safe fallback`);
+            if (!apiKey) {
+              return Response.json(
+                code === "ai_timeout" ? COACH_TIMEOUT_CONTRACT : COACH_INVALID_OUTPUT_CONTRACT,
+                { status: code === "ai_timeout" ? COACH_TIMEOUT_CONTRACT.status : COACH_INVALID_OUTPUT_CONTRACT.status },
+              );
+            }
+            try {
+              const aiRes = await fetch(GATEWAY_URL, {
+                method: "POST",
+                signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+                body: JSON.stringify(legacyPayload),
+              });
+              if (!aiRes.ok) {
+                const raw = await aiRes.text().catch(() => "");
+                const contract = classifyGatewayFailure(aiRes.status, raw);
+                console.error(`[recovery/assist] fallback ${aiRes.status} code=${contract.code} body=${sanitizeProviderBody(raw)}`);
+                return Response.json(contract, { status: contract.status });
+              }
+              const payload = await aiRes.json();
+              const toolCall = payload?.choices?.[0]?.message?.tool_calls?.[0];
+              args = toolCall ? JSON.parse(toolCall.function.arguments) : null;
+            } catch {
+              return Response.json(COACH_TIMEOUT_CONTRACT, { status: COACH_TIMEOUT_CONTRACT.status });
+            }
+          }
+        } else {
+          try {
+            const aiRes = await fetch(GATEWAY_URL, {
+              method: "POST",
+              signal: AbortSignal.timeout(COACH_PROVIDER_TIMEOUT_MS),
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+              body: JSON.stringify(legacyPayload),
+            });
+            if (!aiRes.ok) {
+              const raw = await aiRes.text().catch(() => "");
+              const contract = classifyGatewayFailure(aiRes.status, raw);
+              console.error(`[recovery/assist] provider ${aiRes.status} code=${contract.code} body=${sanitizeProviderBody(raw)}`);
+              return Response.json(contract, { status: contract.status });
+            }
+            const payload = await aiRes.json();
+            const toolCall = payload?.choices?.[0]?.message?.tool_calls?.[0];
+            args = toolCall ? JSON.parse(toolCall.function.arguments) : null;
+          } catch {
+            console.error("[recovery/assist] provider unreachable or timed out");
+            return Response.json(COACH_TIMEOUT_CONTRACT, { status: COACH_TIMEOUT_CONTRACT.status });
+          }
         }
 
         // ---- 7. validação da resposta ----
-        let args: unknown;
-        try {
-          const payload = await aiRes.json();
-          const toolCall = payload?.choices?.[0]?.message?.tool_calls?.[0];
-          args = toolCall ? JSON.parse(toolCall.function.arguments) : null;
-        } catch {
-          args = null;
-        }
         const parsed = parseRecoveryPlan(args, ctx);
         if (!parsed.ok || !parsed.plan) {
           console.error(`[recovery/assist] invalid output: ${parsed.reason ?? "sem plano"}`);
