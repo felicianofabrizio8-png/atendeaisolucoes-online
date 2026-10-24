@@ -1,8 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
+const LOVABLE_MODEL = "google/gemini-2.5-flash";
+const OPENAI_MAX_OUTPUT_TOKENS = 768;
+
+export function proposeKnowledgeOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.PROPOSE_KNOWLEDGE_OPENAI_RESPONSES === "enabled";
+}
 
 /**
  * Analisa as últimas conversas da empresa e cria PROPOSTAS de conhecimento
@@ -31,7 +38,8 @@ export const Route = createFileRoute("/api/ai/propose-knowledge")({
         const companyId = profile.company_id;
 
         const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
+        if (!proposeKnowledgeOpenAiEnabled() && !apiKey)
+          return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
 
         // Coleta últimas 200 mensagens
         const { data: msgs, error: msgErr } = await supabaseAdmin
@@ -66,7 +74,7 @@ Identifique até 10 itens, priorizando:
 Para cada item, devolva uma "question" curta (o que o cliente pergunta / a objeção) e uma "answer" como sugestão de resposta. NÃO invente preços, prazos ou condições — use apenas o que aparece no histórico.`;
 
         const payload = {
-          model: MODEL,
+          model: LOVABLE_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: `Histórico:\n${transcript}` },
@@ -103,34 +111,86 @@ Para cada item, devolva uma "question" curta (o que o cliente pergunta / a obje�
           tool_choice: { type: "function", function: { name: "propose_knowledge" } },
         };
 
-        let aiRes: Response;
-        try {
-          aiRes = await fetch(GATEWAY_URL, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-        } catch (e) {
-          console.error("[AI_PROPOSE_NETWORK_FAIL]", e);
-          return Response.json({ error: "Falha de rede ao consultar IA" }, { status: 502 });
-        }
-        if (!aiRes.ok) {
-          if (aiRes.status === 429) return Response.json({ error: "Rate limit" }, { status: 429 });
-          if (aiRes.status === 402) return Response.json({ error: "Créditos esgotados" }, { status: 402 });
-          const t = await aiRes.text();
-          console.error("[AI_PROPOSE_GATEWAY_ERR]", aiRes.status, t);
-          return Response.json({ error: "Falha ao consultar IA" }, { status: 502 });
-        }
-
-        const data = await aiRes.json();
-        const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-        if (!args) return Response.json({ error: "Resposta sem dados" }, { status: 502 });
-
         let parsed: { proposals: Array<{ type: string; question: string; answer: string }> };
-        try {
-          parsed = JSON.parse(args);
-        } catch {
-          return Response.json({ error: "JSON inválido" }, { status: 502 });
+        if (proposeKnowledgeOpenAiEnabled()) {
+          try {
+            const result = await new OpenAiResponsesGateway(undefined, {
+              usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+            }).run({
+              companyId,
+              capability: "marketing",
+              instructions: systemPrompt,
+              input: `Histórico:\n${transcript}\n\nUse a ferramenta propose_knowledge e não invente dados.`,
+              tools: [{
+                type: "function",
+                name: "propose_knowledge",
+                description: "Propostas de conhecimento extraídas das conversas.",
+                parameters: payload.tools[0].function.parameters,
+                strict: false,
+              }],
+              toolChoice: { type: "function", name: "propose_knowledge" },
+              store: false,
+              maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+              tags: { feature: "propose_knowledge", prompt_version: "2026-10-24.a" },
+            });
+            const call = result.toolCalls.find((item) => item.name === "propose_knowledge");
+            if (!call?.arguments) throw new Error("structured_output_missing");
+            parsed = JSON.parse(call.arguments) as typeof parsed;
+          } catch (error) {
+            console.warn(
+              "[AI_PROPOSE_OPENAI_FAIL] usando fallback Lovable",
+              error instanceof Error ? error.message : "provider_error",
+            );
+            if (!apiKey) return Response.json({ error: "Nenhum provedor de IA configurado" }, { status: 500 });
+            let aiRes: Response;
+            try {
+              aiRes = await fetch(GATEWAY_URL, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+            } catch (e) {
+              console.error("[AI_PROPOSE_NETWORK_FAIL]", e);
+              return Response.json({ error: "Falha de rede ao consultar IA" }, { status: 502 });
+            }
+            if (!aiRes.ok) {
+              if (aiRes.status === 429) return Response.json({ error: "Rate limit" }, { status: 429 });
+              if (aiRes.status === 402) return Response.json({ error: "Créditos esgotados" }, { status: 402 });
+              console.error("[AI_PROPOSE_GATEWAY_ERR]", aiRes.status);
+              return Response.json({ error: "Falha ao consultar IA" }, { status: 502 });
+            }
+            const data = await aiRes.json();
+            const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+            if (!args) return Response.json({ error: "Resposta sem dados" }, { status: 502 });
+            try { parsed = JSON.parse(args) as typeof parsed; } catch {
+              return Response.json({ error: "JSON inválido" }, { status: 502 });
+            }
+          }
+        } else {
+          if (!apiKey) return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
+          let aiRes: Response;
+          try {
+            aiRes = await fetch(GATEWAY_URL, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+          } catch (e) {
+            console.error("[AI_PROPOSE_NETWORK_FAIL]", e);
+            return Response.json({ error: "Falha de rede ao consultar IA" }, { status: 502 });
+          }
+          if (!aiRes.ok) {
+            if (aiRes.status === 429) return Response.json({ error: "Rate limit" }, { status: 429 });
+            if (aiRes.status === 402) return Response.json({ error: "Créditos esgotados" }, { status: 402 });
+            console.error("[AI_PROPOSE_GATEWAY_ERR]", aiRes.status);
+            return Response.json({ error: "Falha ao consultar IA" }, { status: 502 });
+          }
+          const data = await aiRes.json();
+          const args = data?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+          if (!args) return Response.json({ error: "Resposta sem dados" }, { status: 502 });
+          try { parsed = JSON.parse(args) as typeof parsed; } catch {
+            return Response.json({ error: "JSON inválido" }, { status: 502 });
+          }
         }
 
         const rows = (parsed.proposals ?? [])
