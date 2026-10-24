@@ -21,6 +21,7 @@ export type BrunaWhatsappTextInput = {
   /** Stable id supplied by the caller for one Bruna action. */
   actionId: string;
   text: string;
+  metadata?: Record<string, string>;
   source: "automatic";
 };
 
@@ -78,6 +79,7 @@ export type BrunaWhatsappTextAdapterDeps = {
     actionId: string;
     externalId: string | null;
     sentAt: string;
+    metadata?: Record<string, string>;
   }) => Promise<void>;
   attempt?: Partial<BrunaWhatsappAttemptPersistence>;
 };
@@ -535,6 +537,7 @@ export async function sendBrunaWhatsappText(
         actionId: input.actionId,
         externalId: outbound.externalId,
         sentAt: new Date().toISOString(),
+        metadata: input.metadata,
       });
     } catch (error) {
       return {
@@ -848,6 +851,7 @@ async function persistBrunaMessage(input: {
   actionId: string;
   externalId: string | null;
   sentAt: string;
+  metadata?: Record<string, string>;
 }): Promise<void> {
   const message = await supabaseAdmin.from("messages").insert({
     company_id: input.companyId,
@@ -861,6 +865,7 @@ async function persistBrunaMessage(input: {
     // identity is carried in metadata and does not create a new source enum.
     source: "ai_agent",
     source_metadata: {
+      ...(input.metadata ?? {}),
       agent_id: "bruna",
       adapter: "bruna-whatsapp-text",
       action_id: input.actionId,

@@ -13,8 +13,8 @@ Worktree: `C:\Users\AMD\atendeai-vendedora-unificada` — branch local `integrac
 | 3 Controles unificados da IA | concluída | `3da01459`, `12dda31d` |
 | 4 Motor | concluída | `62edb9e8` |
 | 5 Política de desconto | concluída | ver `git log -1` |
-| 6 Adaptador de envio da Bruna/lease atrás de chave desligada | **não iniciada** | — |
-| 7 Testes completos, build, migrations, relatório final | não iniciada | — |
+| 6 Adaptador de envio da Bruna/lease atrás de chave desligada | concluída localmente | pendente commit local |
+| 7 Testes completos, build, migrations, relatório final | parcialmente concluída | Docker indisponível para migrations |
 
 Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIARIO.md`.
 
@@ -33,3 +33,21 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Desligar a IA numa conversa deve valer também nos modos geral/automático?
 - Qualificação automática no tick em modo assistido (hoje segue a main).
 - Empresas com desconto descrito só em texto: cadastrar no cartão "Política de desconto".
+
+## Retomada 2026-10-23 — etapas 6–7
+
+- O adaptador Bruna foi integrado somente ao sink de texto de envios `automatic`, com a
+  flag `BRUNA_WHATSAPP_TEXT_ADAPTER=enabled`; ausente ou diferente de `enabled` mantém o
+  caminho legado. Follow-ups, humano, mídia, áudio, templates, orçamentos, handoff e
+  vendedora externa não foram redirecionados.
+- `actionId` usa o `messageClaim` estável do tick; o adaptador preserva metadados e mantém
+  autorização tenant-scoped, reautorização, lease/fence, tentativa durável e dedupe já
+  existentes.
+- Testes direcionados: 139/139; TypeScript: 0 erros; build: OK.
+- Os 5 erros `matchMedia` do teste de marketing/jsdom são preexistentes: os arquivos
+  `MarketingMotion.tsx` e `marketing-ia-reorganization.test.tsx` não diferem do `HEAD`, e
+  o teste passa isoladamente com os mesmos erros não tratados do ambiente.
+- Docker CLI existe, mas o daemon recusou acesso ao pipe `dockerDesktopLinuxEngine`; migrations
+  não foram executadas nem houve alteração de configuração ou containers.
+- Pendências: criar o commit local quando o índice Git compartilhado permitir e executar a
+  validação SQL no banco descartável existente.

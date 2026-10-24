@@ -9,6 +9,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { postGraph } from "@/lib/outbound/MetaOutbound.server";
 import { isSimulation, isRealDelivery } from "@/lib/outbound/MetaOutboundContract";
+import { isBrunaWhatsappTextAdapterEnabled } from "@/lib/bruna-whatsapp-feature-flag";
+import { sendBrunaWhatsappText } from "@/lib/bruna-whatsapp-text-adapter.server";
 import {
   authorizeWhatsappSend,
   isWhatsappSendAuthorization,
@@ -1213,6 +1215,8 @@ export async function sendWhatsappText(params: {
   productIds?: string[];
   /** Marcas adicionais gravadas em messages.source_metadata (ex.: esclarecimento). */
   metadata?: Record<string, string>;
+  /** Stable action identity used only by the opt-in Bruna adapter. */
+  actionId?: string;
   /** Comprovante emitido no servidor; é reconferido aqui, no instante do envio. */
   authorization: WhatsappSendAuthorization;
 }): Promise<SendWhatsappTextResult> {
@@ -1223,6 +1227,28 @@ export async function sendWhatsappText(params: {
     params.authorization.leadId !== params.leadId
   ) {
     return { ok: false, simulated: false, error: "whatsapp_send_not_authorized", externalRequestSent: false };
+  }
+  if (
+    params.authorization.source === "automatic" &&
+    isBrunaWhatsappTextAdapterEnabled() &&
+    params.actionId?.trim()
+  ) {
+    const bruna = await sendBrunaWhatsappText({
+      companyId: params.companyId,
+      conversationId: params.conversationId,
+      leadId: params.leadId,
+      actionId: params.actionId,
+      text: params.text,
+      metadata: params.metadata,
+      source: "automatic",
+    });
+    if (bruna.ok) return bruna;
+    return {
+      ok: false,
+      simulated: false,
+      error: bruna.error ?? bruna.code,
+      externalRequestSent: bruna.stage === "graph" && bruna.code === "graph_api_failed",
+    };
   }
   try {
     // Barreira final: takeover, desligamento ou troca de número entre a decisão e o envio.
@@ -2415,6 +2441,7 @@ async function runAgentTickPass(
           ? { sales_agent_notice: "audio_unavailable" }
           : undefined,
       authorization: replyAuthorization,
+      actionId: options.messageClaim?.messageId,
     });
 
     if (!sent.ok) {

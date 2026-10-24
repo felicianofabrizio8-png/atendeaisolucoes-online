@@ -204,3 +204,34 @@ Limitações/pendências: (1) empresas que descreveram desconto só em texto pre
 novo cartão para a IA oferecê-lo; (2) a Vendedora externa recebe a política só pela trava
 (o serviço externo não conhece a política ao gerar a resposta); (3) "negociar", "condição
 especial", "parcelo" na resposta continuam indo para humano (inalterado).
+
+## Etapa 6 — integração do adaptador WhatsApp da Bruna (2026-10-23)
+
+- O `sendBrunaWhatsappText` existente passou a ser usado pelo sink `sendWhatsappText` apenas
+  quando a autorização é `automatic`, existe `actionId` estável do `messageClaim` e a flag
+  `BRUNA_WHATSAPP_TEXT_ADAPTER` vale exatamente `enabled`. O padrão permanece desligado.
+- O caminho legado continua atendendo chamadas sem claim e todas as origens não automáticas.
+  Não foram alterados os caminhos de textos humanos, follow-ups, mídia, áudio, templates,
+  orçamentos, handoff ou vendedora externa.
+- Metadados de esclarecimento/áudio e identidade Bruna são preservados na mensagem. A
+  autorização tenant-scoped é conferida antes e imediatamente antes do Graph; leases,
+  fencing, tentativas duráveis e dedupe permanecem no adaptador já validado.
+- Arquivos alterados: `src/lib/ai-agent.server.ts`,
+  `src/lib/bruna-whatsapp-text-adapter.server.ts`, novo
+  `src/lib/bruna-whatsapp-feature-flag.ts` e teste da flag.
+
+## Etapa 7 — validação complementar (2026-10-23)
+
+- Direcionados: 8 arquivos, 139 testes passaram.
+- TypeScript (`tsc --noEmit`): passou sem erros.
+- Build (`npm run build`): passou; apenas avisos já existentes do bundle/Wrangler.
+- Suíte completa anterior: 3.692 passaram, 9 ignorados; o timeout do `quote-wizard` passou
+  isoladamente. O teste de marketing passou isoladamente, mas emitiu 5 erros não tratados
+  `matchMedia is not a function`.
+- Reavaliação: os 5 erros são preexistentes, pois `MarketingMotion.tsx` e seu teste não foram
+  alterados pela integração e já existem no `HEAD`; nenhuma regressão foi corrigida.
+- Docker: CLI encontrada, daemon indisponível por permissão no pipe
+  `dockerDesktopLinuxEngine`. As migrations não foram executadas e nenhum container foi tocado.
+- Commit local ainda pendente: o worktree Git compartilhado recusou criar
+  `.git/worktrees/atendeai-vendedora-unificada/index.lock`. Não houve push, deploy, migration
+  remota ou envio real.
