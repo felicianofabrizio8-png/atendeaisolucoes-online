@@ -11,6 +11,7 @@ import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink
 import type { ExecutiveNarrative } from "./ExecutiveNarrativeTypes";
 import {
   NARRATIVE_SYSTEM_PROMPT,
+  EXECUTIVE_NARRATIVE_SCHEMA,
   buildUserPrompt,
   sanitizeSnapshotForLLM,
   type PreviousKnowledgeContext,
@@ -18,7 +19,7 @@ import {
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const LOVABLE_MODEL = "google/gemini-2.5-flash";
-const OPENAI_MAX_OUTPUT_TOKENS = 384;
+const OPENAI_MAX_OUTPUT_TOKENS = 1200;
 
 export interface NarrativeInput {
   companyId: string;
@@ -98,7 +99,12 @@ export class ExecutiveNarrativeService {
       input: `${userPrompt}\n\nRetorne somente JSON válido conforme as instruções.`,
       store: false,
       maxOutputTokens: openAiMaxOutputTokens(),
-      responseFormat: "json",
+      responseFormat: {
+        type: "json_schema",
+        name: "executive_narrative",
+        schema: EXECUTIVE_NARRATIVE_SCHEMA,
+        strict: true,
+      },
       tags: { feature: "executive_narrative", prompt_version: "2026-10-24.a" },
     });
     return this.parseNarrative(result.outputText, input.bundle.generatedAt, result.model);

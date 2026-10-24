@@ -58,7 +58,12 @@ export interface ResponsesRequest {
   store?: boolean;
   timeoutMs?: number;
   maxOutputTokens?: number;
-  responseFormat?: "text" | "json";
+  responseFormat?: "text" | "json" | {
+    type: "json_schema";
+    name: string;
+    schema: Record<string, unknown>;
+    strict?: boolean;
+  };
   tags?: Record<string, string>;
 }
 

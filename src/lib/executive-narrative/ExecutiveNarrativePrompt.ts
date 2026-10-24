@@ -29,6 +29,20 @@ Formato de saída: retorne EXCLUSIVAMENTE um objeto JSON válido com esta forma 
 
 Não inclua nada fora do JSON. Não use markdown. Não use blocos de código.`;
 
+export const EXECUTIVE_NARRATIVE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    greeting: { type: "string" },
+    summary: { type: "string" },
+    priorities: { type: "array", items: { type: "string" }, maxItems: 5 },
+    opportunities: { type: "array", items: { type: "string" }, maxItems: 4 },
+    risks: { type: "array", items: { type: "string" }, maxItems: 4 },
+    nextAction: { type: "string" },
+  },
+  required: ["greeting", "summary", "priorities", "opportunities", "risks", "nextAction"],
+} as const;
+
 // Sanitiza o snapshot removendo qualquer campo que possa conter PII antes de
 // enviar ao LLM. O snapshot base já não expõe telefones/nomes, mas removemos
 // IDs e mantemos apenas números e labels agregados por precaução.

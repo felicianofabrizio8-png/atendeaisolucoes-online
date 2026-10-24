@@ -127,7 +127,9 @@ export class OpenAiResponsesGateway {
       ...(request.toolChoice ? { tool_choice: request.toolChoice } : {}),
       ...(request.responseFormat === "json"
         ? { text: { format: { type: "json_object" } } }
-        : {}),
+        : typeof request.responseFormat === "object" && request.responseFormat.type === "json_schema"
+          ? { text: { format: request.responseFormat } }
+          : {}),
       ...(request.maxOutputTokens ? { max_output_tokens: request.maxOutputTokens } : {}),
     };
     const startedAt = Date.now();

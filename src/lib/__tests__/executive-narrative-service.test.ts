@@ -45,8 +45,9 @@ describe("ExecutiveNarrativeService OpenAI rollout", () => {
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.model).toBe("gpt-6-luna");
-    expect(body.max_output_tokens).toBe(384);
+    expect(body.max_output_tokens).toBe(1200);
     expect(body.store).toBe(false);
+    expect(body.text.format).toMatchObject({ type: "json_schema", name: "executive_narrative", strict: true });
     expect(result.model).toBe("gpt-6-luna");
     expect(result.summary).toContain("Resumo");
   });

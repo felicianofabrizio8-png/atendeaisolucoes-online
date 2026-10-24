@@ -109,4 +109,22 @@ describe("Responses compatibility adapters", () => {
       messages: [{ role: "user", content: "Oi" }],
     })).resolves.toMatchObject({ choices: [{ message: { content: '{"date":null}' } }] });
   });
+
+  it("envia schema estrito para saída estruturada", async () => {
+    const fetchImpl = vi.fn(async (_input: string, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body));
+      expect(requestBody.text.format).toEqual(expect.objectContaining({
+        type: "json_schema",
+        name: "executive_narrative",
+        strict: true,
+        schema: expect.objectContaining({ required: ["greeting"] }),
+      }));
+      return response({ id: "resp_schema", model: "gpt-6-luna", output: [{ type: "message", content: [{ type: "output_text", text: '{"greeting":"Olá"}' }] }], usage: { input_tokens: 2, output_tokens: 3 } });
+    });
+    const gateway = new OpenAiResponsesGateway(config, { fetchImpl });
+    await expect(gateway.run({
+      companyId: "company-a", capability: "executive", input: "snapshot fictício",
+      responseFormat: { type: "json_schema", name: "executive_narrative", schema: { type: "object", required: ["greeting"] }, strict: true },
+    })).resolves.toMatchObject({ outputText: '{"greeting":"Olá"}' });
+  });
 });
