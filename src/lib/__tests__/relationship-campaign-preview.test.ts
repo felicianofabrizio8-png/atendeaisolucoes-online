@@ -308,7 +308,7 @@ describe("Retomada (followup_resume → chamar_novamente)", () => {
     llm.run.mockResolvedValueOnce({ text: "Mariana, bora fechar?" });
     const a: any = await previewRelationshipDispatch(input);
     expect(a.variables.var1).toBe(
-      "estou passando para retomar nossa conversa sobre Ar split 12.000 BTUs e ver se consigo ajudar com a questão de preço",
+      "Você conseguiu avaliar Ar split 12.000 BTUs e ficou com alguma dúvida sobre preço",
     );
     expect(a.phrase_source).toBe("context");
     expect(a.content_preview).toBe(CHAMAR_BODY.replace("{{1}}", `{{${a.variables.var1}}}`));

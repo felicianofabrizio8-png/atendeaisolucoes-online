@@ -294,6 +294,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     companyId: input.companyId,
     leadId: input.leadId,
     cooldownHours: settings?.minHoursBetween ?? 24,
+    excludeCycleId: input.cycleId,
   });
   if (recent) {
     return {

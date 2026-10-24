@@ -67,10 +67,11 @@ export const MAX_SEND_FAILURES = 3;
 const RETRY_AFTER_FAILURE_MIN = 60;
 const RETRY_AFTER_TEMPLATE_MIN = 24 * 60;
 const RETRY_AFTER_AI_BUSY_MIN = 15;
+const RETRY_AFTER_CONTACT_COOLDOWN_MIN = 60;
 /** Mensagem nossa até isso depois do último follow-up é o próprio follow-up. */
 const OWN_MESSAGE_TOLERANCE_MS = 60_000;
 
-const SKIP_TO_CLOSE: Record<Exclude<SkipCode, "ai_busy">, CloseReason> = {
+const SKIP_TO_CLOSE: Record<Exclude<SkipCode, "ai_busy" | "contact_cooldown">, CloseReason> = {
   client_replied: "client_replied",
   sale_closed: "sale_closed",
   sale_lost: "sale_lost",
@@ -308,8 +309,12 @@ export async function applyDispatchOutcome(
   }
 
   if (r.status === "skipped") {
-    if (r.skipCode === "ai_busy" || !r.skipCode) {
-      const next = at(RETRY_AFTER_AI_BUSY_MIN).toISOString();
+    if (r.skipCode === "ai_busy" || r.skipCode === "contact_cooldown" || !r.skipCode) {
+      const next = at(
+        r.skipCode === "contact_cooldown"
+          ? RETRY_AFTER_CONTACT_COOLDOWN_MIN
+          : RETRY_AFTER_AI_BUSY_MIN,
+      ).toISOString();
       await updateCycle(companyId, id, { next_followup_at: next });
       return { state: "active", nextFollowupAt: next };
     }
