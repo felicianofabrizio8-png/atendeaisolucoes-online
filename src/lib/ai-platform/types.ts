@@ -54,6 +54,7 @@ export interface ResponsesRequest {
   instructions?: string;
   input: string | Array<Record<string, unknown>>;
   tools?: ResponsesFunctionTool[];
+  toolChoice?: Record<string, unknown> | "auto" | "none";
   store?: boolean;
   timeoutMs?: number;
   maxOutputTokens?: number;

@@ -124,6 +124,7 @@ export class OpenAiResponsesGateway {
       input: request.input,
       ...(request.instructions ? { instructions: request.instructions } : {}),
       ...(request.tools?.length ? { tools: request.tools } : {}),
+      ...(request.toolChoice ? { tool_choice: request.toolChoice } : {}),
       ...(request.responseFormat === "json"
         ? { text: { format: { type: "json_object" } } }
         : {}),

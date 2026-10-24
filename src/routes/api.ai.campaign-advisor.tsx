@@ -7,9 +7,17 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
+const LOVABLE_MODEL = "google/gemini-2.5-flash";
+const OPENAI_MODEL = "gpt-6-luna";
+const OPENAI_MAX_OUTPUT_TOKENS = 512;
+
+export function campaignAdvisorOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CAMPAIGN_ADVISOR_OPENAI_RESPONSES === "enabled";
+}
 
 async function authedCompanyId(request: Request): Promise<{ companyId: string | null; userId: string | null }> {
   const h = request.headers.get("authorization") ?? "";
@@ -74,7 +82,7 @@ export const Route = createFileRoute("/api/ai/campaign-advisor")({
           .maybeSingle();
 
         const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey)
+        if (!campaignAdvisorOpenAiEnabled() && !apiKey)
           return Response.json({ ok: false, error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
 
         const metricsBlock = metric
@@ -119,7 +127,7 @@ Gere:
 4. Sugestões de novos textos (headline + texto principal + CTA).`;
 
         const payload = {
-          model: MODEL,
+          model: LOVABLE_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -188,30 +196,83 @@ Gere:
           tool_choice: { type: "function", function: { name: "campaign_advisory" } },
         };
 
-        const aiRes = await fetch(GATEWAY_URL, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        if (!aiRes.ok) {
-          if (aiRes.status === 429)
-            return Response.json({ ok: false, error: "Limite de requisições atingido. Tente em alguns segundos." }, { status: 429 });
-          if (aiRes.status === 402)
-            return Response.json({ ok: false, error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
-          const t = await aiRes.text();
-          console.error("[campaign-advisor] gateway error", aiRes.status, t);
-          return Response.json({ ok: false, error: "Falha ao consultar a IA" }, { status: 502 });
-        }
-
-        const data = await aiRes.json();
-        const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall?.function?.arguments)
-          return Response.json({ ok: false, error: "Resposta da IA sem dados estruturados" }, { status: 502 });
-
         let parsed: Record<string, unknown>;
-        try { parsed = JSON.parse(toolCall.function.arguments); } catch {
-          return Response.json({ ok: false, error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+        let model = LOVABLE_MODEL;
+        const openAiEnabled = campaignAdvisorOpenAiEnabled();
+        if (openAiEnabled) {
+          try {
+            const result = await new OpenAiResponsesGateway(undefined, {
+              usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+            }).run({
+              companyId,
+              capability: "marketing",
+              instructions: systemPrompt,
+              input: `${userPrompt}\n\nUse a ferramenta campaign_advisory e não invente dados.`,
+              tools: [{
+                type: "function",
+                name: "campaign_advisory",
+                description: "Análise consultiva da campanha.",
+                parameters: payload.tools[0].function.parameters,
+                strict: false,
+              }],
+              toolChoice: { type: "function", name: "campaign_advisory" },
+              store: false,
+              maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+              tags: { feature: "campaign_advisor", prompt_version: "2026-10-24.a" },
+            });
+            const toolCall = result.toolCalls.find((call) => call.name === "campaign_advisory");
+            if (!toolCall?.arguments) throw new Error("structured_output_missing");
+            parsed = JSON.parse(toolCall.arguments) as Record<string, unknown>;
+            model = result.model;
+          } catch (error) {
+            console.warn(
+              "[campaign-advisor] OpenAI indisponível; usando fallback Lovable",
+              error instanceof Error ? error.message : "provider_error",
+            );
+            if (!apiKey)
+              return Response.json({ ok: false, error: "Nenhum provedor de IA configurado" }, { status: 500 });
+            const aiRes = await fetch(GATEWAY_URL, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!aiRes.ok) {
+              if (aiRes.status === 429)
+                return Response.json({ ok: false, error: "Limite de requisições atingido. Tente em alguns segundos." }, { status: 429 });
+              if (aiRes.status === 402)
+                return Response.json({ ok: false, error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+              console.error("[campaign-advisor] gateway error", aiRes.status);
+              return Response.json({ ok: false, error: "Falha ao consultar a IA" }, { status: 502 });
+            }
+            const data = await aiRes.json();
+            const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+            if (!toolCall?.function?.arguments)
+              return Response.json({ ok: false, error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+            try { parsed = JSON.parse(toolCall.function.arguments) as Record<string, unknown>; } catch {
+              return Response.json({ ok: false, error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+            }
+          }
+        } else {
+          const aiRes = await fetch(GATEWAY_URL, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!aiRes.ok) {
+            if (aiRes.status === 429)
+              return Response.json({ ok: false, error: "Limite de requisições atingido. Tente em alguns segundos." }, { status: 429 });
+            if (aiRes.status === 402)
+              return Response.json({ ok: false, error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+            console.error("[campaign-advisor] gateway error", aiRes.status);
+            return Response.json({ ok: false, error: "Falha ao consultar a IA" }, { status: 502 });
+          }
+          const data = await aiRes.json();
+          const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+          if (!toolCall?.function?.arguments)
+            return Response.json({ ok: false, error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+          try { parsed = JSON.parse(toolCall.function.arguments) as Record<string, unknown>; } catch {
+            return Response.json({ ok: false, error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+          }
         }
 
         const metricsSnapshot = metric
@@ -242,7 +303,7 @@ Gere:
               creative_ideas: (parsed.creative_ideas ?? []) as never,
               copy_ideas: (parsed.copy_ideas ?? []) as never,
               metrics_snapshot: (metricsSnapshot ?? {}) as never,
-              model: MODEL,
+              model,
             },
           ])
           .select("id, created_at")
@@ -256,7 +317,7 @@ Gere:
             created_at: saved?.created_at ?? new Date().toISOString(),
             ...parsed,
             metrics_snapshot: metricsSnapshot,
-            model: MODEL,
+            model,
           },
         });
       },

@@ -54,6 +54,20 @@ describe("OpenAI Responses gateway", () => {
     expect(clientError).toHaveBeenCalledTimes(1);
   });
 
+  it("preserva a escolha explícita de ferramenta no Responses API", async () => {
+    const fetchImpl = vi.fn(async (_input: string, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body));
+      expect(requestBody.tool_choice).toEqual({ type: "function", name: "campaign_advisory" });
+      return response({ id: "resp_tool", model: "gpt-6-luna", output: [{ type: "function_call", call_id: "call_1", name: "campaign_advisory", arguments: '{"summary":"ok"}' }], usage: { input_tokens: 3, output_tokens: 4 } });
+    });
+    const gateway = new OpenAiResponsesGateway(config, { fetchImpl });
+    await expect(gateway.run({
+      companyId: "company-a", capability: "marketing", input: "dados fictícios",
+      tools: [{ type: "function", name: "campaign_advisory", parameters: { type: "object" } }],
+      toolChoice: { type: "function", name: "campaign_advisory" },
+    })).resolves.toMatchObject({ toolCalls: [{ name: "campaign_advisory" }] });
+  });
+
   it("rejeita resposta sem texto ou tool call, sem mascarar saída vazia", async () => {
     const gateway = new OpenAiResponsesGateway(config, {
       fetchImpl: async () => response({
