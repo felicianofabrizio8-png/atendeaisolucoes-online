@@ -22,6 +22,7 @@ import {
   Brain,
   Wand2,
   Bot,
+  ShieldCheck,
   Target,
 } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -58,6 +59,7 @@ type NavItem = {
     | "/metas"
     | "/executivo"
     | "/ia"
+    | "/ia/homologacao"
     | "/campanhas"
     | "/criativos"
     | "/marketing"
@@ -90,6 +92,7 @@ const nav: NavItem[] = [
   { to: "/metas", label: "Metas", icon: Target, group: "Vendas" },
   { to: "/executivo", label: "Executivo", icon: Crown, adminOnly: true, group: "Vendas" },
   { to: "/ia", label: "IA de Atendimento", icon: Bot, group: "Marketing e IA" },
+  { to: "/ia/homologacao", label: "Homologação Bruna", icon: ShieldCheck, adminOnly: true, group: "Marketing e IA" },
   { to: "/saude", label: "Saúde do sistema", icon: Activity, group: "Sistema" },
   { to: "/runtime/observability", label: "Observabilidade", icon: Gauge, adminOnly: true, group: "Sistema" },
 ];

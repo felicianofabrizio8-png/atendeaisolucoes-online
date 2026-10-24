@@ -459,3 +459,12 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - A reserva deixou de ser configurável manualmente: é calculada pelo pior caso `max_input_tokens * preço_entrada + max_output_tokens * preço_saída`, com preço validado do modelo. O request rejeita modelo não precificado, input acima do limite e output acima de `max_tokens` antes da chamada.
 - `SALES_AGENT_OPENAI_SHADOW_ALERT_COST_THRESHOLDS_PERCENT=50,80,100` é suportado com claims idempotentes por empresa/período; cada faixa gera no máximo um alerta.
 - Procedimento documentado em `RETOMADA.md`: validar consentimento/LGPD, aplicar migration no ambiente autorizado, configurar somente secrets server-only, manter Responses/envios desligados, verificar isolamento e desligar flag/allowlist para rollback.
+
+## Interface de homologação controlada da Bruna — 2026-10-24
+
+- Criada localmente a rota administrativa `/ia/homologacao` e a API `/api/ai/bruna-homologation`. Ambas exigem administrador ativo, sessão válida, empresa do perfil e allowlist da empresa piloto.
+- A interface usa fixture fictícia sem ler catálogo, memória ou conversas reais. O gateway OpenAI é exercitado apenas pelo guard shadow; não há envio Meta, execução de tools, persistência de memória ou alteração do atendimento atual.
+- O uso fica fail-closed sem `BRUNA_OPENAI_HOMOLOGATION_UI=enabled`, `BRUNA_HOMOLOGATION_COMPANY_ID`, flags shadow/guard, migration e controles financeiros válidos. O limite de rota rejeita orçamento acima de US$1, chamadas acima de 20/h ou 50/dia.
+- A resposta administrativa mostra somente mensagem da sessão fictícia e telemetria sanitizada; o log do shadow remove a mensagem antes de registrar o relatório.
+- Validação local: build passou; TypeScript passou após correção do fixture; testes de controles shadow, allowlist e permissões passaram (18/18). Nenhuma flag, migration remota, chamada real ou deploy foi executado.
+- Pendência operacional: aplicar a migration no ambiente autorizado e configurar os valores server-only somente após aprovação do checklist em `RETOMADA.md`; publicar sem esses passos mantém a rota bloqueada.

@@ -41,6 +41,7 @@ import { Route as OnboardingWhatsappRouteImport } from './routes/onboarding.what
 import { Route as InboxRecoveryQueueRouteImport } from './routes/inbox.recovery-queue'
 import { Route as InboxRecoveryRouteImport } from './routes/inbox.recovery'
 import { Route as InboxConversationIdRouteImport } from './routes/inbox.$conversationId'
+import { Route as IaHomologacaoRouteImport } from './routes/ia.homologacao'
 import { Route as ConfiguracoesUsuariosRouteImport } from './routes/configuracoes_.usuarios'
 import { Route as ConfiguracoesRespostasRapidasRouteImport } from './routes/configuracoes_.respostas-rapidas'
 import { Route as ConfiguracoesRegrasCoachRouteImport } from './routes/configuracoes_.regras-coach'
@@ -111,6 +112,7 @@ import { Route as ApiAiFollowupConfigRouteImport } from './routes/api.ai.followu
 import { Route as ApiAiCreativeGeneratorRouteImport } from './routes/api.ai.creative-generator'
 import { Route as ApiAiCampaignCreativeRouteImport } from './routes/api.ai.campaign-creative'
 import { Route as ApiAiCampaignAdvisorRouteImport } from './routes/api.ai.campaign-advisor'
+import { Route as ApiAiBrunaHomologationRouteImport } from './routes/api.ai.bruna-homologation'
 import { Route as ApiAiAnalyticsRouteImport } from './routes/api.ai.analytics'
 import { Route as ApiAiAgentTickRouteImport } from './routes/api.ai.agent-tick'
 import { Route as ApiAiAgentTakeoverRouteImport } from './routes/api.ai.agent-takeover'
@@ -317,6 +319,11 @@ const InboxConversationIdRoute = InboxConversationIdRouteImport.update({
 } as any).lazy(() =>
   import('./routes/inbox.$conversationId.lazy').then((d) => d.Route),
 )
+const IaHomologacaoRoute = IaHomologacaoRouteImport.update({
+  id: '/homologacao',
+  path: '/homologacao',
+  getParentRoute: () => IaRoute,
+} as any)
 const ConfiguracoesUsuariosRoute = ConfiguracoesUsuariosRouteImport.update({
   id: '/configuracoes_/usuarios',
   path: '/configuracoes/usuarios',
@@ -685,6 +692,11 @@ const ApiAiCampaignAdvisorRoute = ApiAiCampaignAdvisorRouteImport.update({
   path: '/api/ai/campaign-advisor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiBrunaHomologationRoute = ApiAiBrunaHomologationRouteImport.update({
+  id: '/api/ai/bruna-homologation',
+  path: '/api/ai/bruna-homologation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAiAnalyticsRoute = ApiAiAnalyticsRouteImport.update({
   id: '/api/ai/analytics',
   path: '/api/ai/analytics',
@@ -801,7 +813,7 @@ export interface FileRoutesByFullPath {
   '/convite': typeof ConviteRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
-  '/ia': typeof IaRoute
+  '/ia': typeof IaRouteWithChildren
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
@@ -827,6 +839,7 @@ export interface FileRoutesByFullPath {
   '/configuracoes/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
+  '/ia/homologacao': typeof IaHomologacaoRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/inbox/recovery-queue': typeof InboxRecoveryQueueRoute
@@ -840,6 +853,7 @@ export interface FileRoutesByFullPath {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/bruna-homologation': typeof ApiAiBrunaHomologationRoute
   '/api/ai/campaign-advisor': typeof ApiAiCampaignAdvisorRoute
   '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
   '/api/ai/creative-generator': typeof ApiAiCreativeGeneratorRoute
@@ -926,7 +940,7 @@ export interface FileRoutesByTo {
   '/convite': typeof ConviteRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
-  '/ia': typeof IaRoute
+  '/ia': typeof IaRouteWithChildren
   '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
   '/metas': typeof MetasRoute
@@ -951,6 +965,7 @@ export interface FileRoutesByTo {
   '/configuracoes/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes/usuarios': typeof ConfiguracoesUsuariosRoute
+  '/ia/homologacao': typeof IaHomologacaoRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/inbox/recovery-queue': typeof InboxRecoveryQueueRoute
@@ -964,6 +979,7 @@ export interface FileRoutesByTo {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/bruna-homologation': typeof ApiAiBrunaHomologationRoute
   '/api/ai/campaign-advisor': typeof ApiAiCampaignAdvisorRoute
   '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
   '/api/ai/creative-generator': typeof ApiAiCreativeGeneratorRoute
@@ -1051,7 +1067,7 @@ export interface FileRoutesById {
   '/convite': typeof ConviteRoute
   '/criativos': typeof CriativosRoute
   '/executivo': typeof ExecutivoRoute
-  '/ia': typeof IaRoute
+  '/ia': typeof IaRouteWithChildren
   '/inbox': typeof InboxRouteWithChildren
   '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
@@ -1077,6 +1093,7 @@ export interface FileRoutesById {
   '/configuracoes_/regras-coach': typeof ConfiguracoesRegrasCoachRoute
   '/configuracoes_/respostas-rapidas': typeof ConfiguracoesRespostasRapidasRoute
   '/configuracoes_/usuarios': typeof ConfiguracoesUsuariosRoute
+  '/ia/homologacao': typeof IaHomologacaoRoute
   '/inbox/$conversationId': typeof InboxConversationIdRoute
   '/inbox/recovery': typeof InboxRecoveryRoute
   '/inbox/recovery-queue': typeof InboxRecoveryQueueRoute
@@ -1090,6 +1107,7 @@ export interface FileRoutesById {
   '/api/ai/agent-takeover': typeof ApiAiAgentTakeoverRoute
   '/api/ai/agent-tick': typeof ApiAiAgentTickRoute
   '/api/ai/analytics': typeof ApiAiAnalyticsRoute
+  '/api/ai/bruna-homologation': typeof ApiAiBrunaHomologationRoute
   '/api/ai/campaign-advisor': typeof ApiAiCampaignAdvisorRoute
   '/api/ai/campaign-creative': typeof ApiAiCampaignCreativeRoute
   '/api/ai/creative-generator': typeof ApiAiCreativeGeneratorRoute
@@ -1204,6 +1222,7 @@ export interface FileRouteTypes {
     | '/configuracoes/regras-coach'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
+    | '/ia/homologacao'
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/inbox/recovery-queue'
@@ -1217,6 +1236,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/bruna-homologation'
     | '/api/ai/campaign-advisor'
     | '/api/ai/campaign-creative'
     | '/api/ai/creative-generator'
@@ -1328,6 +1348,7 @@ export interface FileRouteTypes {
     | '/configuracoes/regras-coach'
     | '/configuracoes/respostas-rapidas'
     | '/configuracoes/usuarios'
+    | '/ia/homologacao'
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/inbox/recovery-queue'
@@ -1341,6 +1362,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/bruna-homologation'
     | '/api/ai/campaign-advisor'
     | '/api/ai/campaign-creative'
     | '/api/ai/creative-generator'
@@ -1453,6 +1475,7 @@ export interface FileRouteTypes {
     | '/configuracoes_/regras-coach'
     | '/configuracoes_/respostas-rapidas'
     | '/configuracoes_/usuarios'
+    | '/ia/homologacao'
     | '/inbox/$conversationId'
     | '/inbox/recovery'
     | '/inbox/recovery-queue'
@@ -1466,6 +1489,7 @@ export interface FileRouteTypes {
     | '/api/ai/agent-takeover'
     | '/api/ai/agent-tick'
     | '/api/ai/analytics'
+    | '/api/ai/bruna-homologation'
     | '/api/ai/campaign-advisor'
     | '/api/ai/campaign-creative'
     | '/api/ai/creative-generator'
@@ -1553,7 +1577,7 @@ export interface RootRouteChildren {
   ConviteRoute: typeof ConviteRoute
   CriativosRoute: typeof CriativosRoute
   ExecutivoRoute: typeof ExecutivoRoute
-  IaRoute: typeof IaRoute
+  IaRoute: typeof IaRouteWithChildren
   InboxRoute: typeof InboxRouteWithChildren
   LoginRoute: typeof LoginRoute
   MarketingRoute: typeof MarketingRoute
@@ -1587,6 +1611,7 @@ export interface RootRouteChildren {
   ApiAiAgentTakeoverRoute: typeof ApiAiAgentTakeoverRoute
   ApiAiAgentTickRoute: typeof ApiAiAgentTickRoute
   ApiAiAnalyticsRoute: typeof ApiAiAnalyticsRoute
+  ApiAiBrunaHomologationRoute: typeof ApiAiBrunaHomologationRoute
   ApiAiCampaignAdvisorRoute: typeof ApiAiCampaignAdvisorRoute
   ApiAiCampaignCreativeRoute: typeof ApiAiCampaignCreativeRoute
   ApiAiCreativeGeneratorRoute: typeof ApiAiCreativeGeneratorRoute
@@ -1904,6 +1929,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/inbox/$conversationId'
       preLoaderRoute: typeof InboxConversationIdRouteImport
       parentRoute: typeof InboxRoute
+    }
+    '/ia/homologacao': {
+      id: '/ia/homologacao'
+      path: '/homologacao'
+      fullPath: '/ia/homologacao'
+      preLoaderRoute: typeof IaHomologacaoRouteImport
+      parentRoute: typeof IaRoute
     }
     '/configuracoes_/usuarios': {
       id: '/configuracoes_/usuarios'
@@ -2395,6 +2427,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAiCampaignAdvisorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/bruna-homologation': {
+      id: '/api/ai/bruna-homologation'
+      path: '/api/ai/bruna-homologation'
+      fullPath: '/api/ai/bruna-homologation'
+      preLoaderRoute: typeof ApiAiBrunaHomologationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ai/analytics': {
       id: '/api/ai/analytics'
       path: '/api/ai/analytics'
@@ -2531,6 +2570,16 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface IaRouteChildren {
+  IaHomologacaoRoute: typeof IaHomologacaoRoute
+}
+
+const IaRouteChildren: IaRouteChildren = {
+  IaHomologacaoRoute: IaHomologacaoRoute,
+}
+
+const IaRouteWithChildren = IaRoute._addFileChildren(IaRouteChildren)
+
 interface InboxRouteChildren {
   InboxConversationIdRoute: typeof InboxConversationIdRoute
   InboxRecoveryRoute: typeof InboxRecoveryRoute
@@ -2568,7 +2617,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConviteRoute: ConviteRoute,
   CriativosRoute: CriativosRoute,
   ExecutivoRoute: ExecutivoRoute,
-  IaRoute: IaRoute,
+  IaRoute: IaRouteWithChildren,
   InboxRoute: InboxRouteWithChildren,
   LoginRoute: LoginRoute,
   MarketingRoute: MarketingRoute,
@@ -2602,6 +2651,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAiAgentTakeoverRoute: ApiAiAgentTakeoverRoute,
   ApiAiAgentTickRoute: ApiAiAgentTickRoute,
   ApiAiAnalyticsRoute: ApiAiAnalyticsRoute,
+  ApiAiBrunaHomologationRoute: ApiAiBrunaHomologationRoute,
   ApiAiCampaignAdvisorRoute: ApiAiCampaignAdvisorRoute,
   ApiAiCampaignCreativeRoute: ApiAiCampaignCreativeRoute,
   ApiAiCreativeGeneratorRoute: ApiAiCreativeGeneratorRoute,

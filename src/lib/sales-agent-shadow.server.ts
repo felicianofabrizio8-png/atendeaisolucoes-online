@@ -32,6 +32,8 @@ export interface SalesAgentShadowReport {
   memoryMatch: boolean;
   safetyRisk: boolean;
   fallback: boolean;
+  /** Disponível somente para a interface administrativa de homologação; nunca deve ir para logs. */
+  openAiMessage?: string | null;
   reason?: string;
 }
 
@@ -55,13 +57,13 @@ function hasSafetyRisk(text: string): boolean {
   return /\b(?:temos|há|possui|disponível)\b[^.?!]{0,40}\bem estoque\b/i.test(text);
 }
 
-function openAiDecision(data: SalesAgentCompletionResponse): { kind: AgentDecision["kind"]; nextAction: string | null; memory: string | null; safetyRisk: boolean } | null {
+function openAiDecision(data: SalesAgentCompletionResponse): { kind: AgentDecision["kind"]; nextAction: string | null; memory: string | null; safetyRisk: boolean; message: string } | null {
   const responseMessage = data.choices?.[0]?.message;
   const call = responseMessage?.tool_calls?.[0]?.function;
   const content = typeof responseMessage?.content === "string" ? responseMessage.content.trim() : "";
   const unsafe = hasSafetyRisk(content);
   if (!call?.name || !call.arguments) {
-    return content ? { kind: "reply", nextAction: null, memory: null, safetyRisk: unsafe } : null;
+    return content ? { kind: "reply", nextAction: null, memory: null, safetyRisk: unsafe, message: content } : null;
   }
   let args: Record<string, unknown>;
   try { args = JSON.parse(call.arguments) as Record<string, unknown>; } catch { return null; }
@@ -74,13 +76,14 @@ function openAiDecision(data: SalesAgentCompletionResponse): { kind: AgentDecisi
     ? args.next_action
     : typeof salesPlan?.next_action === "string" ? salesPlan.next_action : null;
   const memory = canonicalMemory(args.sales_plan);
-  if (call.name === "request_human_handoff") return { kind: "handoff", nextAction: null, memory: null, safetyRisk: toolUnsafe };
-  if (call.name === "compare_catalog_prices") return { kind: "reply", nextAction: "compare_catalog_prices", memory, safetyRisk: toolUnsafe };
+  if (call.name === "request_human_handoff") return { kind: "handoff", nextAction: null, memory: null, safetyRisk: toolUnsafe, message: replyText };
+  if (call.name === "compare_catalog_prices") return { kind: "reply", nextAction: "compare_catalog_prices", memory, safetyRisk: toolUnsafe, message: replyText };
   return {
     kind: "reply",
     nextAction,
     memory,
     safetyRisk: toolUnsafe,
+    message: replyText,
   };
 }
 
@@ -111,6 +114,7 @@ export async function runSalesAgentShadow(params: {
       safetyRisk: false,
       fallback: true,
       reason: result.reason,
+      openAiMessage: null,
     };
   }
   const parsed = openAiDecision(result.data);
@@ -133,5 +137,6 @@ export async function runSalesAgentShadow(params: {
     memoryMatch: parsed?.memory === currentMemory,
     safetyRisk: parsed?.safetyRisk ?? true,
     fallback: false,
+    openAiMessage: parsed?.message ?? null,
   };
 }

@@ -1171,7 +1171,10 @@ export async function runAgentTurn(params: {
       currentDecision: modelDecision,
       execute: (boundedRequest) => runSalesAgentShadow({ companyId: params.ctx.settings.company_id, request: boundedRequest, modelOverride: boundedRequest.model, currentDecision: modelDecision }),
     }).then((result) => {
-      if (result.report) console.info("[SALES_AGENT_OPENAI_SHADOW]", result.report);
+      if (result.report) {
+        const { openAiMessage: _redacted, ...safeReport } = result.report;
+        console.info("[SALES_AGENT_OPENAI_SHADOW]", safeReport);
+      }
       else if (result.reason) console.warn("[SALES_AGENT_OPENAI_SHADOW_BLOCKED]", { companyId: params.ctx.settings.company_id, reason: result.reason });
     }).catch(() => {
       console.warn("[SALES_AGENT_OPENAI_SHADOW_FAILED]", { companyId: params.ctx.settings.company_id });

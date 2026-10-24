@@ -230,3 +230,17 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 3. Configurar no ambiente server-only, sem commitar valores: `SALES_AGENT_OPENAI_SHADOW_GUARD=enabled`, `SALES_AGENT_OPENAI_SHADOW=enabled`, `SALES_AGENT_OPENAI_SHADOW_COMPANY_ID=<UUID_AUTORIZADO>`, `SALES_AGENT_OPENAI_SHADOW_MODEL=gpt-6-luna`, `SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO=1000000`, `SALES_AGENT_OPENAI_SHADOW_MAX_INPUT_TOKENS=<LIMITE_VALIDADO>`, `SALES_AGENT_OPENAI_SHADOW_MAX_OUTPUT_TOKENS=<LIMITE_VALIDADO>`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR=20`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY=50` e `SALES_AGENT_OPENAI_SHADOW_ALERT_COST_THRESHOLDS_PERCENT=50,80,100`.
 4. Manter `SALES_AGENT_OPENAI_RESPONSES` e qualquer envio Meta desligados; executar somente shadow e confirmar que apenas o `company_id` autorizado aparece nos relatórios.
 5. Rollback imediato: remover `SALES_AGENT_OPENAI_SHADOW_COMPANY_ID` ou definir `SALES_AGENT_OPENAI_SHADOW_GUARD=disabled`; não apagar tabelas nem executar migration destrutiva durante o piloto.
+
+### Interface administrativa de homologação da Bruna — preparada localmente
+
+- Rota protegida: `/ia/homologacao`; a página exige administrador ativo e a API repete a validação de sessão, papel `admin`, empresa do perfil e allowlist exata.
+- A interface usa somente fixture fictícia de catálogo, política de desconto e memória. O retorno passa pelo gateway OpenAI/guard financeiro do shadow; não grava memória, não executa tools e não chama Meta.
+- Guard adicional: `BRUNA_OPENAI_HOMOLOGATION_UI=enabled` e `BRUNA_HOMOLOGATION_COMPANY_ID=<UUID_DA_EMPRESA_DE_TESTE>`. A ausência desses valores mantém a interface indisponível.
+- Checklist de publicação futura, sem executar nesta etapa:
+  1. `git status --short` e `git log -1 --oneline`; confirmar branch/commit aprovado.
+  2. `npx.cmd tsc --noEmit`; `npm.cmd run build`; `npx.cmd vitest run src/lib/__tests__/sales-agent-shadow-controls.test.ts src/lib/__tests__/sales-agent-shadow.test.ts src/lib/__tests__/team-permissions.test.ts`.
+  3. Validar migration somente no banco descartável autorizado antes do banco do piloto; não usar `supabase db push` sem revisão e backup.
+  4. Configurar server-only, sem commit: `BRUNA_OPENAI_HOMOLOGATION_UI=enabled`, `BRUNA_HOMOLOGATION_COMPANY_ID=<UUID_DA_EMPRESA_DE_TESTE>`, `SALES_AGENT_OPENAI_SHADOW_GUARD=enabled`, `SALES_AGENT_OPENAI_SHADOW=enabled`, allowlist igual ao UUID, modelo precificado, orçamento `1000000` micro-USD, tokens e limites `20/50`, alertas `50,80,100`.
+  5. Confirmar `SALES_AGENT_OPENAI_RESPONSES` desligada/unset, atendimento Meta desligado para o piloto, credencial OpenAI server-only e monitoramento dos logs sanitizados.
+  6. Testar somente `/ia/homologacao` com fixture; confirmar `metaMessagesSent=false`, `externalToolsExecuted=false` e empresa autorizada.
+- Rollback: definir `BRUNA_OPENAI_HOMOLOGATION_UI=disabled`, remover `BRUNA_HOMOLOGATION_COMPANY_ID` e desligar `SALES_AGENT_OPENAI_SHADOW_GUARD`; não alterar `SALES_AGENT_OPENAI_RESPONSES`, atendimento atual ou dados da empresa.

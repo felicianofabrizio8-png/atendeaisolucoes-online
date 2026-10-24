@@ -54,6 +54,7 @@ export function pagePermission(path: string): Permission | "admin" | null {
   if (path.startsWith("/produtos")) return "products.view";
   if (path.startsWith("/relatorios")) return "reports.view";
   if (/^\/(campanhas|criativos|marketing)/.test(path)) return "campaigns.manage";
+  if (path.startsWith("/ia/homologacao")) return "admin";
   if (/^\/(ia|runtime|executivo|saude)/.test(path)) return "ai.manage";
   if (path.startsWith("/configuracoes/usuarios")) return "admin";
   if (/^\/(configuracoes\/(coach|regras|recovery))/.test(path)) return "ai.manage";
@@ -93,6 +94,7 @@ export function apiPermission(path: string): Permission | "admin" {
     )
   )
     return "campaigns.manage";
+  if (path === "/api/ai/bruna-homologation") return "admin";
   if (/^\/api\/(ai|runtime|coach|executive|scientific|business|system-health)/.test(path))
     return "ai.manage";
   if (/^\/api\/(meta|whatsapp|onboarding)/.test(path)) return "settings.manage";
