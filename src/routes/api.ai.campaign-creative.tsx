@@ -1,7 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const LOVABLE_MODEL = "google/gemini-2.5-flash";
+const OPENAI_MAX_OUTPUT_TOKENS = 512;
+
+export function campaignCreativeOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CAMPAIGN_CREATIVE_OPENAI_RESPONSES === "enabled";
+}
 
 interface RequestBody {
   product?: {
@@ -47,8 +55,18 @@ export const Route = createFileRoute("/api/ai/campaign-creative")({
           return Response.json({ error: "sessão inválida" }, { status: 401 });
         }
 
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("company_id")
+          .eq("id", userRes.user.id)
+          .maybeSingle();
+        if (!profile?.company_id) {
+          return Response.json({ error: "perfil sem empresa" }, { status: 403 });
+        }
+        const companyId = profile.company_id;
+
         const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) {
+        if (!campaignCreativeOpenAiEnabled() && !apiKey) {
           return Response.json(
             { error: "LOVABLE_API_KEY não configurada" },
             { status: 500 },
@@ -119,7 +137,7 @@ Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e pers
           : userText;
 
         const payload = {
-          model: "google/gemini-2.5-flash",
+          model: LOVABLE_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userContent },
@@ -177,69 +195,93 @@ Texto principal e demais campos seguem padrão Meta Ads, em pt-BR, claros e pers
           tool_choice: { type: "function", function: { name: "generate_ad" } },
         };
 
-        const aiRes = await fetch(GATEWAY_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!aiRes.ok) {
-          if (aiRes.status === 429) {
-            return Response.json(
-              { error: "Limite de requisições atingido. Tente novamente em alguns segundos." },
-              { status: 429 },
+        let parsed: Record<string, unknown>;
+        if (campaignCreativeOpenAiEnabled()) {
+          try {
+            const openAiInput: string | Array<Record<string, unknown>> = includeImage
+              ? [{ role: "user", content: [
+                  { type: "input_text", text: userText },
+                  { type: "input_image", image_url: mediaUrl },
+                ] }]
+              : userText;
+            const result = await new OpenAiResponsesGateway(undefined, {
+              usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+            }).run({
+              companyId,
+              capability: "marketing",
+              instructions: systemPrompt,
+              input: openAiInput,
+              tools: [{
+                type: "function",
+                name: "generate_ad",
+                description: "Gera criativo textual de anúncio.",
+                parameters: payload.tools[0].function.parameters,
+                strict: false,
+              }],
+              toolChoice: { type: "function", name: "generate_ad" },
+              store: false,
+              maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+              tags: { feature: "campaign_creative_text", prompt_version: "2026-10-24.a" },
+            });
+            const call = result.toolCalls.find((item) => item.name === "generate_ad");
+            if (!call?.arguments) throw new Error("structured_output_missing");
+            parsed = JSON.parse(call.arguments) as Record<string, unknown>;
+          } catch (error) {
+            console.warn(
+              "[campaign-creative] OpenAI indisponível; usando fallback Lovable",
+              error instanceof Error ? error.message : "provider_error",
             );
-          }
-          if (aiRes.status === 402) {
-            return Response.json(
-              {
-                error:
-                  "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso.",
-              },
-              { status: 402 },
-            );
-          }
-          const t = await aiRes.text();
-          console.error("AI gateway error", aiRes.status, t);
-          return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
-        }
-
-        const data = await aiRes.json();
-        const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall?.function?.arguments) {
-          return Response.json(
-            { error: "Resposta da IA sem dados estruturados" },
-            { status: 502 },
-          );
-        }
-        try {
-          const parsed = JSON.parse(toolCall.function.arguments);
-          // Heurística: encurtar título se passar de 40 chars.
-          if (typeof parsed.headline === "string") {
-            let h = parsed.headline
-              .replace(/["“”']/g, "")
-              .replace(/\.+$/g, "")
-              .replace(/\s+/g, " ")
-              .trim();
-            if (h.length > 40) {
-              // Corta na última palavra dentro de 38 chars.
-              const cut = h.slice(0, 38);
-              const lastSpace = cut.lastIndexOf(" ");
-              h = (lastSpace > 18 ? cut.slice(0, lastSpace) : cut).trim();
+            if (!apiKey) return Response.json({ error: "Nenhum provedor de IA configurado" }, { status: 500 });
+            const fallback = await fetch(GATEWAY_URL, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!fallback.ok) {
+              if (fallback.status === 429) return Response.json({ error: "Limite de requisições atingido. Tente novamente em alguns segundos." }, { status: 429 });
+              if (fallback.status === 402) return Response.json({ error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+              console.error("AI gateway error", fallback.status);
+              return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
             }
-            parsed.headline = h;
+            const data = await fallback.json();
+            const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+            if (!toolCall?.function?.arguments) return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+            try { parsed = JSON.parse(toolCall.function.arguments) as Record<string, unknown>; } catch {
+              return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+            }
           }
-          return Response.json(parsed);
-        } catch (e) {
-          console.error("Parse error", e);
-          return Response.json(
-            { error: "Falha ao interpretar resposta da IA" },
-            { status: 502 },
-          );
+        } else {
+          if (!apiKey) return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
+          const aiRes = await fetch(GATEWAY_URL, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!aiRes.ok) {
+            if (aiRes.status === 429) return Response.json({ error: "Limite de requisições atingido. Tente novamente em alguns segundos." }, { status: 429 });
+            if (aiRes.status === 402) return Response.json({ error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+            console.error("AI gateway error", aiRes.status);
+            return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
+          }
+          const data = await aiRes.json();
+          const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+          if (!toolCall?.function?.arguments) return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+          try { parsed = JSON.parse(toolCall.function.arguments) as Record<string, unknown>; } catch {
+            return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+          }
         }
+
+        // Heurística preservada: encurta título se passar de 40 caracteres.
+        if (typeof parsed.headline === "string") {
+          let h = parsed.headline.replace(/["“”']/g, "").replace(/\.+$/g, "").replace(/\s+/g, " ").trim();
+          if (h.length > 40) {
+            const cut = h.slice(0, 38);
+            const lastSpace = cut.lastIndexOf(" ");
+            h = (lastSpace > 18 ? cut.slice(0, lastSpace) : cut).trim();
+          }
+          parsed.headline = h;
+        }
+        return Response.json(parsed);
       },
     },
   },
