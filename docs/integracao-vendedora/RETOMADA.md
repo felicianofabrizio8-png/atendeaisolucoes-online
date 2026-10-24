@@ -191,3 +191,12 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - A trava impede duplicidade entre motores, sem chamada OpenAI para a verificação rotineira. Opt-out,
   autorização, takeover humano, limites, templates e idempotência existentes permanecem ativos.
 - Nenhuma migration ou alteração remota foi necessária; flags continuam desligadas.
+
+## Homologação comercial definitiva da Bruna (2026-10-24)
+
+- Criada suíte local `src/lib/__tests__/bruna-commercial-homologation.test.ts` com fixtures fictícias e isoladas de três empresas: catálogo, preços, políticas de desconto, histórico de orçamento/objeção/promessa, continuidade e treinamento.
+- O fluxo usa o `SalesAgentCore` e a safety layer reais, sem Supabase, WhatsApp ou gateway externo. Foram aprovados 18/18 cenários: 15 respostas comerciais autorizadas e 3 bloqueios (produto de outro tenant, desconto não autorizado e promessa não cadastrada).
+- Também foram validados continuidade/memória de treinamento, isolamento de `company_id`, takeover humano, empresa desligada e ausência de autorização da conversa. Opt-out permanece coberto pela supressão existente das campanhas, sem adicionar campo fictício ao gate do atendimento.
+- O legado não está configurado (`SALES_AGENT_LLM_ENDPOINT/MODEL/API_KEY` ausentes); não foi inventada comparação. A amostra real OpenAI anterior (30 casos fictícios) custou aproximadamente US$0,00524, mas não é equivalente ao prompt completo de produção e não serve como baseline definitivo.
+- Flags permanecem desligadas; nenhum envio, migration remota, alteração de produção ou push ocorreu. Pendência para homologação comercial externa: comparar com o legado configurado e executar piloto autorizado com prompt/catalogação completos.
+- Validação final: TypeScript e build passaram; suítes direcionadas passaram (77 testes; 62 com campanhas). A suíte completa passou em 326 arquivos/3.737 testes, com 1 timeout preexistente em `quote-wizard` e 5 erros `matchMedia` preexistentes em marketing/jsdom.

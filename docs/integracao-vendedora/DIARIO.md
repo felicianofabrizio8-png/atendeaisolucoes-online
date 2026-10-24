@@ -428,3 +428,11 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   release, idempotência e renovação mensal sem acumular; duas reservas concorrentes deram uma
   reserva e uma recusa por saldo insuficiente. Registros temporários foram removidos.
 - CLI Supabase permanece indisponível; isso não impediu a validação direta via PostgreSQL local.
+
+## Homologação comercial definitiva da Bruna — 2026-10-24
+
+- Adicionada a suíte `bruna-commercial-homologation.test.ts` com três fixtures fictícias independentes: Acme Piscinas (Pix 5% autorizado), Lar Móveis (sem desconto) e Move Bikes (condição sujeita a confirmação humana). Cada fixture inclui catálogo, preço, política, histórico de decisão familiar/orçamento/promessa e continuidade.
+- A execução passou pelo `SalesAgentCore` e pela `runSafetyLayer`, sem transporte externo. Resultado: 18/18 cenários aprovados, incluindo 15 respostas válidas e 3 bloqueios esperados para produto cruzado, desconto fora da política e promessa não comprovada.
+- Isolamento por empresa, memória de treinamento/continuidade e proteção contra takeover/empresa desligada/opt-in ausente foram confirmados. Opt-out foi mantido no mecanismo de supressão de campanhas já coberto pela suíte existente; nenhuma regra nova foi inventada.
+- Não há motor legado configurado para comparação real. A comparação ficou limitada às regras comerciais explícitas. Não foram feitas chamadas pagas nesta suíte, nem envios, alterações remotas ou ativação de flags.
+- Validação final: TypeScript e build passaram; direcionados 77 testes e campanhas+homo 62 testes passaram. A suíte completa registrou 326 arquivos, 3.737 testes aprovados, 9 ignorados, 1 timeout em `quote-wizard` e 5 erros `matchMedia` em marketing/jsdom, iguais ao baseline anterior e fora do escopo desta integração.
