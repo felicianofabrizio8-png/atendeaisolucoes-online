@@ -444,3 +444,11 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - Controles já prontos: chave-mestra/escopo por empresa e conversa, takeover, opt-out/supressão de campanhas, catálogo soberano, safety de preço/desconto/promessa, fallback legado, limites e kill switch por flags desligadas.
 - Autorização futura exige: definir um único `company_id`, consentimento para contexto real, orçamento/teto de custo, modelo, alertas, acesso aos logs, catálogo/políticas conferidos e rollback aprovado. Procedimento: manter Responses principal desligado; habilitar apenas shadow + allowlist; observar amostra; desligar allowlist/flag para rollback imediato; só depois avaliar ativação gradual.
 - Testes após a proteção: 25 direcionados passaram; TypeScript e build devem ser reexecutados antes do commit. Legado não configurado e piloto real continuam bloqueados até decisão operacional; nenhuma flag foi ativada.
+
+## Proteções financeiras e operacionais do shadow — 2026-10-24
+
+- Criada a migration aditiva `20261024133000_sales_agent_shadow_controls.sql`: orçamento mensal por empresa em micro-USD, reservas com lock transacional, reconciliação commit/release e unicidade de idempotência.
+- Criado o guard server-only com configuração fail-closed: teto financeiro, reserva pré-chamada, limites distribuídos de hora/dia via `rate_limit_counters`, fingerprint de request/empresa/decisão, rollback por flag e alertas sem conteúdo de prompt, resposta ou PII.
+- Custo desconhecido é debitado conservadoramente pelo valor reservado e gera alerta; falhas liberam a reserva. A chamada não ocorre se o guard estiver incompleto ou indisponível.
+- Testes direcionados: 77 aprovados; cobertura inclui concorrência, orçamento esgotado, retries/reprocessamento, isolamento entre empresas e rollback. Migration executada somente em transação no banco descartável `supabase_db_vendedora-unificada-validacao`, com `ROLLBACK`; demais containers não foram tocados.
+- TypeScript e build aprovados. Flags continuam desligadas; sem OpenAI real, WhatsApp, produção, migration remota, push ou deploy. Antes do piloto ainda é necessário aplicar a migration no ambiente autorizado e definir orçamento/limites/alertas.

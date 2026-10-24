@@ -13,6 +13,7 @@ import { isBrunaWhatsappTextAdapterEnabled } from "@/lib/bruna-whatsapp-feature-
 import { isSalesAgentOpenAiResponsesEnabled } from "./sales-agent-openai-feature-flag";
 import { completeSalesAgentWithOpenAi } from "./sales-agent-openai-adapter.server";
 import { isSalesAgentShadowEnabledForCompany, runSalesAgentShadow } from "./sales-agent-shadow.server";
+import { runSalesAgentShadowWithControls } from "./sales-agent-shadow-controls.server";
 import { sendBrunaWhatsappText } from "@/lib/bruna-whatsapp-text-adapter.server";
 import {
   authorizeWhatsappSend,
@@ -1164,14 +1165,16 @@ export async function runAgentTurn(params: {
     consultativeGuidance,
   });
   if (isSalesAgentShadowEnabledForCompany(params.ctx.settings.company_id) && shadowRequest) {
-    void runSalesAgentShadow({
+    void runSalesAgentShadowWithControls({
       companyId: params.ctx.settings.company_id,
       request: shadowRequest,
       currentDecision: modelDecision,
-    }).then((report) => {
-      console.info("[SALES_AGENT_OPENAI_SHADOW]", report);
+      execute: () => runSalesAgentShadow({ companyId: params.ctx.settings.company_id, request: shadowRequest!, currentDecision: modelDecision }),
+    }).then((result) => {
+      if (result.report) console.info("[SALES_AGENT_OPENAI_SHADOW]", result.report);
+      else if (result.reason) console.warn("[SALES_AGENT_OPENAI_SHADOW_BLOCKED]", { companyId: params.ctx.settings.company_id, reason: result.reason });
     }).catch(() => {
-      console.warn("[SALES_AGENT_OPENAI_SHADOW_FAILED]");
+      console.warn("[SALES_AGENT_OPENAI_SHADOW_FAILED]", { companyId: params.ctx.settings.company_id });
     });
   }
   // A memória consultiva pode recomendar humano (objeção não autorizada): preservado.

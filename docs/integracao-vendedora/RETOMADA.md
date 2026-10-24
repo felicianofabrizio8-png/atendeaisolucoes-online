@@ -208,3 +208,11 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Pré-requisitos para autorização futura: empresa de teste e consentimento definidos; catálogo/políticas conferidos; chave OpenAI server-only; modelo e teto de custo definidos; logs/alertas acessíveis; Meta/WhatsApp e opt-out conferidos; takeover humano testado; plano de rollback aprovado.
 - Checklist operacional: (1) manter `SALES_AGENT_OPENAI_RESPONSES` desligada; (2) configurar somente a flag shadow e o `company_id` piloto no ambiente não produtivo/pilotado; (3) confirmar que o log mostra apenas a empresa autorizada; (4) executar amostra sem efeitos externos; (5) interromper removendo primeiro a allowlist ou desligando a flag; (6) investigar custo, latência, fallback, segurança e divergências antes de qualquer ativação.
 - Bloqueios: motor legado não está configurado para comparação real; ainda falta autorização de privacidade/uso de contexto real, teto financeiro e procedimento operacional de observabilidade. Nenhuma flag foi ativada.
+
+## Proteções financeiras e operacionais do shadow (2026-10-24)
+
+- Adicionada migration local aditiva `20261024133000_sales_agent_shadow_controls.sql` com período mensal por empresa, reserva/reconciliação em micro-USD, chave idempotente única e RPCs transacionais. O guard falha fechado se a migration, configuração ou banco estiver indisponível.
+- Criado `sales-agent-shadow-controls.server.ts`: teto por empresa/período, reserva antes da chamada, reconciliação após uso, limites distribuídos por hora/dia, fingerprint contra retry/concorrência e alertas sanitizados de custo, volume, latência e falha.
+- Configuração permanece desligada por padrão. Para habilitar futuramente, todos os limites obrigatórios devem estar preenchidos; rollback é desligar `SALES_AGENT_OPENAI_SHADOW_GUARD` ou remover a allowlist.
+- Testes: 77 direcionados passaram, incluindo concorrência, orçamento esgotado, duplicidade/reprocessamento, múltiplas empresas e rollback. Migration validada no banco descartável PostgreSQL 17 com criação, reserva, idempotência, esgotamento e reconciliação, dentro de transação revertida.
+- TypeScript e build passaram. Nenhuma flag, migration remota, chamada real, envio, push ou deploy foi executado. Pendência: aplicar/validar a migration no ambiente autorizado e definir os valores operacionais antes do piloto.
