@@ -169,6 +169,22 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   permanecer independente do bloqueio automático.
 - Etapa não implementada: sem migration, cobrança, alteração dos modos, envio real ou commit de
   código.
+
+## Base financeira opt-in (2026-10-24)
+
+- Criada migration local `20261024121000_followup_wallets.sql` com duas carteiras por empresa
+  (`ia`/`whatsapp`), créditos mensais de R$50 separados de recargas persistentes, plano R$499,
+  ledger idempotente, reservas, débitos, releases/estornos e preços versionados sem tarifas de
+  consumo preenchidas.
+- RPCs server-only preparam crédito mensal somente após confirmação externa, recarga, reserva e
+  finalização idempotente. A camada Mercado Pago é apenas contrato de evento confirmado; não faz
+  chamadas nem cobranças reais.
+- Follow-up automático e campanhas reservam WhatsApp; chamadas OpenAI do follow-up reservam IA.
+  Falhas liberam a reserva. O modo humano não é bloqueado pela carteira.
+- `FOLLOWUP_WALLET_GUARD` permanece desligada por padrão. Sem preço versionado, o guard ligado
+  falha fechado antes de qualquer ação paga.
+- CLI Supabase não está instalado; a migration não foi aplicada nem validada em banco local nesta
+  entrega. Requer validação SQL local antes de homologação.
 - A trava impede duplicidade entre motores, sem chamada OpenAI para a verificação rotineira. Opt-out,
   autorização, takeover humano, limites, templates e idempotência existentes permanecem ativos.
 - Nenhuma migration ou alteração remota foi necessária; flags continuam desligadas.

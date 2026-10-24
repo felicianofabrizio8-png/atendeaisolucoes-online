@@ -408,3 +408,19 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - Manual humano permanece fora do bloqueio automático por padrão; essa política precisa ser
   aprovada antes da implementação. Nenhuma alteração de código, banco ou serviço foi feita.
 - Testes de regressão dos três modos: 154/154 aprovados.
+
+## Base financeira do Atende Aí — 2026-10-24
+
+- Implementada base SQL local para `company_wallets`, `wallet_ledger`, `wallet_reservations`,
+  `wallet_plan_versions` e `wallet_price_versions`. Plano comercial: R$499/mês; créditos
+  mensais independentes de R$50 IA e R$50 WhatsApp; renovação depende de RPC chamada após pagamento
+  confirmado e não acumula. Recargas aumentam somente o bucket persistente.
+- Reserva usa alocação mensal primeiro e recarga depois; commit debita; falha libera. Chaves de
+  idempotência são escopadas por empresa/carteira. RLS limita leitura ao administrador e RPCs ao
+  `service_role`.
+- Integração nos três modos é opt-in: automático e campanhas usam wallet WhatsApp; IA follow-up
+  usa wallet IA; manual humano não é bloqueado. Sem tarifas de Meta/OpenAI inventadas.
+- Mercado Pago ficou somente no contrato `ConfirmedWalletPayment`; verificação de assinatura,
+  webhook e cobrança real continuam pendentes.
+- Validação: TypeScript e build aprovados; testes da carteira/dispatch passaram. Supabase CLI
+  indisponível, portanto migration ainda não foi executada em banco descartável.

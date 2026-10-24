@@ -16,6 +16,7 @@ import { isLeadInSegment, parseSegmentDefinition } from "@/lib/relationship-camp
 import { generateResumePhrase, loadResumeContext } from "@/lib/followup/resume";
 import { normalizeResumePhrase } from "@/lib/followup/resume-phrase";
 import { findRecentFollowupContact, recentContactReason } from "@/lib/followup/coordination";
+import { finishWalletCharge, reserveWalletCharge, type WalletReservation } from "@/lib/financial-wallet/wallet.server";
 import {
   isRelationshipPurpose,
   RELATIONSHIP_PURPOSES,
@@ -784,6 +785,18 @@ export async function dispatchRelationshipRecipient(input: {
   if (!claimed)
     return { status: "idempotent" as const, reason: "destinatário mudou ou já foi reservado; nada enviado" };
 
+  let walletReservation: WalletReservation | null = null;
+  try {
+    walletReservation = await reserveWalletCharge({
+      companyId: input.companyId, wallet: "whatsapp",
+      idempotencyKey: dispatchKey, purpose: "relationship_campaign",
+      referenceId: recipient.id, automated: input.mode === "automatic" || input.mode === "assisted",
+    });
+  } catch (error) {
+    await db.from("relationship_campaign_recipients").update({ status: "failed", last_error: error instanceof Error ? error.message : "wallet_denied", locked_until: null, updated_at: now.toISOString() }).eq("company_id", input.companyId).eq("id", recipient.id);
+    return { status: "blocked" as const, reason: error instanceof Error ? error.message : "wallet_denied" };
+  }
+
   // Comprovante de envio no servidor; sem ele o destinatário segue o caminho de falha.
   const authorization = await authorizeWhatsappSend({
     companyId: input.companyId,
@@ -812,6 +825,7 @@ export async function dispatchRelationshipRecipient(input: {
       });
 
   if (!send.ok || send.simulated) {
+    await finishWalletCharge({ companyId: input.companyId, reservation: walletReservation, action: "release", idempotencyKey: dispatchKey });
     const nextAttempt = new Date(
       now.getTime() + settingsBackoffMs(await getRelationshipSettings(input.companyId), recipient.attempts + 1),
     );
@@ -828,6 +842,8 @@ export async function dispatchRelationshipRecipient(input: {
       .eq("id", recipient.id);
     return { status: "failed" as const, error: send.ok ? "simulated delivery" : send.error };
   }
+
+  await finishWalletCharge({ companyId: input.companyId, reservation: walletReservation, action: "commit", idempotencyKey: dispatchKey });
 
   await db
     .from("relationship_campaign_recipients")

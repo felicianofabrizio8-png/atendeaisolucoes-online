@@ -37,6 +37,7 @@ import {
 } from "./resume";
 import { findRecentFollowupContact, recentContactReason } from "./coordination";
 import { getFollowupSettings } from "./settings";
+import { finishWalletCharge, reserveWalletCharge, type WalletReservation } from "@/lib/financial-wallet/wallet.server";
 import type { FollowupRule } from "./types";
 
 export type FollowupTrigger =
@@ -328,6 +329,19 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
       await persist(input, result, { reason: "send_not_authorized" });
       return result;
     }
+    let reservation: WalletReservation | null = null;
+    try {
+      reservation = await reserveWalletCharge({
+        companyId: input.companyId, wallet: "whatsapp",
+        idempotencyKey: `followup:${input.conversationId}:${input.cycleId ?? "none"}:${input.attempt}`,
+        purpose: "followup_text", referenceId: input.conversationId,
+        automated: input.trigger.kind !== "manual",
+      });
+    } catch (error) {
+      const result: DispatchResult = { status: "blocked", reason: error instanceof Error ? error.message : "wallet_denied", via: "text", message: input.text };
+      await persist(input, result, { reason: "wallet_denied" });
+      return result;
+    }
     const send = await sendWhatsappText({
       companyId: input.companyId,
       conversationId: input.conversationId,
@@ -340,6 +354,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
       : send.simulated
         ? { status: "simulated", simulationId: send.simulationId ?? null, externalId: null }
         : { status: "sent", externalId: send.externalId ?? null };
+    await finishWalletCharge({ companyId: input.companyId, reservation, action: outcome.status === "sent" ? "commit" : "release", idempotencyKey: `followup:${input.conversationId}:${input.cycleId ?? "none"}:${input.attempt}` });
     const result: DispatchResult = { ...outcome, via: "text", message: input.text };
     await persist(input, result, {});
     return result;
@@ -451,6 +466,19 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     await persist(input, result, { purpose, reason: "send_not_authorized" });
     return result;
   }
+  let reservation: WalletReservation | null = null;
+  try {
+    reservation = await reserveWalletCharge({
+      companyId: input.companyId, wallet: "whatsapp",
+      idempotencyKey: `followup:${input.conversationId}:${input.cycleId ?? "none"}:${input.attempt}`,
+      purpose: "followup_template", referenceId: input.conversationId,
+      automated: input.trigger.kind !== "manual",
+    });
+  } catch (error) {
+    const result: DispatchResult = { status: "blocked", reason: error instanceof Error ? error.message : "wallet_denied", via: "template", templateName: template.name, message, messagePreview };
+    await persist(input, result, { purpose, reason: "wallet_denied" });
+    return result;
+  }
   const send = await sendWhatsappTemplate({
     companyId: input.companyId,
     conversationId: input.conversationId,
@@ -465,6 +493,7 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
     : send.simulated
       ? { status: "simulated", simulationId: send.simulationId, externalId: null }
       : { status: "sent", externalId: send.externalId };
+  await finishWalletCharge({ companyId: input.companyId, reservation, action: outcome.status === "sent" ? "commit" : "release", idempotencyKey: `followup:${input.conversationId}:${input.cycleId ?? "none"}:${input.attempt}` });
   const result: DispatchResult = {
     ...outcome,
     via: "template",
