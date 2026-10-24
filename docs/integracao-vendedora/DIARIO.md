@@ -389,6 +389,8 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   legítimas do próprio ciclo. A consulta agora exclui somente o `cycle_id` corrente e mantém o
   bloqueio entre ciclos/modos.
 - Simulação: 100 clientes, 2 empresas, respostas, compras/encerramentos, opt-out, horários,
-  contatos simultâneos, isolamento e limites/créditos esgotados. Suíte final: 154/154 testes;
+  contatos simultâneos, isolamento e limites diário/horário esgotados. Não existe ainda um
+  bloqueio de saldo de créditos no motor de follow-up; isso fica como pendência de produto.
+  Suíte final: 154/154 testes;
   TypeScript e build aprovados.
 - Flags de produção continuam desligadas; não houve envio real, push, deploy ou alteração remota.

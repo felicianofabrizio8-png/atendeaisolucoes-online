@@ -152,7 +152,8 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Simulação com 100 clientes em duas empresas cobriu automático contínuo, manual, massa,
   respostas, compras/encerramentos, opt-out, janela, concorrência, isolamento e cooldown.
 - O cooldown não bloqueia a próxima tentativa do próprio ciclo; contatos de outro ciclo ou modo
-  continuam impedidos. Gates de créditos/limites permanecem ativos.
+  continuam impedidos. Gates diário/horário permanecem ativos; saldo de créditos ainda não é
+  uma regra implementada no motor e permanece pendente.
 - 154 testes passaram; TypeScript e build passaram. Nenhuma flag foi ativada nem houve envio real.
 - A trava impede duplicidade entre motores, sem chamada OpenAI para a verificação rotineira. Opt-out,
   autorização, takeover humano, limites, templates e idempotência existentes permanecem ativos.
