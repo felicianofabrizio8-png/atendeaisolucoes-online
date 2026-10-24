@@ -58,3 +58,13 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   1.000+, sem declarar capacidade antes de testes de carga.
 - A Etapa 1 permanece limitada a build independente, homologação separada, baseline de métricas
   e teste inicial de carga; não inclui superdimensionamento, sharding ou deploy de produção.
+- Etapa 1 — build independente (branch `codex/independencia-build-lovable`): removido
+  `@lovable.dev/vite-tanstack-config`; `vite.config.ts` agora declara diretamente React,
+  Tailwind, aliases, TanStack Start e Nitro Cloudflare. `package.json`/lockfile sincronizados.
+- Validação: TypeScript sem erros; 137 testes direcionados passaram; build independente e
+  baseline Lovable passaram. Ambos transformaram os mesmos 3.953 módulos client e 1.030 SSR,
+  com 551 arquivos de saída. A diferença de diretório (`dist` independente versus `.output`
+  no baseline) é de layout explícito do Nitro, não incompatibilidade de rota.
+- Não foram alterados gateways de IA, infraestrutura, autenticação, APIs, banco ou produção.
+- Próximo bloqueio para hospedagem independente: substituir os usos restantes de gateway/serviços
+  Lovable fora do escopo desta Etapa 1 e validar o runtime escolhido em homologação.

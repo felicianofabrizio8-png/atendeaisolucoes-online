@@ -261,3 +261,22 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   fencing, idempotência, limites por tenant e Bruna desligada por padrão.
 - A Etapa 1 foi mantida sem ampliação: build independente, homologação separada, baseline e
   carga mínima. Nenhum código, banco, credencial, serviço, deploy ou push foi alterado.
+## Etapa 1 — build independente do Lovable (2026-10-23)
+
+- Branch local isolada: `codex/independencia-build-lovable`, criada a partir do commit
+  documental da integração da Bruna.
+- Substituído o wrapper `@lovable.dev/vite-tanstack-config` por configuração explícita com
+  `@vitejs/plugin-react`, `@tailwindcss/vite`, `vite-tsconfig-paths`, `@tanstack/react-start`
+  e `nitro` no preset `cloudflare-module`, preservando alias, dedupe, proteção de imports,
+  `nodeCompat`, saída server/client e portas de desenvolvimento.
+- Removida a dependência do `package.json` e do lockfile. Nenhum gateway de IA ou infraestrutura
+  foi modificado.
+- TypeScript: passou sem erros. Testes direcionados da integração: 6 arquivos, 137 passaram.
+- Build independente: passou; client, SSR e Nitro Cloudflare gerados. Baseline com a configuração
+  anterior: também passou. Ambos transformaram 3.953 módulos client e 1.030 SSR e produziram
+  551 arquivos. A única diferença observada foi o layout de saída (`dist` explícito na nova
+  configuração e `.output` no wrapper anterior).
+- Avisos mantidos: chunks grandes, imports dinâmicos/estáticos sobrepostos, diretivas `use client`
+  ignoradas pelo bundler e opção Rollup `platform` desconhecida; presentes no build e sem falha.
+- Pendência: os usos restantes de gateway/serviços Lovable em IA auxiliar, preview auth, CORS e
+  documentação não foram tratados nesta etapa. Nenhum deploy, push, migration ou produção foi tocado.
