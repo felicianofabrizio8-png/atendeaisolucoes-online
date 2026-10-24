@@ -5,6 +5,9 @@
 // ============================================================================
 
 import type { ExecutiveDashboardBundle } from "@/lib/executive-ai/types";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 import type { ExecutiveNarrative } from "./ExecutiveNarrativeTypes";
 import {
   NARRATIVE_SYSTEM_PROMPT,
@@ -14,13 +17,26 @@ import {
 } from "./ExecutiveNarrativePrompt";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL = "google/gemini-2.5-flash";
+const LOVABLE_MODEL = "google/gemini-2.5-flash";
+const OPENAI_MAX_OUTPUT_TOKENS = 384;
 
 export interface NarrativeInput {
+  companyId: string;
   bundle: ExecutiveDashboardBundle;
   executiveFirstName: string;
   localHour: number;
   previousKnowledge?: PreviousKnowledgeContext;
+}
+
+export function executiveNarrativeOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.EXECUTIVE_NARRATIVE_OPENAI_RESPONSES === "enabled";
+}
+
+function openAiMaxOutputTokens(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number(env.EXECUTIVE_NARRATIVE_OPENAI_MAX_OUTPUT_TOKENS);
+  return Number.isInteger(parsed) && parsed > 0
+    ? Math.min(parsed, OPENAI_MAX_OUTPUT_TOKENS)
+    : OPENAI_MAX_OUTPUT_TOKENS;
 }
 
 interface GatewayResponse {
@@ -52,6 +68,43 @@ function asStringList(v: unknown, max: number): string[] {
 
 export class ExecutiveNarrativeService {
   static async generate(input: NarrativeInput): Promise<ExecutiveNarrative> {
+    if (executiveNarrativeOpenAiEnabled()) {
+      try {
+        return await this.generateWithOpenAi(input);
+      } catch (error) {
+        console.warn(
+          "[executive-narrative] OpenAI indisponível; usando fallback Lovable",
+          error instanceof Error ? error.message : "provider_error",
+        );
+      }
+    }
+    return this.generateWithLovable(input);
+  }
+
+  private static async generateWithOpenAi(input: NarrativeInput): Promise<ExecutiveNarrative> {
+    const sanitized = sanitizeSnapshotForLLM(input.bundle);
+    const userPrompt = buildUserPrompt(
+      sanitized,
+      input.executiveFirstName,
+      input.localHour,
+      input.previousKnowledge,
+    );
+    const result = await new OpenAiResponsesGateway(undefined, {
+      usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+    }).run({
+      companyId: input.companyId,
+      capability: "executive",
+      instructions: NARRATIVE_SYSTEM_PROMPT,
+      input: `${userPrompt}\n\nRetorne somente JSON válido conforme as instruções.`,
+      store: false,
+      maxOutputTokens: openAiMaxOutputTokens(),
+      responseFormat: "json",
+      tags: { feature: "executive_narrative", prompt_version: "2026-10-24.a" },
+    });
+    return this.parseNarrative(result.outputText, input.bundle.generatedAt, result.model);
+  }
+
+  private static async generateWithLovable(input: NarrativeInput): Promise<ExecutiveNarrative> {
     const apiKey = process.env.LOVABLE_API_KEY;
     if (!apiKey) throw new Error("missing_api_key");
 
@@ -70,7 +123,7 @@ export class ExecutiveNarrativeService {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: LOVABLE_MODEL,
         messages: [
           { role: "system", content: NARRATIVE_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
@@ -86,6 +139,10 @@ export class ExecutiveNarrativeService {
 
     const data = (await res.json()) as GatewayResponse;
     const content = data.choices?.[0]?.message?.content ?? "";
+    return this.parseNarrative(content, input.bundle.generatedAt, LOVABLE_MODEL);
+  }
+
+  private static parseNarrative(content: string, snapshotGeneratedAt: string, model: string): ExecutiveNarrative {
     const parsed = parseJsonSafe(content);
     if (!parsed) throw new Error("invalid_llm_output");
 
@@ -102,8 +159,8 @@ export class ExecutiveNarrativeService {
       risks: asStringList(parsed.risks, 5),
       nextAction,
       generatedAt: new Date().toISOString(),
-      snapshotGeneratedAt: input.bundle.generatedAt,
-      model: MODEL,
+      snapshotGeneratedAt,
+      model,
     };
   }
 }

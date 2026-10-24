@@ -129,6 +129,7 @@ export const Route = createFileRoute("/api/executive/narrative")({
           const localHour = parsed.data.hour ?? new Date().getUTCHours();
 
           const narrative = await ExecutiveNarrativeService.generate({
+            companyId: profile.company_id,
             bundle,
             executiveFirstName: firstName,
             localHour,
