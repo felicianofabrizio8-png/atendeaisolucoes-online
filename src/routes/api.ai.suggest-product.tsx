@@ -4,8 +4,16 @@ import {
   buildSuggestProductCatalog,
   formatSuggestProductCatalog,
 } from "@/lib/product-suggestion";
+import { OpenAiResponsesGateway } from "@/lib/ai-platform/gateway.server";
+import { createSupabaseAiUsageSink } from "@/lib/ai-platform/supabase-usage-sink.server";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const LOVABLE_MODEL = "google/gemini-2.5-flash";
+const OPENAI_MAX_OUTPUT_TOKENS = 256;
+
+export function suggestProductOpenAiEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.SUGGEST_PRODUCT_OPENAI_RESPONSES === "enabled";
+}
 
 interface IncomingMessage {
   role: "lead" | "agent" | "system";
@@ -45,7 +53,7 @@ export const Route = createFileRoute("/api/ai/suggest-product")({
         }
 
         const apiKey = process.env.LOVABLE_API_KEY;
-        if (!apiKey) {
+        if (!suggestProductOpenAiEnabled() && !apiKey) {
           return Response.json({ error: "LOVABLE_API_KEY não configurada" }, { status: 500 });
         }
 
@@ -102,7 +110,7 @@ Conversa:
 ${transcript}`;
 
         const payload = {
-          model: "google/gemini-2.5-flash",
+          model: LOVABLE_MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -129,50 +137,82 @@ ${transcript}`;
           tool_choice: { type: "function", function: { name: "suggest_product" } },
         };
 
-        const aiRes = await fetch(GATEWAY_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!aiRes.ok) {
-          if (aiRes.status === 429) {
-            return Response.json(
-              { error: "Limite de requisições atingido. Tente novamente em alguns segundos." },
-              { status: 429 },
+        let parsed: { productId?: unknown; confidence?: unknown; reason?: unknown };
+        if (suggestProductOpenAiEnabled()) {
+          try {
+            const result = await new OpenAiResponsesGateway(undefined, {
+              usageSink: createSupabaseAiUsageSink(supabaseAdmin),
+            }).run({
+              companyId,
+              capability: "sales_agent",
+              instructions: systemPrompt,
+              input: `${userPrompt}\n\nUse a ferramenta suggest_product. Não invente produtos, preços ou estoque.`,
+              tools: [{
+                type: "function",
+                name: "suggest_product",
+                description: "Sugere o produto do catálogo mais adequado.",
+                parameters: payload.tools[0].function.parameters,
+                strict: false,
+              }],
+              toolChoice: { type: "function", name: "suggest_product" },
+              store: false,
+              maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+              tags: { feature: "suggest_product", prompt_version: "2026-10-24.a" },
+            });
+            const call = result.toolCalls.find((item) => item.name === "suggest_product");
+            if (!call?.arguments) throw new Error("structured_output_missing");
+            parsed = JSON.parse(call.arguments) as typeof parsed;
+          } catch (error) {
+            console.warn(
+              "[suggest-product] OpenAI indisponível; usando fallback Lovable",
+              error instanceof Error ? error.message : "provider_error",
             );
+            if (!apiKey) return Response.json({ error: "Nenhum provedor de IA configurado" }, { status: 500 });
+            const fallback = await fetch(GATEWAY_URL, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            if (!fallback.ok) {
+              if (fallback.status === 429) return Response.json({ error: "Limite de requisições atingido. Tente novamente em alguns segundos." }, { status: 429 });
+              if (fallback.status === 402) return Response.json({ error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+              console.error("AI gateway error", fallback.status);
+              return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
+            }
+            const data = await fallback.json();
+            const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+            if (!toolCall?.function?.arguments) return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+            try { parsed = JSON.parse(toolCall.function.arguments) as typeof parsed; } catch {
+              return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+            }
           }
-          if (aiRes.status === 402) {
-            return Response.json(
-              { error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." },
-              { status: 402 },
-            );
+        } else {
+          const aiRes = await fetch(GATEWAY_URL, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!aiRes.ok) {
+            if (aiRes.status === 429) return Response.json({ error: "Limite de requisições atingido. Tente novamente em alguns segundos." }, { status: 429 });
+            if (aiRes.status === 402) return Response.json({ error: "Créditos esgotados. Adicione créditos em Configurações > Workspace > Uso." }, { status: 402 });
+            console.error("AI gateway error", aiRes.status);
+            return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
           }
-          const t = await aiRes.text();
-          console.error("AI gateway error", aiRes.status, t);
-          return Response.json({ error: "Falha ao consultar a IA" }, { status: 502 });
+          const data = await aiRes.json();
+          const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+          if (!toolCall?.function?.arguments) return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+          try { parsed = JSON.parse(toolCall.function.arguments) as typeof parsed; } catch {
+            return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+          }
         }
 
-        const data = await aiRes.json();
-        const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-        if (!toolCall?.function?.arguments) {
-          return Response.json({ error: "Resposta da IA sem dados estruturados" }, { status: 502 });
+        if (typeof parsed.productId !== "string" || !productIds.includes(parsed.productId)) {
+          return Response.json({ error: "Produto sugerido inválido" }, { status: 502 });
         }
-
-        try {
-          const parsed = JSON.parse(toolCall.function.arguments);
-          // Valida se o productId existe de fato
-          if (!productIds.includes(parsed.productId)) {
-            return Response.json({ error: "Produto sugerido inválido" }, { status: 502 });
-          }
-          return Response.json(parsed);
-        } catch (e) {
-          console.error("Parse error", e, toolCall.function.arguments);
-          return Response.json({ error: "Falha ao interpretar resposta da IA" }, { status: 502 });
+        if (!parsed.reason || typeof parsed.reason !== "string") {
+          return Response.json({ error: "Resposta da IA sem justificativa" }, { status: 502 });
         }
+        return Response.json(parsed);
       },
     },
   },
