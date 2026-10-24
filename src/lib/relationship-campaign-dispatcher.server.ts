@@ -15,6 +15,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isLeadInSegment, parseSegmentDefinition } from "@/lib/relationship-campaigns.server";
 import { generateResumePhrase, loadResumeContext } from "@/lib/followup/resume";
 import { normalizeResumePhrase } from "@/lib/followup/resume-phrase";
+import { findRecentFollowupContact, recentContactReason } from "@/lib/followup/coordination";
 import {
   isRelationshipPurpose,
   RELATIONSHIP_PURPOSES,
@@ -508,6 +509,14 @@ export async function prepareRelationshipDispatch(input: {
     const reason = suppression?.reason ?? "lead encerrado";
     return { status: "suppressed", reason, recipientPatch: { status: "suppressed", last_error: reason } };
   }
+
+  const recent = await findRecentFollowupContact({
+    companyId,
+    leadId: lead.id,
+    now,
+    cooldownHours: 24,
+  });
+  if (recent) blockers.push(recentContactReason(recent));
 
   const phone = normalizeRelationshipPhone(lead.external_id ?? lead.phone);
   if (phone.length < 8 || phone.length > 15) return { status: "blocked", reason: "telefone inválido para WhatsApp" };

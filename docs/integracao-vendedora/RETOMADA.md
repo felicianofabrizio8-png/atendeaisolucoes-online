@@ -135,3 +135,15 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Follow-up usa orçamento mínimo de 256 tokens; flags permanecem desligadas.
 - Reteste real com três contextos fictícios: 3/3 respostas completas e mensagens finais montadas;
   custo estimado total US$ 0,0001671. Sem WhatsApp, produção ou deploy.
+
+## Coordenação dos três modos de follow-up (2026-10-24)
+
+- Automático, manual e campanhas em massa continuam usando o motor Meta/WhatsApp e os gates
+  existentes; o envio real permanece desligado por `RELATIONSHIP_CAMPAIGN_ENABLE_REAL_SEND`.
+- Criada coordenação server-only em `src/lib/followup/coordination.ts`: por empresa e lead,
+  contatos `sent`/`simulated` do follow-up e destinatários de campanhas recentes são consultados
+  antes de novo contato. Automático/manual usam `ai_followup_min_hours_between`; campanhas usam
+  janela conservadora de 24 horas.
+- A trava impede duplicidade entre motores, sem chamada OpenAI para a verificação rotineira. Opt-out,
+  autorização, takeover humano, limites, templates e idempotência existentes permanecem ativos.
+- Nenhuma migration ou alteração remota foi necessária; flags continuam desligadas.

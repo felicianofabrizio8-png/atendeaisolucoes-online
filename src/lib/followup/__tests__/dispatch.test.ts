@@ -326,6 +326,22 @@ describe("dispatchFollowup — fora da janela: chamar_novamente contextual", () 
 });
 
 describe("dispatchFollowup — revalidação antes de enviar", () => {
+  it("coordena modos e bloqueia contato recente do mesmo lead", async () => {
+    db.tables.follow_ups = [{
+      id: "previous-followup",
+      company_id: "company-a",
+      lead_id: "lead-1",
+      status: "sent",
+      created_at: new Date().toISOString(),
+      metadata: { manual: true },
+    }];
+    const r = await dispatchFollowup(input());
+    expect(r).toMatchObject({ status: "skipped", skipCode: "contact_cooldown" });
+    expect(r.reason).toContain("modo manual");
+    expect(tpl.send).not.toHaveBeenCalled();
+    expect(followUps()).toHaveLength(0);
+  });
+
   it("cliente respondeu depois da referência: não envia nem grava tentativa", async () => {
     db.tables.messages.push({
       company_id: "company-a",

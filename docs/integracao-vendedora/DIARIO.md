@@ -367,3 +367,16 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - O orçamento mínimo do adaptador de follow-up passou para 256 tokens, sem alterar flags.
 - Mocks: 78 testes aprovados. TypeScript aprovado. Reteste real: 3/3 gerações completas com
   contexto fictício, custo estimado US$ 0,0001671 e mensagens `chamar_novamente` válidas.
+
+## Coordenação automático/manual/em massa — 2026-10-24
+
+- O dispatch comum agora bloqueia contato recente do mesmo lead quando já houve follow-up
+  enviado/simulado ou campanha enviada, sempre com escopo de empresa. A origem do contato é
+  preservada no motivo do bloqueio.
+- O dispatcher de campanhas aplica a mesma consulta antes da preparação/dispatch, mantendo
+  personalização preparada uma única vez e evitando chamadas OpenAI rotineiras duplicadas.
+- Kill switch de envio real, autorização Meta, opt-out, limites e flags de IA não foram ativados.
+- Validação: TypeScript passou; 6 suítes relevantes passaram (69 testes). Um teste antigo de
+  `relationship-campaign-preview` falhou porque ainda espera a frase artificial anterior à correção
+  de naturalidade; a implementação atual devolve o fallback natural já homologado. Não é regressão
+  desta coordenação.

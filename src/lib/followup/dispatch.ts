@@ -35,6 +35,8 @@ import {
   loadResumeContext,
   resumePersonalizationEnabled,
 } from "./resume";
+import { findRecentFollowupContact, recentContactReason } from "./coordination";
+import { getFollowupSettings } from "./settings";
 import type { FollowupRule } from "./types";
 
 export type FollowupTrigger =
@@ -75,7 +77,8 @@ export type SkipCode =
   | "human_takeover"
   | "disinterest"
   | "conversation_missing"
-  | "ai_busy";
+  | "ai_busy"
+  | "contact_cooldown";
 
 export interface DispatchResult {
   status: DispatchStatus;
@@ -281,6 +284,22 @@ export async function dispatchFollowup(input: DispatchInput): Promise<DispatchRe
       status: "skipped",
       reason: early.reason,
       skipCode: early.code,
+      via: input.outsideWindow ? "template" : "text",
+      message: input.text,
+    };
+  }
+
+  const settings = await getFollowupSettings(input.companyId);
+  const recent = await findRecentFollowupContact({
+    companyId: input.companyId,
+    leadId: input.leadId,
+    cooldownHours: settings?.minHoursBetween ?? 24,
+  });
+  if (recent) {
+    return {
+      status: "skipped",
+      reason: recentContactReason(recent),
+      skipCode: "contact_cooldown",
       via: input.outsideWindow ? "template" : "text",
       message: input.text,
     };
