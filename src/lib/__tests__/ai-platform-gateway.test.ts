@@ -82,4 +82,17 @@ describe("Responses compatibility adapters", () => {
     expect(chatMessagesToResponsesInput([{ role: "system", content: "A" }, { role: "developer", content: "B" }, { role: "user", content: "C" }])).toEqual({ instructions: "A\n\nB", input: [{ role: "user", content: "C" }] });
     expect(chatToolsToResponsesTools([{ type: "function", function: { name: "f", description: "F", parameters: { type: "object" } } }])).toEqual([{ type: "function", name: "f", description: "F", parameters: { type: "object" }, strict: false }]);
   });
+
+  it("maps JSON compatibility to Responses text.format", async () => {
+    const fetchImpl = vi.fn(async (_input: string, init?: RequestInit) => {
+      const requestBody = JSON.parse(String(init?.body));
+      expect(requestBody.text).toEqual({ format: { type: "json_object" } });
+      return response({ id: "resp_json", model: "gpt-6-luna", output: [{ type: "message", content: [{ type: "output_text", text: '{"date":null}' }] }], usage: { input_tokens: 2, output_tokens: 3 } });
+    });
+    const gateway = new OpenAiResponsesGateway(config, { fetchImpl });
+    await expect(gateway.runChatCompatibility({
+      companyId: "company-a", capability: "followup", responseFormat: "json",
+      messages: [{ role: "user", content: "Oi" }],
+    })).resolves.toMatchObject({ choices: [{ message: { content: '{"date":null}' } }] });
+  });
 });

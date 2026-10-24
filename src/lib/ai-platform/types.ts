@@ -57,6 +57,7 @@ export interface ResponsesRequest {
   store?: boolean;
   timeoutMs?: number;
   maxOutputTokens?: number;
+  responseFormat?: "text" | "json";
   tags?: Record<string, string>;
 }
 

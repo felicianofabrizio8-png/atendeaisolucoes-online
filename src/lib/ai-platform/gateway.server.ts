@@ -124,6 +124,9 @@ export class OpenAiResponsesGateway {
       input: request.input,
       ...(request.instructions ? { instructions: request.instructions } : {}),
       ...(request.tools?.length ? { tools: request.tools } : {}),
+      ...(request.responseFormat === "json"
+        ? { text: { format: { type: "json_object" } } }
+        : {}),
       ...(request.maxOutputTokens ? { max_output_tokens: request.maxOutputTokens } : {}),
     };
     const startedAt = Date.now();
@@ -185,6 +188,7 @@ export class OpenAiResponsesGateway {
       instructions: converted.instructions,
       input: converted.input,
       tools: chatToolsToResponsesTools(request.tools),
+      responseFormat: request.responseFormat,
       maxOutputTokens: request.maxTokens,
     });
     return responsesResultToChatCompletion(result);
