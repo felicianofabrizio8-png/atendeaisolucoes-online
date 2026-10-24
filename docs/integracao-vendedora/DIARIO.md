@@ -234,3 +234,21 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   `dockerDesktopLinuxEngine`. As migrations não foram executadas e nenhum container foi tocado.
 - Commit local: `6352bd61` (`feat(vendedora): integrar adaptador WhatsApp atrás de flag`). Não
   houve push, deploy, migration remota ou envio real.
+
+## Fechamento da Etapa 7 — validação no banco descartável (2026-10-23)
+
+- `supabase_db_vendedora-unificada-validacao` foi confirmado `Up (healthy)` na porta local
+  `47322`; somente esse container foi inspecionado/usado. Nenhum container de outro projeto
+  foi alterado, reiniciado, removido ou recriado.
+- `supabase/tests/whatsapp-attempts-phase1.sql`: passou com rollback, incluindo RLS/privilégios,
+  isolamento multiempresa, idempotência e corrida concorrente.
+- `supabase/tests/whatsapp-status-reconciliation.sql`: passou com rollback, incluindo eventos
+  fora de ordem, dedupe, monotonicidade e não associação entre empresas.
+- Teste transacional adicional: migration de descontos idempotente; padrão `none`/`[]`, modos
+  válidos, percentuais/condições, limite de 10 regras, constraints e compatibilidade com
+  `approval_required` passaram. Leases passaram em acquire busy/valid, renew, release e fencing.
+- A migration `20261023090000_company_discount_policy.sql` foi executada em transação e
+  revertida, confirmando reaplicação sem erro. Os RPCs de lease permanecem indisponíveis para
+  `authenticated` e disponíveis para `service_role`.
+- A etapa 7 está concluída para homologação local. Não houve acesso remoto, produção, push,
+  deploy ou envio real.

@@ -14,7 +14,7 @@ Worktree: `C:\Users\AMD\atendeai-vendedora-unificada` — branch local `integrac
 | 4 Motor | concluída | `62edb9e8` |
 | 5 Política de desconto | concluída | ver `git log -1` |
 | 6 Adaptador de envio da Bruna/lease atrás de chave desligada | concluída | `6352bd61` |
-| 7 Testes completos, build, migrations, relatório final | parcialmente concluída | Docker indisponível para migrations |
+| 7 Testes completos, build, migrations, relatório final | concluída | `6352bd61`, `78309538` + validação SQL |
 
 Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIARIO.md`.
 
@@ -47,6 +47,7 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
 - Os 5 erros `matchMedia` do teste de marketing/jsdom são preexistentes: os arquivos
   `MarketingMotion.tsx` e `marketing-ia-reorganization.test.tsx` não diferem do `HEAD`, e
   o teste passa isoladamente com os mesmos erros não tratados do ambiente.
-- Docker CLI existe, mas o daemon recusou acesso ao pipe `dockerDesktopLinuxEngine`; migrations
-  não foram executadas nem houve alteração de configuração ou containers.
-- Pendência: executar a validação SQL no banco descartável existente.
+- Banco descartável `supabase_db_vendedora-unificada-validacao` confirmado saudável; validação
+  executada exclusivamente nele, sem tocar nos demais containers.
+- Migrations/SQL: attempts Phase 1, reconciliação de status, política de descontos e leases
+  passaram. A migration de descontos também foi reaplicada em transação e revertida com sucesso.
