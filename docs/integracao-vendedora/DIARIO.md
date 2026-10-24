@@ -422,5 +422,9 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   usa wallet IA; manual humano não é bloqueado. Sem tarifas de Meta/OpenAI inventadas.
 - Mercado Pago ficou somente no contrato `ConfirmedWalletPayment`; verificação de assinatura,
   webhook e cobrança real continuam pendentes.
-- Validação: TypeScript e build aprovados; testes da carteira/dispatch passaram. Supabase CLI
-  indisponível, portanto migration ainda não foi executada em banco descartável.
+- Validação: migration aplicada diretamente no `supabase_db_vendedora-unificada-validacao`, o
+  banco descartável documentado, sem reiniciar/remover outros containers. SQL transacional passou
+  em criação de 2 wallets por empresa, isolamento, RLS para usuário sem vínculo, reserva, débito,
+  release, idempotência e renovação mensal sem acumular; duas reservas concorrentes deram uma
+  reserva e uma recusa por saldo insuficiente. Registros temporários foram removidos.
+- CLI Supabase permanece indisponível; isso não impediu a validação direta via PostgreSQL local.

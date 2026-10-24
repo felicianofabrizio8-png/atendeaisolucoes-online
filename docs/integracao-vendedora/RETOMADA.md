@@ -183,8 +183,11 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   Falhas liberam a reserva. O modo humano não é bloqueado pela carteira.
 - `FOLLOWUP_WALLET_GUARD` permanece desligada por padrão. Sem preço versionado, o guard ligado
   falha fechado antes de qualquer ação paga.
-- CLI Supabase não está instalado; a migration não foi aplicada nem validada em banco local nesta
-  entrega. Requer validação SQL local antes de homologação.
+- Migration validada no banco descartável `supabase_db_vendedora-unificada-validacao` (PostgreSQL
+  17.11), sem tocar nos demais containers. Criação/isolation, RLS, reservas concorrentes,
+  insuficiência, débito, estorno, idempotência e renovação sem acumular passaram.
+- O CLI Supabase continua indisponível, mas a aplicação direta da migration e os testes SQL foram
+  executados exclusivamente no banco descartável. Flags permanecem desligadas.
 - A trava impede duplicidade entre motores, sem chamada OpenAI para a verificação rotineira. Opt-out,
   autorização, takeover humano, limites, templates e idempotência existentes permanecem ativos.
 - Nenhuma migration ou alteração remota foi necessária; flags continuam desligadas.
