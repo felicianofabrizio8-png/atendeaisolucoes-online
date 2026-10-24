@@ -102,4 +102,25 @@ describe("shadow mode do fluxo principal da Bruna", () => {
     expect(report.openAiKind).toBe("reply");
     expect(report.safetyRisk).toBe(false);
   });
+
+  it("compara sales_plan.next_action e não marca ausência de estoque como promessa", async () => {
+    const gateway = {
+      runChatCompatibility: vi.fn().mockResolvedValue({
+        id: "resp-plan",
+        object: "chat.completion" as const,
+        model: "gpt-6-luna",
+        choices: [{ index: 0, message: { role: "assistant" as const, content: null, tool_calls: [{ id: "call-plan", type: "function" as const, function: { name: "respond_to_customer", arguments: JSON.stringify({ message: "Não tenho informação autorizada sobre estoque.", sales_plan: { stage: "qualification", next_action: "discover_needs" } }) } }] }, finish_reason: "tool_calls" as const }],
+        usage: { prompt_tokens: 20, completion_tokens: 12, total_tokens: 32 },
+      }),
+    };
+    const report = await runSalesAgentShadow({
+      companyId: "company-plan",
+      request: request(102),
+      currentDecision: { kind: "reply", message: "Resposta legada.", next_action: "discover_needs", sales_plan: { stage: "qualification", nextAction: "discover_needs", context: null, adjustments: [] } },
+      gateway,
+    });
+    expect(report.nextActionMatch).toBe(true);
+    expect(report.memoryMatch).toBe(true);
+    expect(report.safetyRisk).toBe(false);
+  });
 });
