@@ -119,12 +119,14 @@ describe("Responses compatibility adapters", () => {
         strict: true,
         schema: expect.objectContaining({ required: ["greeting"] }),
       }));
+      expect(requestBody.reasoning).toEqual({ effort: "low", mode: "standard" });
       return response({ id: "resp_schema", model: "gpt-6-luna", output: [{ type: "message", content: [{ type: "output_text", text: '{"greeting":"Olá"}' }] }], usage: { input_tokens: 2, output_tokens: 3 } });
     });
     const gateway = new OpenAiResponsesGateway(config, { fetchImpl });
     await expect(gateway.run({
       companyId: "company-a", capability: "executive", input: "snapshot fictício",
       responseFormat: { type: "json_schema", name: "executive_narrative", schema: { type: "object", required: ["greeting"] }, strict: true },
+      reasoning: { effort: "low", mode: "standard" },
     })).resolves.toMatchObject({ outputText: '{"greeting":"Olá"}' });
   });
 });

@@ -47,6 +47,12 @@ export interface ResponsesFunctionTool {
   strict?: boolean;
 }
 
+export interface ResponsesReasoning {
+  effort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  mode?: "standard" | "pro";
+  context?: "auto" | "current_turn" | "all_turns";
+}
+
 export interface ResponsesRequest {
   companyId: string;
   capability: AiCapability;
@@ -58,6 +64,7 @@ export interface ResponsesRequest {
   store?: boolean;
   timeoutMs?: number;
   maxOutputTokens?: number;
+  reasoning?: ResponsesReasoning;
   responseFormat?: "text" | "json" | {
     type: "json_schema";
     name: string;

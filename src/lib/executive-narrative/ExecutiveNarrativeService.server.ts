@@ -19,7 +19,7 @@ import {
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const LOVABLE_MODEL = "google/gemini-2.5-flash";
-const OPENAI_MAX_OUTPUT_TOKENS = 1200;
+const OPENAI_MAX_OUTPUT_TOKENS = 900;
 
 export interface NarrativeInput {
   companyId: string;
@@ -99,6 +99,7 @@ export class ExecutiveNarrativeService {
       input: `${userPrompt}\n\nRetorne somente JSON válido conforme as instruções.`,
       store: false,
       maxOutputTokens: openAiMaxOutputTokens(),
+      reasoning: { effort: "low", mode: "standard", context: "current_turn" },
       responseFormat: {
         type: "json_schema",
         name: "executive_narrative",

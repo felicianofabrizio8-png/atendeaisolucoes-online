@@ -125,6 +125,7 @@ export class OpenAiResponsesGateway {
       ...(request.instructions ? { instructions: request.instructions } : {}),
       ...(request.tools?.length ? { tools: request.tools } : {}),
       ...(request.toolChoice ? { tool_choice: request.toolChoice } : {}),
+      ...(request.reasoning ? { reasoning: request.reasoning } : {}),
       ...(request.responseFormat === "json"
         ? { text: { format: { type: "json_object" } } }
         : typeof request.responseFormat === "object" && request.responseFormat.type === "json_schema"
