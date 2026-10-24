@@ -116,3 +116,11 @@ Detalhes, decisões e pendências de cada etapa: `docs/integracao-vendedora/DIAR
   há contexto.
 - O caminho personalizado exige simultaneamente `FOLLOWUP_OPENAI_ADAPTER=enabled` e
   `FOLLOWUP_RESUME_META_VALIDATED=enabled`; ambas permanecem desligadas. Nenhum envio foi feito.
+
+## Etapa 2B — naturalidade do follow-up (2026-10-24)
+
+- Corrigida a exigência do trecho contextual: pergunta completa, capitalizada, com pontuação e
+  sem construções artificiais de gerúndio.
+- Fallbacks de orçamento, objeção, produto, decisão e ausência de contexto agora também são
+  perguntas naturais. A disponibilidade permanece separada por espaço após a pergunta.
+- Rehomologação local: 15 cenários válidos; TypeScript sem erros. Flags continuam desligadas.

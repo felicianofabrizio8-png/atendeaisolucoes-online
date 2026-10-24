@@ -81,7 +81,7 @@ describe("fallbackResumePhrase", () => {
       ctx({ quote: { productName: "Piscina 8x4" }, product: "Piscina" }),
     );
     expect(out).toEqual({
-      text: "estou passando para retomar nossa conversa sobre o orçamento de Piscina 8x4 e saber se ficou alguma dúvida",
+      text: "Você conseguiu avaliar o orçamento de Piscina 8x4 e ficou com alguma dúvida?",
       source: "context",
     });
   });
@@ -89,14 +89,14 @@ describe("fallbackResumePhrase", () => {
   it("usa objeção e produto quando não há orçamento", () => {
     const out = fallbackResumePhrase(ctx({ objection: "Preço", product: "ar split 9000" }));
     expect(out.text).toBe(
-      "estou passando para retomar nossa conversa sobre ar split 9000 e ver se consigo ajudar com a questão de preço",
+      "Você conseguiu avaliar ar split 9000 e ficou com alguma dúvida sobre preço?",
     );
     expect(out.source).toBe("context");
   });
 
   it("usa o produto de interesse", () => {
     expect(fallbackResumePhrase(ctx({ interest: "cortina blackout" })).text).toBe(
-      "estou passando para retomar nossa conversa sobre cortina blackout e saber se ainda posso te ajudar",
+      "Você ainda quer conversar sobre cortina blackout?",
     );
   });
 
@@ -162,7 +162,7 @@ describe("montador determinístico do {{1}}", () => {
     const pending = buildResumeTemplateVariable({
       leadName: "Carlos Silva",
       contextualPhrase:
-        "estou passando para retomar nossa conversa sobre o orçamento da Piscina 8x4 e saber se ficou alguma dúvida",
+        "Você conseguiu avaliar o orçamento da Piscina 8x4 e ficou com alguma dúvida?",
       templateBody: body,
     });
     expect(pending).toContain("Carlos, tudo bem?");

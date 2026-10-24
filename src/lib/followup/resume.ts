@@ -13,6 +13,7 @@ import {
   fallbackResumePhrase,
   hasResumeContext,
   normalizeResumePhrase,
+  normalizeResumeQuestion,
   RESUME_PROMPT_VERSION,
   type ResumeContext,
   type ResumePhraseSource,
@@ -124,7 +125,7 @@ export async function generatePersonalizedResumeVariable(args: {
       tags: { feature: "followup_resume_phrase", prompt_version: RESUME_PROMPT_VERSION },
       messages: buildResumeContextPrompt(args.context, args.templateBody),
     });
-    const contextual = normalizeResumePhrase(response.text, args.context);
+    const contextual = normalizeResumeQuestion(response.text, args.context);
     const text = contextual
       ? buildResumeTemplateVariable({
           leadName: args.context.leadName,

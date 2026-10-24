@@ -32,7 +32,7 @@ export type ResumePhraseSource = "ai" | "context" | "generic";
 export const RESUME_PHRASE_MAX = 280;
 const RESUME_PHRASE_MIN = 8;
 export const GENERIC_RESUME_PHRASE =
-  "estou passando para retomar nossa conversa e saber se ainda posso te ajudar";
+  "Você ainda precisa de ajuda com o que conversamos?";
 
 function stripAccents(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -95,6 +95,19 @@ export function normalizeResumePhrase(
   return text;
 }
 
+/** Normaliza o trecho contextual para uma pergunta pronta para o cliente. */
+export function normalizeResumeQuestion(
+  raw: string,
+  ctx: Pick<ResumeContext, "leadName">,
+): string | null {
+  let text = normalizeResumePhrase(raw, ctx);
+  if (!text) return null;
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  if (/^(?:retomando|passando|estou passando|ver se|saber se|entender se)\b/i.test(text)) return null;
+  if (!text.endsWith("?")) text = `${text.replace(/[.]$/, "")}?`;
+  return text;
+}
+
 /**
  * Retomada determinística a partir dos dados já estruturados. Só usa o que
  * existe; sem nada específico, a frase genérica.
@@ -108,20 +121,17 @@ export function fallbackResumePhrase(ctx: ResumeContext): {
   const product = clean(ctx.product) ?? clean(ctx.interest);
   const objection = clean(ctx.objection);
 
-  // Continuações de "Olá {{1}} tudo bem?": começam em minúscula e não fecham
-  // com pontuação — o texto fixo do template vem logo depois.
-  const lead = "estou passando para retomar nossa conversa sobre";
-  if (quoted) candidates.push(`${lead} o orçamento de ${quoted} e saber se ficou alguma dúvida`);
+  if (quoted) candidates.push(`Você conseguiu avaliar o orçamento de ${quoted} e ficou com alguma dúvida?`);
   if (objection && product)
     candidates.push(
-      `${lead} ${product} e ver se consigo ajudar com a questão de ${objection.toLowerCase()}`,
+      `Você conseguiu avaliar ${product} e ficou com alguma dúvida sobre ${objection.toLowerCase()}?`,
     );
   if (product && ctx.readyToClose)
-    candidates.push(`${lead} ${product} e saber se podemos seguir com o pedido`);
-  if (product) candidates.push(`${lead} ${product} e saber se ainda posso te ajudar`);
+    candidates.push(`Podemos seguir com o pedido de ${product}?`);
+  if (product) candidates.push(`Você ainda quer conversar sobre ${product}?`);
 
   for (const c of candidates) {
-    const ok = normalizeResumePhrase(c, ctx);
+    const ok = normalizeResumeQuestion(c, ctx);
     if (ok) return { text: ok, source: "context" };
   }
   return { text: GENERIC_RESUME_PHRASE, source: "generic" };
@@ -144,7 +154,7 @@ export function buildResumeTemplateVariable(args: {
   const at = args.templateBody.indexOf(marker);
   if (at < 0 || args.templateBody.indexOf(marker, at + marker.length) >= 0) return null;
   const suffix = args.templateBody.slice(at + marker.length);
-  const context = normalizeResumePhrase(args.contextualPhrase, { leadName: args.leadName });
+  const context = normalizeResumeQuestion(args.contextualPhrase, { leadName: args.leadName });
   if (!context) return null;
   const greeting = firstName(args.leadName)
     ? `${firstName(args.leadName)}, tudo bem?`
@@ -170,7 +180,7 @@ export function buildResumeContextPrompt(
     {
       role: "system",
       content: `${system.content}
-Retorne SOMENTE o trecho contextual. Não escreva nome, saudação, disponibilidade, valores ou o texto fixo do template.`,
+Retorne SOMENTE uma pergunta contextual completa, natural e persuasiva, iniciada com letra maiúscula e terminada com "?". Não escreva nome, saudação, disponibilidade, valores ou o texto fixo do template. Evite gerúndios e construções como "retomando...", "ver se...", "saber se..." ou "entender se...".`,
     },
     user,
   ];

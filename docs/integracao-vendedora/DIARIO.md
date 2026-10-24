@@ -346,3 +346,14 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
   autorizada de compatibilidade Meta ainda é pendência, portanto a personalização está desativada.
 - Testes cobrem decisão familiar, orçamento pendente, vendedor/promessa via contexto, fallback e
   rejeições de fatos inválidos. Direcionados: 75 aprovados; TypeScript e build aprovados.
+
+## Etapa 2B — correção de naturalidade (2026-10-24)
+
+- `normalizeResumeQuestion` passou a exigir pergunta completa, capitalização inicial e pontuação;
+  respostas com `retomando`, `ver se`, `saber se`, `entender se` e equivalentes são rejeitadas.
+- Fallbacks foram reescritos para perguntas naturais, preservando fatos existentes e sem inventar
+  preço, prazo ou condição.
+- A montagem final continua preservando o texto Meta e o sufixo `, tudo bem?`; o trecho da IA e
+  a disponibilidade ficam separados por pontuação/espaço adequado.
+- Rehomologação: 15 cenários simulados aprovados; 5 mensagens finais conferidas manualmente;
+  testes direcionados 67/67 e TypeScript aprovados. Nenhuma chamada paga ou envio real.
