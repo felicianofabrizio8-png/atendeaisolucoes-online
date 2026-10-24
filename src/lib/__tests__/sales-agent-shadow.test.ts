@@ -80,4 +80,26 @@ describe("shadow mode do fluxo principal da Bruna", () => {
     expect(calls).toHaveLength(100);
     expect(gateway.runChatCompatibility).toHaveBeenCalledTimes(100);
   });
+
+  it("trata resposta textual como decisão de resposta, sem fallback silencioso", async () => {
+    const gateway = {
+      runChatCompatibility: vi.fn().mockResolvedValue({
+        id: "resp-text",
+        object: "chat.completion" as const,
+        model: "gpt-6-luna",
+        choices: [{ index: 0, message: { role: "assistant" as const, content: "Posso esclarecer a dúvida com os dados autorizados." }, finish_reason: "stop" as const }],
+        usage: { prompt_tokens: 20, completion_tokens: 12, total_tokens: 32 },
+      }),
+    };
+    const report = await runSalesAgentShadow({
+      companyId: "company-text",
+      request: request(101),
+      currentDecision: { kind: "reply", message: "Resposta legada.", next_action: null, sales_plan: null },
+      gateway,
+    });
+    expect(report.ok).toBe(true);
+    expect(report.fallback).toBe(false);
+    expect(report.openAiKind).toBe("reply");
+    expect(report.safetyRisk).toBe(false);
+  });
 });

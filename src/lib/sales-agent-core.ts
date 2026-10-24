@@ -381,7 +381,7 @@ export interface SalesAgentCompletionRequest {
 export interface SalesAgentCompletionResponse {
   model?: string;
   choices?: Array<{
-    message?: { tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> };
+    message?: { content?: string | null; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> };
   }>;
   usage?: {
     prompt_tokens: number;
