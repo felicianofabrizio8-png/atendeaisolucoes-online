@@ -452,3 +452,10 @@ especial", "parcelo" na resposta continuam indo para humano (inalterado).
 - Custo desconhecido é debitado conservadoramente pelo valor reservado e gera alerta; falhas liberam a reserva. A chamada não ocorre se o guard estiver incompleto ou indisponível.
 - Testes direcionados: 77 aprovados; cobertura inclui concorrência, orçamento esgotado, retries/reprocessamento, isolamento entre empresas e rollback. Migration executada somente em transação no banco descartável `supabase_db_vendedora-unificada-validacao`, com `ROLLBACK`; demais containers não foram tocados.
 - TypeScript e build aprovados. Flags continuam desligadas; sem OpenAI real, WhatsApp, produção, migration remota, push ou deploy. Antes do piloto ainda é necessário aplicar a migration no ambiente autorizado e definir orçamento/limites/alertas.
+
+## Configuração operacional proposta do piloto shadow — 2026-10-24
+
+- A sugestão foi convertida para as unidades do guard: `SALES_AGENT_OPENAI_SHADOW_BUDGET_USD_MICRO=1000000`, `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_HOUR=20` e `SALES_AGENT_OPENAI_SHADOW_CALLS_PER_DAY=50`. O guard aceita esses limites e continua desligado sem `SALES_AGENT_OPENAI_SHADOW_GUARD=enabled`.
+- Não foi definido um valor fictício para `SALES_AGENT_OPENAI_SHADOW_RESERVATION_USD_MICRO`: o request de compatibilidade ainda não fixa `max_tokens`, portanto um teto por chamada não pode ser comprovado. Esse é bloqueio obrigatório para segurança financeira estrita.
+- O código tem um limiar único de custo, não uma lista 50/80/100. Em US$1, os valores equivalem a 500.000/800.000/1.000.000 micro-USD; somente um pode ser ligado no guard atual. Alertas em três faixas dependem de monitor externo ou alteração futura.
+- Procedimento documentado em `RETOMADA.md`: validar consentimento/LGPD, aplicar migration no ambiente autorizado, configurar somente secrets server-only, manter Responses/envios desligados, verificar isolamento e desligar flag/allowlist para rollback.
